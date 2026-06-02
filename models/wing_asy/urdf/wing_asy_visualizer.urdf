@@ -1,0 +1,36 @@
+<!-- Debug-only URDF for standalone visualizers. Do not use for simulation. -->
+<robot name="wing_asy_visualizer">
+    <link name="part_1">
+        <visual>
+            <origin xyz="0.661946 -0.191632 0" rpy="0 -0 0" />
+            <geometry>
+                <mesh filename="../meshes/Part_1.stl" scale="100 100 100" />
+            </geometry>
+            <material name="dark_gray">
+                <color rgba="0.301961 0.301961 0.301961 1" />
+            </material>
+        </visual>
+    </link>
+    <link name="part_1_1">
+        <visual>
+            <origin xyz="0 0 0" rpy="0 -0 0" />
+            <geometry>
+                <mesh filename="../meshes/Part_1_1.stl" scale="100 100 100" />
+            </geometry>
+            <material name="light_blue">
+                <color rgba="0.768627 0.886275 0.952941 1" />
+            </material>
+        </visual>
+    </link>
+    <link name="root" />
+    <joint name="fastened_1" type="fixed">
+        <origin xyz="-0.679779 0.217114 0.00015" rpy="0 -0 0" />
+        <parent link="part_1_1" />
+        <child link="part_1" />
+    </joint>
+    <joint name="hanging_node_to_root_joint" type="fixed">
+        <origin xyz="0.0383789 -0.139453 0.0726211" rpy="0 -0 0" />
+        <parent link="root" />
+        <child link="part_1_1" />
+    </joint>
+</robot>

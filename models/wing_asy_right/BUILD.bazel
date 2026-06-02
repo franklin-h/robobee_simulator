@@ -1,0 +1,9 @@
+filegroup(
+    name = "files",
+    srcs = glob([
+        "meshes/*.stl",
+        "package.xml",
+        "urdf/*.urdf",
+    ]),
+    visibility = ["//visibility:public"],
+)
