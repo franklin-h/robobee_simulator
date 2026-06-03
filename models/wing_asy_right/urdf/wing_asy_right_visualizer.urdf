@@ -3,29 +3,29 @@
     <link name="part_1">
         <inertial>
             <mass value="8.16534e-11" />
-            <origin xyz="0.677543 -0.179668 7.5e-05" rpy="0 -0 0" />
+            <origin xyz="-2.23628e-05 0.000374458 7.5e-07" rpy="0 -0 0" />
             <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="1.01421e-15" />
         </inertial>
         <visual>
-            <origin xyz="0.679779 -0.217114 0" rpy="0 -0 0" />
+            <origin xyz="0 0 0" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="../meshes/Part_1.stl" scale="100 100 100" />
+                <mesh filename="../meshes/Part_1.obj" scale="1 1 1" />
             </geometry>
             <material name="0.768627_0.886275_0.952941_0.000000_0.901961">
-                <color rgba="0.768627 0.886275 0.952941 1" />
+                <color rgba="0.768627 0.886275 0.952941 0.0980392" />
             </material>
         </visual>
     </link>
     <link name="part_1_1">
         <inertial>
             <mass value="3.83835e-10" />
-            <origin xyz="-0.151305 0.117934 0.004" rpy="0 -0 0" />
+            <origin xyz="0.00510641 -0.000736981 4e-05" rpy="0 -0 0" />
             <inertia ixx="0" ixy="0" ixz="0" iyy="5.9244e-15" iyz="0" izz="6.59347e-15" />
         </inertial>
         <visual>
-            <origin xyz="0 0 0" rpy="0 -0 0" />
+            <origin xyz="0.00661946 -0.00191632 0" rpy="0 -0 0" />
             <geometry>
-                <mesh filename="../meshes/Part_1_1.stl" scale="100 100 100" />
+                <mesh filename="../meshes/Part_1_1.obj" scale="1 1 1" />
             </geometry>
             <material name="0.301961_0.301961_0.301961_0.000000_0.000000">
                 <color rgba="0.301961 0.301961 0.301961 1" />
@@ -34,15 +34,15 @@
     </link>
     <link name="root" />
     <joint name="fastened_1" type="fixed">
-        <origin xyz="-0.661946 0.191632 0.008" rpy="1.6673e-92 1.75162e-46 1.90372e-46" />
+        <origin xyz="1.21431e-17 -2.81893e-18 -1.142e-33" rpy="-3.14159 -2.18953e-46 3.14159" />
         <axis xyz="0 0 -1" />
-        <parent link="part_1_1" />
-        <child link="part_1" />
-    </joint>
-    <joint name="hanging_node_to_root_joint" type="fixed">
-        <origin xyz="0.186505 0.121117 0.0640399" rpy="-3.14159 1.99562e-30 -3.14159" />
-        <axis xyz="0 0 1" />
         <parent link="root" />
         <child link="part_1_1" />
+    </joint>
+    <joint name="group_1_fastened_joint" type="fixed">
+        <origin xyz="0.00679779 -0.00217114 8e-05" rpy="0 0 -2.76357e-75" />
+        <axis xyz="0 0 1" />
+        <parent link="part_1_1" />
+        <child link="part_1" />
     </joint>
 </robot>

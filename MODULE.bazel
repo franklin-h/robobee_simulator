@@ -7,7 +7,7 @@ bazel_dep(name = "rules_shell", version = "0.8.0")
 
 bazel_dep(name = "drake")
 
-DRAKE_COMMIT = "master"
+DRAKE_COMMIT = "v1.53.0" # needs to be this instead of "master" 
 DRAKE_CHECKSUM = None
 
 archive_override(

@@ -1,10 +1,11 @@
 filegroup(
     name = "files",
     srcs = glob([
-        "meshes/*.obj",
-        "meshes/*.mtl",
         "package.xml",
         "urdf/*.urdf",
-    ]),
+    ]) + [
+        "//models/wing_asy:files",
+        "//models/wing_asy_right:files",
+    ],
     visibility = ["//visibility:public"],
 )
