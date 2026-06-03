@@ -1,8 +1,7 @@
 filegroup(
     name = "files",
     srcs = glob([
-        "meshes/*.obj",
-        "meshes/*.mtl",
+        "meshes/*.stl",
         "package.xml",
         "urdf/*.urdf",
     ]),

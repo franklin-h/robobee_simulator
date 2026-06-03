@@ -4,18 +4,3 @@ cc_binary(
     name = "hello_world",
     srcs = ["hello_world.cc"],
 )
-
-cc_binary(
-    name = "visualize_fwmav",
-    srcs = ["visualize_fwmav.cc"],
-    data = [
-        "//models/fwmav_asy:files",
-    ],
-    deps = [
-        "@drake//geometry:drake_visualizer",
-        "@drake//multibody/parsing:parsing",
-        "@drake//multibody/plant:plant",
-        "@drake//systems/analysis:simulator",
-        "@drake//systems/framework:diagram_builder",
-    ],
-)
