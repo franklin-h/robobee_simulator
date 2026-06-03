@@ -33,6 +33,17 @@
         </visual>
     </link>
     <link name="root" />
+    <link name="center_of_mass_marker">
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <geometry>
+                <sphere radius="0.00015" />
+            </geometry>
+            <material name="com_red">
+                <color rgba="1 0 0 1" />
+            </material>
+        </visual>
+    </link>
     <joint name="fastened_1" type="fixed">
         <origin xyz="0 0 -8e-05" rpy="0 -0 0" />
         <axis xyz="0 0 -1" />
@@ -44,5 +55,10 @@
         <axis xyz="0 0 1" />
         <parent link="root" />
         <child link="part_1" />
+    </joint>
+    <joint name="center_of_mass_marker_joint" type="fixed">
+        <origin xyz="0.00539918 -0.000922868 -4.71481e-05" rpy="0 0 0" />
+        <parent link="root" />
+        <child link="center_of_mass_marker" />
     </joint>
 </robot>
