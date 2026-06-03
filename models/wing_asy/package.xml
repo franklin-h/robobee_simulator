@@ -1,8 +1,0 @@
-<?xml version="1.0"?>
-<package format="2">
-  <name>wing_asy</name>
-  <version>0.0.0</version>
-  <description>Wing assembly model assets.</description>
-  <maintainer email="noreply@example.com">robobee_simulator</maintainer>
-  <license>UNLICENSED</license>
-</package>
