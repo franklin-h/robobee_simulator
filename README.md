@@ -76,3 +76,5 @@ Verified with:
 - `bazel build //models/fwmav_asy:files`
 
 I think OBJ works better than STL, otherwise you can't preview. 
+
+Don't forget: when importing the URDF for the wings, make sure the COM is coincident with the origin of the CAD. 

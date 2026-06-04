@@ -2,47 +2,47 @@
 <robot name="wing_asy_right">
     <link name="part_1">
         <inertial>
-            <mass value="8.16534e-11" />
-            <origin xyz="-2.23628e-05 0.000374458 7.5e-07" rpy="0 -0 0" />
-            <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="1.01421e-15" />
+            <mass value="4.70198e-10" />
+            <origin xyz="-0.0153104 -0.000924838 4.9e-05" rpy="0 -0 0" />
+            <inertia ixx="0" ixy="0" ixz="0" iyy="7.25752e-15" iyz="0" izz="8.07701e-15" />
         </inertial>
         <visual>
             <origin xyz="0 0 0" rpy="0 -0 0" />
             <geometry>
                 <mesh filename="package://wing_asy_right/meshes/Part_1.obj" scale="1 1 1" />
             </geometry>
-            <material name="0.768627_0.886275_0.952941_0.000000_0.901961">
-                <color rgba="0.768627 0.886275 0.952941 0.0980392" />
-            </material>
-        </visual>
-    </link>
-    <link name="part_1_1">
-        <inertial>
-            <mass value="3.83835e-10" />
-            <origin xyz="0.00510641 -0.000736981 4e-05" rpy="0 -0 0" />
-            <inertia ixx="0" ixy="0" ixz="0" iyy="5.9244e-15" iyz="0" izz="6.59347e-15" />
-        </inertial>
-        <visual>
-            <origin xyz="0.00661946 -0.00191632 0" rpy="0 -0 0" />
-            <geometry>
-                <mesh filename="package://wing_asy_right/meshes/Part_1_1.obj" scale="1 1 1" />
-            </geometry>
             <material name="0.301961_0.301961_0.301961_0.000000_0.000000">
                 <color rgba="0.301961 0.301961 0.301961 1" />
             </material>
         </visual>
     </link>
+    <link name="part_1_1">
+        <inertial>
+            <mass value="8.16534e-11" />
+            <origin xyz="-0.00677543 -0.00179668 -7.5e-07" rpy="0 -0 0" />
+            <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="1.01421e-15" />
+        </inertial>
+        <visual>
+            <origin xyz="0.00998824 -0.000694768 -1.5e-06" rpy="0 -0 0" />
+            <geometry>
+                <mesh filename="package://wing_asy_right/meshes/Part_1_1.obj" scale="1 1 1" />
+            </geometry>
+            <material name="0.917647_0.917647_0.917647_0.000000_0.901961">
+                <color rgba="0.917647 0.917647 0.917647 0.0980392" />
+            </material>
+        </visual>
+    </link>
     <link name="root" />
     <joint name="fastened_1" type="fixed">
-        <origin xyz="1.21431e-17 -2.81893e-18 -1.142e-33" rpy="-3.14159 -2.18953e-46 3.14159" />
-        <axis xyz="0 0 -1" />
-        <parent link="root" />
+        <origin xyz="-0.010204 -0.000187856 3.97089e-18" rpy="2.11697e-49 -1.65436e-24 -2.55926e-25" />
+        <axis xyz="0 0 1" />
+        <parent link="part_1" />
         <child link="part_1_1" />
     </joint>
-    <joint name="group_1_fastened_joint" type="fixed">
-        <origin xyz="0.00679779 -0.00217114 8e-05" rpy="0 0 -2.76357e-75" />
+    <joint name="fixed_node_to_root_joint" type="fixed">
+        <origin xyz="0.0155574 0.00108164 -4.16358e-05" rpy="3.50068e-08 -1.35618e-08 -3.4518e-09" />
         <axis xyz="0 0 1" />
-        <parent link="part_1_1" />
+        <parent link="root" />
         <child link="part_1" />
     </joint>
 </robot>

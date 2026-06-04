@@ -3,11 +3,11 @@
     <link name="part_1">
         <inertial>
             <mass value="3.83835e-10" />
-            <origin xyz="0.00510641 -0.000736981 -4e-05" rpy="0 -0 0" />
+            <origin xyz="-0.00151305 0.00117934 4e-05" rpy="0 -0 0" />
             <inertia ixx="0" ixy="0" ixz="0" iyy="5.9244e-15" iyz="0" izz="6.59347e-15" />
         </inertial>
         <visual>
-            <origin xyz="0.00661946 -0.00191632 -8e-05" rpy="0 -0 0" />
+            <origin xyz="0 0 0" rpy="0 -0 0" />
             <geometry>
                 <mesh filename="package://wing_asy/meshes/Part_1.obj" scale="1 1 1" />
             </geometry>
@@ -34,13 +34,13 @@
     </link>
     <link name="root" />
     <joint name="fastened_1" type="fixed">
-        <origin xyz="0 0 -8e-05" rpy="0 -0 0" />
+        <origin xyz="-0.00661946 0.00191632 2.03288e-20" rpy="0 -0 0" />
         <axis xyz="0 0 -1" />
         <parent link="part_1" />
         <child link="part_1_1" />
     </joint>
-    <joint name="fastened_2" type="fixed">
-        <origin xyz="0 0 1.35525e-20" rpy="0 -0 0" />
+    <joint name="fixed_node_to_root_joint" type="fixed">
+        <origin xyz="0.00122028 -0.000993447 -3.285e-05" rpy="0 -0 0" />
         <axis xyz="0 0 1" />
         <parent link="root" />
         <child link="part_1" />
