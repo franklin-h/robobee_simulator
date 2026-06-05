@@ -15,6 +15,8 @@
 
 namespace {
 
+  // Adds position and orientation constraints to `ik` to hold `frame` at the
+  // specified pose `X_WF` in the world frame.
 void AddWorldPoseConstraint(
     const drake::multibody::MultibodyPlant<double>& plant,
     const drake::multibody::Frame<double>& frame,
@@ -29,6 +31,7 @@ void AddWorldPoseConstraint(
                                drake::math::RotationMatrixd(), 1e-6);
 }
 
+// 
 void AddInitialCoincidenceConstraint(
     const drake::multibody::MultibodyPlant<double>& plant,
     const drake::systems::Context<double>& plant_context,
@@ -64,12 +67,14 @@ bool SolveWingKinematics(
   prog->AddBoundingBoxConstraint(slider_position, slider_position,
                                  q.segment<1>(left_slider_index));
 
+  // Define the base frame of the left and right transmission kinematic chains. 
   AddWorldPoseConstraint(plant, plant.GetFrameByName("transmission_base"),
                          X_WLeftBase, &ik);
   AddWorldPoseConstraint(
       plant, plant.GetFrameByName("transmission_right_link_base"), X_WRightBase,
       &ik);
 
+  // URDF export forces open kinematic tree. 
   AddInitialCoincidenceConstraint(
       plant, *plant_context,
       plant.GetFrameByName("transmission_link_2__1__loop_closure"),
@@ -98,6 +103,8 @@ bool SolveWingKinematics(
 
 int main() {
   drake::systems::DiagramBuilder<double> builder;
+
+  // set plant equal to the multibody plant
   auto [plant, scene_graph] =
       drake::multibody::AddMultibodyPlantSceneGraph(&builder, 0.0);
   drake::lcm::DrakeLcm lcm;
@@ -108,7 +115,7 @@ int main() {
       "package://robobee_assembly/urdf/"
       "robobee_assembly.urdf");
 
-  plant.WeldFrames(plant.world_frame(), plant.GetFrameByName("root"));
+  plant.WeldFrames(plant.world_frame(), plant.GetFrameByName("root")); // anchor robot rood to world 
   plant.Finalize();
 
   drake::geometry::DrakeVisualizerd::AddToBuilder(&builder, scene_graph, &lcm);
@@ -119,6 +126,8 @@ int main() {
   auto& root_context = simulator.get_mutable_context();
   auto& plant_context = plant.GetMyMutableContextFromRoot(&root_context);
   Eigen::VectorXd q_guess = plant.GetPositions(plant_context);
+
+  // pose of the left transmission base frame in world frame. 
   const drake::math::RigidTransformd X_WLeftBase =
       plant.CalcRelativeTransform(plant_context, plant.world_frame(),
                                   plant.GetFrameByName("transmission_base"));
@@ -147,6 +156,7 @@ int main() {
     const auto now = std::chrono::steady_clock::now();
     const double time =
         std::chrono::duration<double>(now - start_time).count();
+        
     const double slider_position =
         kSliderAmplitude * std::sin(2.0 * kPi * kDriveFrequencyHz * time);
     if (!SolveWingKinematics(plant, &plant_context, X_WLeftBase, X_WRightBase,
