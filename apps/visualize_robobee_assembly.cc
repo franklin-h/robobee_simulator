@@ -16,11 +16,10 @@ int main() {
   drake::lcm::DrakeLcm lcm;
 
   drake::multibody::Parser parser(&plant);
-  parser.package_map().Add("robobee_assembly_urdf",
-                           "models/robobee_assembly");
+  parser.package_map().Add("robobee_assembly", "models/robobee_assembly");
   parser.AddModelsFromUrl(
-      "package://robobee_assembly_urdf/urdf/"
-      "robobee_assembly_visualizer.urdf");
+      "package://robobee_assembly/urdf/"
+      "robobee_assembly.urdf");
 
   plant.WeldFrames(plant.world_frame(), plant.GetFrameByName("root"));
   plant.Finalize();

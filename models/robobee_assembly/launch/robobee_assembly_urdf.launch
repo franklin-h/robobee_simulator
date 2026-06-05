@@ -1,5 +1,5 @@
 <launch>
-      <arg name="urdf_file" default="$(find robobee_assembly_urdf)/urdf/robobee_assembly_urdf.urdf"/>
+      <arg name="urdf_file" default="$(find robobee_assembly)/urdf/robobee_assembly.urdf"/>
       <param name="robot_description" textfile="$(arg urdf_file)"/>
 
       <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher" output="screen"/>
