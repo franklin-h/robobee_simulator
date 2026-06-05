@@ -4,3 +4,53 @@ cc_binary(
     name = "hello_world",
     srcs = ["hello_world.cc"],
 )
+
+cc_binary(
+    name = "visualize_fwmav",
+    srcs = ["visualize_fwmav.cc"],
+    data = [
+        "//models/fwmav_asy:files",
+    ],
+    deps = [
+        "@drake//geometry:drake_visualizer",
+        "@drake//multibody/parsing:parsing",
+        "@drake//multibody/plant:plant",
+        "@drake//systems/analysis:simulator",
+        "@drake//systems/framework:diagram_builder",
+    ],
+)
+
+cc_binary(
+    name = "visualize_robobee_assembly",
+    srcs = ["visualize_robobee_assembly.cc"],
+    data = [
+        "//models/robobee_assembly:files",
+    ],
+    deps = [
+        "@drake//geometry:drake_visualizer",
+        "@drake//lcm:drake_lcm",
+        "@drake//math:geometric_transform",
+        "@drake//multibody/inverse_kinematics:inverse_kinematics",
+        "@drake//multibody/parsing:parsing",
+        "@drake//multibody/plant:plant",
+        "@drake//solvers:solve",
+        "@drake//systems/analysis:simulator",
+        "@drake//systems/framework:diagram_builder",
+    ],
+)
+
+cc_binary(
+    name = "visualize_robobee_assembly_fixed",
+    srcs = ["visualize_robobee_assembly_fixed.cc"],
+    data = [
+        "//models/robobee_assembly:files",
+    ],
+    deps = [
+        "@drake//geometry:drake_visualizer",
+        "@drake//lcm:drake_lcm",
+        "@drake//multibody/parsing:parsing",
+        "@drake//multibody/plant:plant",
+        "@drake//systems/analysis:simulator",
+        "@drake//systems/framework:diagram_builder",
+    ],
+)
