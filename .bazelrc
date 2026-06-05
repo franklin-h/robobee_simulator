@@ -1,5 +1,4 @@
 common --enable_bzlmod
-<<<<<<< HEAD
 build --cxxopt=-std=c++23
 build --host_cxxopt=-std=c++23
 build --@drake//tools/flags:with_clp=False
@@ -9,6 +8,3 @@ build --jobs=16
 # Suppress warnings from module externals.
 # build --per_file_copt=external/.*@-w
 # build --host_per_file_copt=external/.*@-w
-=======
-build --cxxopt=-std=c++23
->>>>>>> parent of ed58886 (trying to update cad, but failing to run meldis)

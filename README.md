@@ -88,3 +88,85 @@ Don't forget: when importing the URDF for the wings, make sure the COM is coinci
 - \In case mates stll fuck up: Might also try to do planar first for transmission base, move the slider closer to where it should be, THEN add slider.  
 - you can also fix the entire airframe so it is mechanical ground. each part of airframe must be fixed! 
 - start an restart meldis can help lmao 
+
+## ```visualize_robobee_assembly.cc``` explained. 
+Because “one Onshape subassembly” is not the same thing as “one serial kinematic chain.”
+
+A subassembly is just a grouping of parts/mates in CAD. The robot model needs a **tree of links and joints**. If the CAD mates form a closed linkage, the exporter has to break that graph somewhere, because URDF/Drake cannot represent a parent-child cycle directly.
+
+For your left transmission, the physical idea is more like a loop:
+
+```text
+fixed airframe/base
+  -> slider input
+  -> transmission_link_1
+  -> transmission_link_2
+  -> transmission_hinge
+  -> transmission_base
+  -> fixed airframe/base
+```
+
+But URDF must encode it as an open tree, so it gets split into branches:
+
+```text
+root/airframe branch
+  -> part_1_3
+  -> slider_2
+  -> transmission_link_1
+  -> transmission_link_2
+```
+
+and:
+
+```text
+root
+  -> transmission_base
+  -> transmission_hinge
+  -> transmission_link_2__1__loop_closure
+```
+
+That fake `__loop_closure` link is the exporter saying: “this end should connect back to another part, but I cannot encode the cycle here.”
+
+Then your C++ IK adds the missing physical constraint:
+
+```cpp
+transmission_link_2__1__loop_closure == transmission_link_2
+```
+
+So the split is not because Onshape thinks they are unrelated. It is because the transmission is a closed mechanism, and the exporter has to cut closed mechanisms into a URDF-compatible tree. The C++ code then closes the cut mathematically.
+
+Yes, that’s the right summary.
+
+More precisely:
+
+```text
+Onshape assembly: mechanically closed linkage
+URDF export: open tree with one or more artificial loop_closure ends
+Drake IK: adds constraints that force those artificial ends back onto the matching real links
+```
+
+And yes, “closed” here means the mechanism forms a loop back to the fixed structure/root, roughly:
+
+```text
+root / airframe
+  -> slider
+  -> transmission_link_1
+  -> transmission_link_2
+  -> transmission_hinge
+  -> transmission_base
+  -> root / airframe
+```
+
+The URDF cannot directly encode that cycle, so it cuts the loop and leaves a free-looking end like:
+
+```text
+transmission_link_2__1__loop_closure
+```
+
+Your C++ code closes it by constraining that frame to coincide with:
+
+```text
+transmission_link_2
+```
+
+So the solver is not inventing the closure; it is restoring the physical mate relationship that had to be cut for URDF compatibility.
