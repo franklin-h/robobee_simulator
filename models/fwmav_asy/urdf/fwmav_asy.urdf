@@ -80,17 +80,56 @@
         <limit lower="-1.5708" upper="1.5708" effort="1" velocity="100" />
     </joint>
 
+    <link name="left_wing_support_base">
+        <inertial>
+            <mass value="1e-09" />
+            <origin xyz="0 0 0" rpy="0 0 0" />
+            <inertia ixx="1e-15" ixy="0" ixz="0" iyy="1e-15" iyz="0" izz="1e-15" />
+        </inertial>
+        <visual>
+            <origin xyz="0.001075 0 0" rpy="0 1.5708 0" />
+            <geometry>
+                <cylinder radius="5e-05" length="0.00215" />
+            </geometry>
+            <material name="wing_support_dark" />
+        </visual>
+        <collision>
+            <origin xyz="0.001075 0 0" rpy="0 1.5708 0" />
+            <geometry>
+                <cylinder radius="5e-05" length="0.00215" />
+            </geometry>
+        </collision>
+    </link>
+    <joint name="left_wing_support_base_joint" type="fixed">
+        <origin xyz="0.00114 0 0.006675" rpy="0 0 0" />
+        <parent link="fuselage" />
+        <child link="left_wing_support_base" />
+    </joint>
+
     <link name="left_wing_support_yaw">
         <inertial>
             <mass value="1e-09" />
             <origin xyz="0 0 0" rpy="0 0 0" />
             <inertia ixx="1e-15" ixy="0" ixz="0" iyy="1e-15" iyz="0" izz="1e-15" />
         </inertial>
+        <visual>
+            <origin xyz="0.001465 0 -0.000180045" rpy="0 1.69308 0" />
+            <geometry>
+                <cylinder radius="5e-05" length="0.00295204" />
+            </geometry>
+            <material name="wing_support_dark" />
+        </visual>
+        <collision>
+            <origin xyz="0.001465 0 -0.000180045" rpy="0 1.69308 0" />
+            <geometry>
+                <cylinder radius="5e-05" length="0.00295204" />
+            </geometry>
+        </collision>
     </link>
     <joint name="left_wing_support_yaw_joint" type="revolute">
-        <origin xyz="0.00114 0 0.006675" rpy="0 0 0" />
-        <axis xyz="0 0 -1" />
-        <parent link="fuselage" />
+        <origin xyz="0.00215 0 0" rpy="0 0 0" />
+        <axis xyz="0 0 1" />
+        <parent link="left_wing_support_base" />
         <child link="left_wing_support_yaw" />
         <limit lower="-1.5708" upper="1.5708" effort="1" velocity="100" />
     </joint>
@@ -103,8 +142,8 @@
         </inertial>
     </link>
     <joint name="left_wing_support_pitch_joint" type="revolute">
-        <origin xyz="0 0 0" rpy="0 0 0" />
-        <axis xyz="-1 0 0" />
+        <origin xyz="0.00293 0 -0.00036009" rpy="0 0 0" />
+        <axis xyz="1 0 0" />
         <parent link="left_wing_support_yaw" />
         <child link="left_wing_support_pitch" />
         <limit lower="-1.5708" upper="1.5708" effort="1" velocity="100" />
@@ -119,13 +158,11 @@
     </link>
     <joint name="left_wing_yaw_joint" type="fixed">
         <!--
-            Fixed wing attachment:
-            wing_attach_point_in_wing = (-0.0054, 0.000093, 0.000047) m.
-            named_left_support_tip = (0.00400953, 0, -0.00204296) m
-                in left_wing_support_pitch.
-            joint_origin = named_left_support_tip - wing_attach_point_in_wing.
+            The wing root is fixed directly to the left support pitch frame.
+            The upstream support chain places this frame at the end of the
+            two support segments.
         -->
-        <origin xyz="0.00940953 -0.000927 -0.00208996" rpy="0 0 0" />
+        <origin xyz="0 0 0" rpy="0 0 0" />
         <parent link="left_wing_support_pitch" />
         <child link="left_wing_yaw" />
     </joint>
@@ -319,31 +356,4 @@
         <parent link="right_wing_support_pitch" />
         <child link="right_wing_support" />
     </joint>
-    <link name="left_wing_support">
-        <inertial>
-            <mass value="1e-09" />
-            <origin xyz="0 0 0" rpy="0 0 0" />
-            <inertia ixx="1e-15" ixy="0" ixz="0" iyy="1e-15" iyz="0" izz="1e-15" />
-        </inertial>
-        <visual>
-            <origin xyz="0 0 0" rpy="0 0 0" />
-            <geometry>
-                <cylinder radius="5e-05" length="0.0045" />
-            </geometry>
-            <material name="wing_support_dark" />
-        </visual>
-        <collision>
-            <origin xyz="0 0 0" rpy="0 0 0" />
-            <geometry>
-                <cylinder radius="5e-05" length="0.0045" />
-            </geometry>
-        </collision>
-    </link>
-    <joint name="left_wing_support_joint" type="fixed">
-        <origin xyz="0.00200476 0 -0.00102148" rpy="0 2.04204 0" />
-        <parent link="left_wing_support_pitch" />
-        <child link="left_wing_support" />
-    </joint>
-    
-    
 </robot>

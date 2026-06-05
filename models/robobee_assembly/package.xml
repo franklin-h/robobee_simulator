@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>robobee_assembly_urdf</name>
+  <version>0.0.0</version>
+  <description>Robobee assembly URDF model assets.</description>
+  <maintainer email="noreply@example.com">robobee_simulator</maintainer>
+  <license>UNLICENSED</license>
+</package>
