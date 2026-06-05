@@ -4,11 +4,11 @@
     <link name="hinge_base">
         <inertial>
             <mass value="4.18256e-07" />
-            <origin xyz="-0.00179074 0.000297343 -1.82492e-05" rpy="0 -0 0" />
+            <origin xyz="0.00122925 -0.000507754 -3.07492e-05" rpy="0 -0 0" />
             <inertia ixx="1.72489e-14" ixy="2.85965e-14" ixz="-3.75318e-15" iyy="2.69923e-13" iyz="1.71251e-15" izz="2.83797e-13" />
         </inertial>
         <visual>
-            <origin xyz="-0.00115694 -0.000434896 2.75e-05" rpy="0 -0 0" />
+            <origin xyz="0.00186306 -0.00123999 1.5e-05" rpy="0 -0 0" />
             <geometry>
                 <mesh filename="package://robobee_assembly/meshes/hinge_base.obj" scale="1 1 1" />
             </geometry>
@@ -17,21 +17,30 @@
             </material>
         </visual>
     </link>
-    <link name="hinge_base__1_">
+    <link name="hinge_base_1">
         <inertial>
-            <mass value="1e-09" />
-            <origin xyz="0 0 0" rpy="0 -0 0" />
-            <inertia ixx="4e-14" ixy="0" ixz="0" iyy="4e-14" iyz="0" izz="4e-14" />
+            <mass value="4.18256e-07" />
+            <origin xyz="0.00122925 -0.000507754 9.92508e-05" rpy="0 -0 0" />
+            <inertia ixx="1.72489e-14" ixy="2.85965e-14" ixz="-3.75318e-15" iyy="2.69923e-13" iyz="1.71251e-15" izz="2.83797e-13" />
         </inertial>
+        <visual>
+            <origin xyz="0.00186306 -0.00123999 0.000145" rpy="0 -0 0" />
+            <geometry>
+                <mesh filename="package://robobee_assembly/meshes/hinge_base.obj" scale="1 1 1" />
+            </geometry>
+            <material name="0.301961_0.301961_0.301961_0.000000_0.000000">
+                <color rgba="0.301961 0.301961 0.301961 1" />
+            </material>
+        </visual>
     </link>
     <link name="hinge_wing">
         <inertial>
             <mass value="5.12755e-07" />
-            <origin xyz="-2.74645e-05 7.56587e-05 -1.02753e-05" rpy="0 -0 0" />
+            <origin xyz="-0.0011844 -0.000359238 1.72247e-05" rpy="0 -0 0" />
             <inertia ixx="3.01563e-14" ixy="3.61277e-14" ixz="0" iyy="2.99589e-13" iyz="2.26369e-15" izz="3.2508e-13" />
         </inertial>
         <visual>
-            <origin xyz="0 0 0" rpy="0 -0 0" />
+            <origin xyz="-0.00115694 -0.000434896 2.75e-05" rpy="0 -0 0" />
             <geometry>
                 <mesh filename="package://robobee_assembly/meshes/hinge_wing.obj" scale="1 1 1" />
             </geometry>
@@ -40,12 +49,21 @@
             </material>
         </visual>
     </link>
-    <link name="hinge_wing__1_">
+    <link name="hinge_wing_1">
         <inertial>
-            <mass value="1e-09" />
-            <origin xyz="0 0 0" rpy="0 -0 0" />
-            <inertia ixx="4e-14" ixy="0" ixz="0" iyy="4e-14" iyz="0" izz="4e-14" />
+            <mass value="5.12755e-07" />
+            <origin xyz="-0.0011844 -0.000359238 1.72247e-05" rpy="0 -0 0" />
+            <inertia ixx="3.01563e-14" ixy="3.61277e-14" ixz="0" iyy="2.99589e-13" iyz="2.26369e-15" izz="3.2508e-13" />
         </inertial>
+        <visual>
+            <origin xyz="-0.00115694 -0.000434896 2.75e-05" rpy="0 -0 0" />
+            <geometry>
+                <mesh filename="package://robobee_assembly/meshes/hinge_wing.obj" scale="1 1 1" />
+            </geometry>
+            <material name="0.301961_0.301961_0.301961_0.000000_0.000000">
+                <color rgba="0.301961 0.301961 0.301961 1" />
+            </material>
+        </visual>
     </link>
     <link name="part_1">
         <inertial>
@@ -81,12 +99,12 @@
     </link>
     <link name="part_1_2">
         <inertial>
-            <mass value="3.68516e-06" />
-            <origin xyz="8.5e-05 8.5e-05 -0.00398532" rpy="0 -0 0" />
-            <inertia ixx="5.99148e-11" ixy="0" ixz="0" iyy="6.04043e-11" iyz="0" izz="5.07226e-13" />
+            <mass value="2.95694e-07" />
+            <origin xyz="0.000284446 0.00078 -0.000113614" rpy="0 -0 0" />
+            <inertia ixx="6.5178e-14" ixy="0" ixz="0" iyy="9.02607e-15" iyz="0" izz="7.16925e-14" />
         </inertial>
         <visual>
-            <origin xyz="8.5e-05 8.5e-05 -0.0037825" rpy="0 -0 0" />
+            <origin xyz="0.000912206 0.000570095 -0.000782387" rpy="0 -0 0" />
             <geometry>
                 <mesh filename="package://robobee_assembly/meshes/Part_1_2.obj" scale="1 1 1" />
             </geometry>
@@ -97,12 +115,12 @@
     </link>
     <link name="part_1_3">
         <inertial>
-            <mass value="4.03812e-06" />
-            <origin xyz="-0.000858578 -8.5e-05 -0.00378575" rpy="0 -0 0" />
-            <inertia ixx="6.51785e-11" ixy="0" ixz="-7.42432e-14" iyy="6.62295e-11" iyz="0" izz="1.07054e-12" />
+            <mass value="3.68516e-06" />
+            <origin xyz="8.5e-05 8.5e-05 -0.00398532" rpy="0 -0 0" />
+            <inertia ixx="5.99148e-11" ixy="0" ixz="0" iyy="6.04043e-11" iyz="0" izz="5.07226e-13" />
         </inertial>
         <visual>
-            <origin xyz="-0.000859972 -8.5e-05 -0.00856221" rpy="0 -0 0" />
+            <origin xyz="8.5e-05 8.5e-05 -0.0037825" rpy="0 -0 0" />
             <geometry>
                 <mesh filename="package://robobee_assembly/meshes/Part_1_3.obj" scale="1 1 1" />
             </geometry>
@@ -113,12 +131,12 @@
     </link>
     <link name="part_1_4">
         <inertial>
-            <mass value="1.01477e-06" />
-            <origin xyz="-1.84172e-17 -1.94353e-05 4.5e-05" rpy="0 -0 0" />
-            <inertia ixx="8.1548e-13" ixy="0" ixz="0" iyy="7.27693e-13" iyz="0" izz="1.5418e-12" />
+            <mass value="4.03724e-06" />
+            <origin xyz="-0.000858579 -8.5e-05 -0.0037871" rpy="0 -0 0" />
+            <inertia ixx="6.51448e-11" ixy="0" ixz="-7.42233e-14" iyy="6.61959e-11" iyz="0" izz="1.07053e-12" />
         </inertial>
         <visual>
-            <origin xyz="3.12889e-17 -1.40194e-16 4.5e-05" rpy="0 -0 0" />
+            <origin xyz="-0.000859972 -8.5e-05 -0.00856221" rpy="0 -0 0" />
             <geometry>
                 <mesh filename="package://robobee_assembly/meshes/Part_1_4.obj" scale="1 1 1" />
             </geometry>
@@ -129,12 +147,12 @@
     </link>
     <link name="part_1_5">
         <inertial>
-            <mass value="1.70668e-06" />
-            <origin xyz="-0.00086 0.000582093 8.5e-05" rpy="0 -0 0" />
-            <inertia ixx="1.38361e-12" ixy="0" ixz="0" iyy="7.17549e-13" iyz="0" izz="2.09294e-12" />
+            <mass value="1.01477e-06" />
+            <origin xyz="-1.84172e-17 -1.94353e-05 4.5e-05" rpy="0 -0 0" />
+            <inertia ixx="8.1548e-13" ixy="0" ixz="0" iyy="7.27693e-13" iyz="0" izz="1.5418e-12" />
         </inertial>
         <visual>
-            <origin xyz="-0.00086 0.0005575 8.5e-05" rpy="0 -0 0" />
+            <origin xyz="3.12889e-17 -1.40194e-16 4.5e-05" rpy="0 -0 0" />
             <geometry>
                 <mesh filename="package://robobee_assembly/meshes/Part_1_5.obj" scale="1 1 1" />
             </geometry>
@@ -145,12 +163,12 @@
     </link>
     <link name="part_1_6">
         <inertial>
-            <mass value="4.38258e-06" />
-            <origin xyz="0.000934002 -6.91197e-21 0.00726901" rpy="0 -0 0" />
-            <inertia ixx="8.14618e-11" ixy="0" ixz="0" iyy="8.2521e-11" iyz="0" izz="1.0803e-12" />
+            <mass value="1.70668e-06" />
+            <origin xyz="-0.00086 0.000582093 8.5e-05" rpy="0 -0 0" />
+            <inertia ixx="1.38361e-12" ixy="0" ixz="0" iyy="7.17549e-13" iyz="0" izz="2.09294e-12" />
         </inertial>
         <visual>
-            <origin xyz="0.000934002 0 -0.0002" rpy="0 -0 0" />
+            <origin xyz="-0.00086 0.0005575 8.5e-05" rpy="0 -0 0" />
             <geometry>
                 <mesh filename="package://robobee_assembly/meshes/Part_1_6.obj" scale="1 1 1" />
             </geometry>
@@ -160,6 +178,22 @@
         </visual>
     </link>
     <link name="part_1_7">
+        <inertial>
+            <mass value="4.38258e-06" />
+            <origin xyz="0.000934002 -6.91197e-21 0.00726901" rpy="0 -0 0" />
+            <inertia ixx="8.14618e-11" ixy="0" ixz="0" iyy="8.2521e-11" iyz="0" izz="1.0803e-12" />
+        </inertial>
+        <visual>
+            <origin xyz="0.000934002 0 -0.0002" rpy="0 -0 0" />
+            <geometry>
+                <mesh filename="package://robobee_assembly/meshes/Part_1_7.obj" scale="1 1 1" />
+            </geometry>
+            <material name="0.301961_0.301961_0.301961_0.000000_0.000000">
+                <color rgba="0.301961 0.301961 0.301961 1" />
+            </material>
+        </visual>
+    </link>
+    <link name="part_1_8">
         <inertial>
             <mass value="7.68358e-08" />
             <origin xyz="0.00677543 -0.00179668 -7.5e-07" rpy="0 -0 0" />
@@ -175,7 +209,7 @@
             </material>
         </visual>
     </link>
-    <link name="part_1_8">
+    <link name="part_1_9">
         <inertial>
             <mass value="6.14136e-07" />
             <origin xyz="0.0041172 -0.000590432 -4e-05" rpy="0 -0 0" />
@@ -191,95 +225,67 @@
             </material>
         </visual>
     </link>
+    <link name="part_2">
+        <inertial>
+            <mass value="1.11797e-06" />
+            <origin xyz="0.000609193 0.000673795 3.50295e-05" rpy="0 -0 0" />
+            <inertia ixx="2.26338e-13" ixy="3.75399e-14" ixz="1.66459e-14" iyy="2.6444e-13" iyz="-8.80449e-15" izz="3.80429e-13" />
+        </inertial>
+        <visual>
+            <origin xyz="2.84212e-05 0.000570095 -0.000255887" rpy="0 -0 0" />
+            <geometry>
+                <mesh filename="package://robobee_assembly/meshes/Part_2.obj" scale="1 1 1" />
+            </geometry>
+            <material name="0.301961_0.301961_0.301961_0.000000_0.000000">
+                <color rgba="0.301961 0.301961 0.301961 1" />
+            </material>
+        </visual>
+    </link>
+    <link name="part_2_1">
+        <inertial>
+            <mass value="1.16841e-06" />
+            <origin xyz="0.000771326 0.000470579 -0.00017264" rpy="0 -0 0" />
+            <inertia ixx="3.44304e-13" ixy="-2.12597e-14" ixz="-6.64537e-15" iyy="2.22397e-13" iyz="3.27394e-15" izz="5.3212e-13" />
+        </inertial>
+        <visual>
+            <origin xyz="0.00156876 0.000355087 -0.000313887" rpy="0 -0 0" />
+            <geometry>
+                <mesh filename="package://robobee_assembly/meshes/Part_2_1.obj" scale="1 1 1" />
+            </geometry>
+            <material name="0.301961_0.301961_0.301961_0.000000_0.000000">
+                <color rgba="0.301961 0.301961 0.301961 1" />
+            </material>
+        </visual>
+    </link>
+    <link name="part_3">
+        <inertial>
+            <mass value="1.38451e-07" />
+            <origin xyz="0.000187101 0.00078 9.4104e-06" rpy="0 -0 0" />
+            <inertia ixx="2.91085e-14" ixy="0" ixz="0" iyy="1.34585e-15" iyz="0" izz="2.93331e-14" />
+        </inertial>
+        <visual>
+            <origin xyz="0.000292459 0.000570095 -0.000658887" rpy="0 -0 0" />
+            <geometry>
+                <mesh filename="package://robobee_assembly/meshes/Part_3.obj" scale="1 1 1" />
+            </geometry>
+            <material name="0.301961_0.301961_0.301961_0.000000_0.000000">
+                <color rgba="0.301961 0.301961 0.301961 1" />
+            </material>
+        </visual>
+    </link>
+    <link name="part_3__1__loop_closure">
+        <inertial>
+            <mass value="1e-09" />
+            <origin xyz="0 0 0" rpy="0 -0 0" />
+            <inertia ixx="4e-14" ixy="0" ixz="0" iyy="4e-14" iyz="0" izz="4e-14" />
+        </inertial>
+    </link>
     <link name="planar_1" />
     <link name="planar_1_1" />
-    <link name="planar_1_2" />
-    <link name="planar_1_3" />
-    <link name="planar_2_loop_closure" />
-    <link name="planar_2_loop_closure_1" />
-    <link name="root">
-        <visual>
-            <origin xyz="-0.00488933 -0.000412 0.011418" rpy="1.5708 2.25796e-15 3.14159" />
-            <geometry>
-                <mesh filename="package://robobee_assembly/meshes/hinge_wing_Mirrored.obj" scale="1 1 1" />
-            </geometry>
-            <material name="0.301961_0.301961_0.301961_0.000000_0.000000">
-                <color rgba="0.301961 0.301961 0.301961 1" />
-            </material>
-        </visual>
-        <visual>
-            <origin xyz="-0.00488933 -0.000412 0.011418" rpy="1.5708 2.25796e-15 3.14159" />
-            <geometry>
-                <mesh filename="package://robobee_assembly/meshes/hinge_base_Mirrored.obj" scale="1 1 1" />
-            </geometry>
-            <material name="0.301961_0.301961_0.301961_0.000000_0.000000">
-                <texture />
-                <color rgba="0.301961 0.301961 0.301961 1" />
-            </material>
-        </visual>
-        <visual>
-            <origin xyz="0.00421147 0.000143 0.012328" rpy="1.5708 9.23243e-12 5.67747e-11" />
-            <geometry>
-                <mesh filename="package://robobee_assembly/meshes/transmission_link_2.obj" scale="1 1 1" />
-            </geometry>
-            <material name="0.301961_0.301961_0.301961_0.000000_0.000000">
-                <texture />
-                <color rgba="0.301961 0.301961 0.301961 1" />
-            </material>
-        </visual>
-        <visual>
-            <origin xyz="0.00421147 0.000143 0.012328" rpy="1.5708 -3.15136e-11 4.6094e-22" />
-            <geometry>
-                <mesh filename="package://robobee_assembly/meshes/transmission_link_1.obj" scale="1 1 1" />
-            </geometry>
-            <material name="0.917647_0.917647_0.917647_0.000000_0.000000">
-                <texture />
-                <color rgba="0.917647 0.917647 0.917647 1" />
-            </material>
-        </visual>
-        <visual>
-            <origin xyz="0.00421147 0.000143 0.011928" rpy="-1.5708 -2.03591e-15 -3.95164e-22" />
-            <geometry>
-                <mesh filename="package://robobee_assembly/meshes/transmission_base_Mirrored.obj" scale="1 1 1" />
-            </geometry>
-            <material name="0.917647_0.917647_0.917647_0.000000_0.000000">
-                <texture />
-                <color rgba="0.917647 0.917647 0.917647 1" />
-            </material>
-        </visual>
-        <visual>
-            <origin xyz="0.00421147 0.000143 0.011928" rpy="-1.5708 -1.81387e-15 8.36974e-12" />
-            <geometry>
-                <mesh filename="package://robobee_assembly/meshes/transmission_hinge_Mirrored.obj" scale="1 1 1" />
-            </geometry>
-            <material name="0.980392_0.713725_0.003922_0.000000_0.000000">
-                <texture />
-                <color rgba="0.980392 0.713726 0.00392157 1" />
-            </material>
-        </visual>
-    </link>
+    <link name="planar_2" />
+    <link name="planar_2_1" />
+    <link name="root" />
     <link name="sketch_1__1_">
-        <inertial>
-            <mass value="1e-09" />
-            <origin xyz="0 0 0" rpy="0 -0 0" />
-            <inertia ixx="4e-14" ixy="0" ixz="0" iyy="4e-14" iyz="0" izz="4e-14" />
-        </inertial>
-    </link>
-    <link name="sketch_2__1_">
-        <inertial>
-            <mass value="1e-09" />
-            <origin xyz="0 0 0" rpy="0 -0 0" />
-            <inertia ixx="4e-14" ixy="0" ixz="0" iyy="4e-14" iyz="0" izz="4e-14" />
-        </inertial>
-    </link>
-    <link name="sketch_2__1__loop_closure">
-        <inertial>
-            <mass value="1e-09" />
-            <origin xyz="0 0 0" rpy="0 -0 0" />
-            <inertia ixx="4e-14" ixy="0" ixz="0" iyy="4e-14" iyz="0" izz="4e-14" />
-        </inertial>
-    </link>
-    <link name="sketch_3__1_">
         <inertial>
             <mass value="1e-09" />
             <origin xyz="0 0 0" rpy="0 -0 0" />
@@ -289,11 +295,11 @@
     <link name="transmission_base">
         <inertial>
             <mass value="1.1684e-06" />
-            <origin xyz="0.000100679 0.000785585 6.21405e-05" rpy="0 -0 0" />
+            <origin xyz="0.0016413 0.000470585 0.000172641" rpy="0 -0 0" />
             <inertia ixx="3.44303e-13" ixy="-2.1259e-14" ixz="6.64595e-15" iyy="2.22393e-13" iyz="-3.27498e-15" izz="5.32115e-13" />
         </inertial>
         <visual>
-            <origin xyz="0.00258588 0.00107999 -0.000579" rpy="0 -0 0" />
+            <origin xyz="0.0041265 0.000764992 -0.0004685" rpy="0 -0 0" />
             <geometry>
                 <mesh filename="package://robobee_assembly/meshes/transmission_base.obj" scale="1 1 1" />
             </geometry>
@@ -301,13 +307,6 @@
                 <color rgba="0.917647 0.917647 0.917647 1" />
             </material>
         </visual>
-    </link>
-    <link name="transmission_base__1_">
-        <inertial>
-            <mass value="1e-09" />
-            <origin xyz="0 0 0" rpy="0 -0 0" />
-            <inertia ixx="4e-14" ixy="0" ixz="0" iyy="4e-14" iyz="0" izz="4e-14" />
-        </inertial>
     </link>
     <link name="transmission_hinge">
         <inertial>
@@ -325,28 +324,22 @@
             </material>
         </visual>
     </link>
-    <link name="transmission_hinge__2_">
+    <link name="transmission_hinge__2__loop_closure">
         <inertial>
             <mass value="1e-09" />
             <origin xyz="0 0 0" rpy="0 -0 0" />
             <inertia ixx="4e-14" ixy="0" ixz="0" iyy="4e-14" iyz="0" izz="4e-14" />
         </inertial>
     </link>
-    <link name="transmission_hinge_mirrored__1_">
-        <inertial>
-            <mass value="1e-09" />
-            <origin xyz="0 0 0" rpy="0 -0 0" />
-            <inertia ixx="4e-14" ixy="0" ixz="0" iyy="4e-14" iyz="0" izz="4e-14" />
-        </inertial>
-    </link>
+    <link name="transmission_left_urdf__1_" />
     <link name="transmission_link_1">
         <inertial>
             <mass value="2.95694e-07" />
-            <origin xyz="-0.000335301 0.00078 -9.88629e-06" rpy="0 -0 0" />
+            <origin xyz="0.000284446 0.00078 0.000113614" rpy="0 -0 0" />
             <inertia ixx="6.5178e-14" ixy="0" ixz="0" iyy="9.02607e-15" iyz="0" izz="7.16925e-14" />
         </inertial>
         <visual>
-            <origin xyz="0.00198021 0.00098 -0.0001235" rpy="0 -0 0" />
+            <origin xyz="0.00259996 0.00098 0" rpy="0 -0 0" />
             <geometry>
                 <mesh filename="package://robobee_assembly/meshes/transmission_link_1.obj" scale="1 1 1" />
             </geometry>
@@ -355,28 +348,14 @@
             </material>
         </visual>
     </link>
-    <link name="transmission_link_1__1_">
-        <inertial>
-            <mass value="1e-09" />
-            <origin xyz="0 0 0" rpy="0 -0 0" />
-            <inertia ixx="4e-14" ixy="0" ixz="0" iyy="4e-14" iyz="0" izz="4e-14" />
-        </inertial>
-    </link>
-    <link name="transmission_link_1__1__1">
-        <inertial>
-            <mass value="1e-09" />
-            <origin xyz="0 0 0" rpy="0 -0 0" />
-            <inertia ixx="4e-14" ixy="0" ixz="0" iyy="4e-14" iyz="0" izz="4e-14" />
-        </inertial>
-    </link>
     <link name="transmission_link_2">
         <inertial>
             <mass value="1.38451e-07" />
-            <origin xyz="-0.000212899 0.00078 -9.4104e-06" rpy="0 -0 0" />
+            <origin xyz="0.000187101 0.00078 -9.4104e-06" rpy="0 -0 0" />
             <inertia ixx="2.91085e-14" ixy="0" ixz="0" iyy="1.34585e-15" iyz="0" izz="2.93331e-14" />
         </inertial>
         <visual>
-            <origin xyz="0.00158021 0.00098 -0.0001235" rpy="0 -0 0" />
+            <origin xyz="0.00198021 0.00098 -0.0001235" rpy="0 -0 0" />
             <geometry>
                 <mesh filename="package://robobee_assembly/meshes/transmission_link_2.obj" scale="1 1 1" />
             </geometry>
@@ -385,237 +364,197 @@
             </material>
         </visual>
     </link>
-    <link name="transmission_link_2__1_">
-        <inertial>
-            <mass value="1e-09" />
-            <origin xyz="0 0 0" rpy="0 -0 0" />
-            <inertia ixx="4e-14" ixy="0" ixz="0" iyy="4e-14" iyz="0" izz="4e-14" />
-        </inertial>
-    </link>
-    <link name="transmission_urdf__1_" />
+    <link name="transmission_right_urdf__1_" />
     <joint name="fastened_1" type="fixed">
-        <origin xyz="-0.000989203 0.000146549 1.5e-06" rpy="6.60706e-15 -3.11051e-15 -4.16889e-14" />
+        <origin xyz="0.000934002 2.68882e-17 -4.66478e-17" rpy="4.18096e-24 1.34417e-24 6.28657e-23" />
+        <axis xyz="0 0 1" />
+        <parent link="part_1_7" />
+        <child link="airframe_asy__1_" />
+    </joint>
+    <joint name="fastened_1_1" type="fixed">
+        <origin xyz="9.70117e-21 -6.53804e-21 6.09864e-20" rpy="-9.7945e-22 1.94289e-16 3.14159" />
+        <axis xyz="0 0 -1" />
+        <parent link="root" />
+        <child link="part_1_5" />
+    </joint>
+    <joint name="fastened_1_2" type="fixed">
+        <origin xyz="-0.000989203 0.000146549 -8e-05" rpy="-5.93467e-15 1.27002e-15 1.98452e-15" />
+        <axis xyz="0 0 -1" />
+        <parent link="part_1_9" />
+        <child link="part_1_8" />
+    </joint>
+    <joint name="fastened_1_3" type="fixed">
+        <origin xyz="0.00087 -0.000315038 0.0003645" rpy="-2.46517e-32 9.1608e-33 -1.12915e-64" />
+        <axis xyz="0 0 1" />
+        <parent link="transmission_base" />
+        <child link="transmission_left_urdf__1_" />
+    </joint>
+    <joint name="fastened_1_4" type="fixed">
+        <origin xyz="1.69673e-08 -0.000315057 -0.0003645" rpy="4.81906e-22 6.30258e-24 -3.87719e-26" />
+        <axis xyz="0 0 1" />
+        <parent link="part_2_1" />
+        <child link="transmission_right_urdf__1_" />
+    </joint>
+    <joint name="fastened_1_5" type="fixed">
+        <origin xyz="-0.000989203 0.000146549 -8e-05" rpy="3.28429e-47 -4.73317e-30 -1.38778e-17" />
         <axis xyz="0 0 -1" />
         <parent link="part_1_1" />
         <child link="part_1" />
     </joint>
-    <joint name="fastened_1_1" type="fixed">
-        <origin xyz="-0.000670617 -3.84606e-08 0.000254" rpy="2.77556e-16 3.29303e-22 -2.22045e-16" />
-        <axis xyz="0 0 1" />
-        <parent link="transmission_base" />
-        <child link="transmission_urdf__1_" />
-    </joint>
-    <joint name="fastened_1_2" type="fixed">
-        <origin xyz="0.000934002 2.95987e-17 -2.90837e-17" rpy="3.30872e-24 -3.37238e-29 6.58606e-23" />
-        <axis xyz="0 0 1" />
-        <parent link="part_1_6" />
-        <child link="airframe_asy__1_" />
-    </joint>
-    <joint name="fastened_1_3" type="fixed">
-        <origin xyz="6.39113e-20 0 0" rpy="7.77156e-16 3.87741e-26 -3.14159" />
-        <axis xyz="0 0 -1" />
-        <parent link="root" />
-        <child link="part_1_4" />
-    </joint>
-    <joint name="fastened_1_4" type="fixed">
-        <origin xyz="-0.000989203 0.000146549 -8e-05" rpy="-5.93844e-15 1.27017e-15 1.98452e-15" />
-        <axis xyz="0 0 -1" />
-        <parent link="part_1_8" />
-        <child link="part_1_7" />
-    </joint>
     <joint name="fastened_2" type="fixed">
-        <origin xyz="-0.00301999 0.000805097 -0.0001175" rpy="3.14159 1.84962e-30 1.2935e-26" />
-        <axis xyz="-1 0 0" />
-        <parent link="hinge_base" />
-        <child link="transmission_hinge_mirrored__1_" />
+        <origin xyz="0.000530962 0.00025 0.0001165" rpy="-3.14159 1.38778e-17 1.97215e-31" />
+        <axis xyz="1 0 0" />
+        <parent link="part_2" />
+        <child link="hinge_base_1" />
     </joint>
     <joint name="fastened_2_1" type="fixed">
-        <origin xyz="0.001019 -8.5e-05 0.01037" rpy="-1.11022e-16 -1.11022e-16 -1.5708" />
+        <origin xyz="0.001019 -8.5e-05 0.01037" rpy="-1.6075e-21 3.92469e-23 -1.5708" />
         <axis xyz="0 0 1" />
-        <parent link="part_1_6" />
-        <child link="part_1_3" />
+        <parent link="part_1_7" />
+        <child link="part_1_4" />
     </joint>
     <joint name="fastened_3" type="fixed">
-        <origin xyz="-0.00172 3.70255e-17 6.93889e-17" rpy="-1.11022e-16 1.11022e-16 -1.5708" />
+        <origin xyz="-0.00172 -2.17247e-17 3.46945e-18" rpy="3.59382e-23 1.6075e-21 -1.5708" />
         <axis xyz="0 0 1" />
-        <parent link="part_1_3" />
-        <child link="part_1_2" />
+        <parent link="part_1_4" />
+        <child link="part_1_3" />
+    </joint>
+    <joint name="fastened_3_1" type="fixed">
+        <origin xyz="0.000531022 0.00025 -0.0001165" rpy="3.14159 -3.83103e-16 -5.09355e-16" />
+        <axis xyz="1 0 0" />
+        <parent link="transmission_hinge" />
+        <child link="hinge_base" />
     </joint>
     <joint name="fastened_4" type="fixed">
-        <origin xyz="0.001794 -8.5e-05 0.01309" rpy="3.30872e-24 -3.37238e-29 6.58606e-23" />
+        <origin xyz="0.001794 -8.5e-05 0.01309" rpy="4.18096e-24 1.34417e-24 6.28657e-23" />
         <axis xyz="0 0 1" />
-        <parent link="part_1_6" />
-        <child link="part_1_5" />
-    </joint>
-    <joint name="fastened_5" type="fixed">
-        <origin xyz="0.000934 0.000775 9e-05" rpy="-3.30872e-24 -2.14693e-15 3.14159" />
-        <axis xyz="2.14693e-15 0 1" />
-        <parent link="part_1_4" />
+        <parent link="part_1_7" />
         <child link="part_1_6" />
     </joint>
+    <joint name="fastened_5" type="fixed">
+        <origin xyz="0.000934 0.000775 9e-05" rpy="-3.30869e-24 -2.14693e-15 3.14159" />
+        <axis xyz="2.14693e-15 0 1" />
+        <parent link="part_1_5" />
+        <child link="part_1_7" />
+    </joint>
     <joint name="group_1_fastened_joint" type="fixed">
-        <origin xyz="-0.000859972 -8.5e-05 -0.00856221" rpy="-1.22762e-69 9.86076e-32 -2.48991e-38" />
+        <origin xyz="-0.000859972 -8.5e-05 -0.00856221" rpy="-1.97215e-31 -3.64403e-37 3.15544e-30" />
         <axis xyz="0 0 1" />
-        <parent link="part_1_3" />
+        <parent link="part_1_4" />
         <child link="sketch_1__1_" />
     </joint>
-    <joint name="group_1_fastened_joint_1" type="fixed">
-        <origin xyz="0 0 -2.1684e-19" rpy="-1.22762e-69 9.86076e-32 -2.48991e-38" />
-        <axis xyz="0 0 1" />
-        <parent link="sketch_3__1_" />
-        <child link="sketch_2__1_" />
-    </joint>
-    <joint name="group_2_fastened_joint" type="fixed">
-        <origin xyz="-0.000859972 -8.5e-05 -0.00856221" rpy="-1.22762e-69 9.86076e-32 -2.48991e-38" />
-        <axis xyz="0 0 1" />
-        <parent link="part_1_3" />
-        <child link="sketch_3__1_" />
-    </joint>
-    <joint name="hanging_node_to_root_joint" type="fixed">
-        <origin xyz="0.00488933 -0.000412 0.011418" rpy="1.5708 -1.81387e-15 8.36974e-12" />
-        <axis xyz="0 0 1" />
-        <parent link="root" />
-        <child link="hinge_wing" />
-    </joint>
     <joint name="planar_1" type="prismatic">
-        <origin xyz="-0.00344588 -0.000219992 -0.012601" rpy="7.77156e-16 2.14693e-15 -6.58552e-22" />
-        <axis xyz="1 0 0" />
-        <parent link="part_1_5" />
+        <origin xyz="-0.0005345 0.00087 0.002233" rpy="-1.5708 1.11022e-16 1.5708" />
+        <axis xyz="0 1 0" />
+        <parent link="part_1_4" />
         <child link="planar_1_1" />
         <limit effort="1" velocity="1" lower="-10000" upper="10000" />
-        <mimic offset="0" multiplier="-1" joint="planar_1_3" />
     </joint>
     <joint name="planar_1_1" type="prismatic">
         <origin xyz="0 0 0" rpy="0 -0 0" />
-        <axis xyz="0 0 1" />
+        <axis xyz="0 0 -1" />
         <parent link="planar_1_1" />
         <child link="planar_1" />
         <limit effort="1" velocity="1" lower="-10000" upper="10000" />
-        <mimic offset="0" multiplier="1" joint="planar_1_4" />
     </joint>
     <joint name="planar_1_2" type="continuous">
         <origin xyz="0 0 0" rpy="0 -0 0" />
-        <axis xyz="0 -1 0" />
+        <axis xyz="-1 0 0" />
         <parent link="planar_1" />
-        <child link="transmission_base__1_" />
-        <mimic offset="0" multiplier="-1" joint="planar_1_5" />
+        <child link="part_2_1" />
     </joint>
-    <joint name="planar_1_3" type="prismatic">
-        <origin xyz="-0.00248559 0.000424 -0.000172" rpy="-1.5708 1.11022e-16 3.14159" />
-        <axis xyz="1 0 0" />
-        <parent link="part_1_5" />
-        <child link="planar_1_3" />
-        <limit effort="1" velocity="1" lower="-10000" upper="10000" />
-    </joint>
-    <joint name="planar_1_4" type="prismatic">
-        <origin xyz="0 0 0" rpy="0 -0 0" />
+    <joint name="planar_2" type="prismatic">
+        <origin xyz="-0.0005345 -0.00017 0.002233" rpy="-1.5708 -0 -1.5708" />
         <axis xyz="0 0 1" />
-        <parent link="planar_1_3" />
-        <child link="planar_1_2" />
+        <parent link="part_1_4" />
+        <child link="planar_2_1" />
         <limit effort="1" velocity="1" lower="-10000" upper="10000" />
     </joint>
-    <joint name="planar_1_5" type="continuous">
+    <joint name="planar_2_1" type="prismatic">
         <origin xyz="0 0 0" rpy="0 -0 0" />
         <axis xyz="0 -1 0" />
-        <parent link="planar_1_2" />
+        <parent link="planar_2_1" />
+        <child link="planar_2" />
+        <limit effort="1" velocity="1" lower="-10000" upper="10000" />
+    </joint>
+    <joint name="planar_2_2" type="continuous">
+        <origin xyz="0 0 0" rpy="0 -0 0" />
+        <axis xyz="1 0 0" />
+        <parent link="planar_2" />
         <child link="transmission_base" />
     </joint>
-    <joint name="planar_2_loop_closure" type="prismatic">
-        <origin xyz="-0.000670593 0.00633515 -0.000434578" rpy="0 -1.5708 1.5708" />
-        <axis xyz="0 0 -1" />
-        <parent link="transmission_base" />
-        <child link="planar_2_loop_closure_1" />
-        <limit effort="1" velocity="1" lower="-10000" upper="10000" />
-    </joint>
-    <joint name="planar_2_loop_closure_1" type="prismatic">
-        <origin xyz="0 0 0" rpy="0 -0 0" />
-        <axis xyz="-1 0 0" />
-        <parent link="planar_2_loop_closure_1" />
-        <child link="planar_2_loop_closure" />
-        <limit effort="1" velocity="1" lower="-10000" upper="10000" />
-    </joint>
-    <joint name="planar_2_loop_closure_2" type="continuous">
-        <origin xyz="0 0 0" rpy="0 -0 0" />
-        <axis xyz="0 1 0" />
-        <parent link="planar_2_loop_closure" />
-        <child link="sketch_2__1__loop_closure" />
-    </joint>
     <joint name="revolute_1" type="continuous">
-        <origin xyz="-0.0106513 -7.98673e-05 -8e-05" rpy="3.14159 1.6557e-11 2.99451" />
-        <axis xyz="0 0 -1" />
-        <parent link="hinge_wing" />
-        <child link="part_1_1" />
-        <mimic offset="0" multiplier="-1" joint="revolute_1_6" />
+        <origin xyz="0.00301999 -0.000805097 0.0001175" rpy="-2.02606e-13 9.11904e-28 3.64615e-26" />
+        <axis xyz="1 0 0" />
+        <parent link="hinge_base_1" />
+        <child link="hinge_wing_1" />
     </joint>
     <joint name="revolute_1_1" type="continuous">
-        <origin xyz="0.000869661 9.99916e-05 -5.25e-05" rpy="0 -0 0" />
-        <axis xyz="0 -1 0" />
-        <parent link="transmission_base__1_" />
-        <child link="transmission_hinge__2_" />
-        <mimic offset="0" multiplier="-1" joint="revolute_1_4" />
+        <origin xyz="-0.000284345 -0.000514764 2.75e-05" rpy="7.18312e-17 -9.05233e-18 0.147079" />
+        <axis xyz="0 0 -1" />
+        <parent link="hinge_wing_1" />
+        <child link="part_1_9" />
     </joint>
     <joint name="revolute_1_2" type="continuous">
-        <origin xyz="0.000284345 0.000514764 -2.75e-05" rpy="0 -0 0" />
-        <axis xyz="1 0 0" />
-        <parent link="hinge_wing__1_" />
-        <child link="hinge_base__1_" />
-        <mimic offset="0" multiplier="-1" joint="revolute_1_5" />
-    </joint>
-    <joint name="revolute_1_3" type="continuous">
-        <origin xyz="-0.00649814 -0.0104992 -0.000332133" rpy="-1.5708 -8.36975e-12 -0.147079" />
-        <axis xyz="0 0 -1" />
-        <parent link="part_1_8" />
-        <child link="hinge_wing__1_" />
-    </joint>
-    <joint name="revolute_1_4" type="continuous">
-        <origin xyz="0.000869661 9.99916e-05 -5.25e-05" rpy="-1.66533e-16 8.36971e-12 1.57362e-26" />
+        <origin xyz="0.00241028 -0.000215008 5.8e-05" rpy="3.33067e-16 4.78506e-14 2.22045e-16" />
         <axis xyz="0 -1 0" />
         <parent link="transmission_base" />
         <child link="transmission_hinge" />
     </joint>
-    <joint name="revolute_1_5" type="continuous">
-        <origin xyz="0.00115694 0.000434896 -2.75e-05" rpy="-3.14237e-17 2.84992e-32 3.9443e-31" />
-        <axis xyz="1 0 0" />
-        <parent link="hinge_wing" />
-        <child link="hinge_base" />
+    <joint name="revolute_1_3" type="continuous">
+        <origin xyz="0.00154034 -0.000215008 -5.8e-05" rpy="-1.17373e-16 -1.6523e-12 1.22465e-16" />
+        <axis xyz="0 -1 0" />
+        <parent link="part_2_1" />
+        <child link="part_2" />
     </joint>
-    <joint name="revolute_1_6" type="continuous">
-        <origin xyz="0.000872592 -7.98673e-05 -5.42101e-20" rpy="7.21823e-17 -1.58803e-17 0.147079" />
-        <axis xyz="0 0 -1" />
-        <parent link="hinge_wing" />
-        <child link="part_1_8" />
+    <joint name="revolute_1_4" type="continuous">
+        <origin xyz="0.00301999 -0.000805097 -1.25e-05" rpy="1.35891e-13 8.15236e-29 5.2262e-29" />
+        <axis xyz="1 0 0" />
+        <parent link="hinge_base" />
+        <child link="hinge_wing" />
     </joint>
     <joint name="revolute_2" type="continuous">
-        <origin xyz="0.000136003 -9.03854e-14 -0.000403" rpy="0 -0 0" />
-        <axis xyz="0 -1 0" />
-        <parent link="transmission_hinge__2_" />
-        <child link="transmission_link_2__1_" />
-        <mimic offset="0" multiplier="-1" joint="revolute_2_1" />
+        <origin xyz="-0.000284345 -0.000514764 2.75e-05" rpy="5.05422e-16 1.10012e-15 0.147079" />
+        <axis xyz="0 0 -1" />
+        <parent link="hinge_wing" />
+        <child link="part_1_1" />
     </joint>
-    <joint name="revolute_2_1" type="continuous">
-        <origin xyz="0.000136003 -9.03826e-14 -0.000403" rpy="-1.4376e-26 4.80874e-11 -2.41023e-26" />
-        <axis xyz="0 -1 0" />
-        <parent link="transmission_hinge" />
-        <child link="transmission_link_2" />
-    </joint>
-    <joint name="revolute_3" type="continuous">
-        <origin xyz="-0.0004 0 0" rpy="0 -0 0" />
-        <axis xyz="0 -1 0" />
-        <parent link="transmission_link_2__1_" />
-        <child link="transmission_link_1__1_" />
-        <mimic offset="0" multiplier="-1" joint="revolute_3_1" />
-    </joint>
-    <joint name="revolute_3_1" type="continuous">
-        <origin xyz="-0.0004 -1.73472e-18 -2.03288e-20" rpy="3.33067e-16 -5.64572e-11 -1.11022e-16" />
+    <joint name="revolute_2_loop_closure" type="continuous">
+        <origin xyz="0.0004 0 2.03288e-20" rpy="2.90892e-30 4.10504e-13 -6.7842e-29" />
         <axis xyz="0 -1 0" />
         <parent link="transmission_link_2" />
-        <child link="transmission_link_1" />
+        <child link="transmission_hinge__2__loop_closure" />
+    </joint>
+    <joint name="revolute_2_loop_closure_1" type="continuous">
+        <origin xyz="0.000135962 -1.10413e-13 0.000403" rpy="-3.32479e-24 1.12288e-12 -3.94432e-31" />
+        <axis xyz="0 -1 0" />
+        <parent link="part_2" />
+        <child link="part_3__1__loop_closure" />
+    </joint>
+    <joint name="revolute_3" type="continuous">
+        <origin xyz="0.000619747 -1.52279e-13 0.0001235" rpy="5.55112e-17 -3.87994e-13 1.94289e-16" />
+        <axis xyz="0 -1 0" />
+        <parent link="transmission_link_1" />
+        <child link="transmission_link_2" />
+    </joint>
+    <joint name="revolute_3_1" type="continuous">
+        <origin xyz="0.000619747 -1.52281e-13 -0.0001235" rpy="-4.01838e-23 -5.29425e-13 1.22465e-16" />
+        <axis xyz="0 -1 0" />
+        <parent link="part_1_2" />
+        <child link="part_3" />
     </joint>
     <joint name="slider_1" type="prismatic">
-        <origin xyz="-0.001003 0.00180136 0.00244801" rpy="1.5708 -3.15117e-11 1.5708" />
-        <axis xyz="1 8.23363e-12 0" />
-        <parent link="part_1_3" />
-        <child link="transmission_link_1__1__1" />
+        <origin xyz="-0.001003 0.00152655 0.00244801" rpy="-1.5708 4.44089e-16 1.5708" />
+        <axis xyz="-1 0 0" />
+        <parent link="part_1_4" />
+        <child link="part_1_2" />
+        <limit effort="1" velocity="1" lower="-10000" upper="10000" />
+    </joint>
+    <joint name="slider_2" type="prismatic">
+        <origin xyz="-0.001003 -0.00169653 0.00244801" rpy="-1.5708 3.33067e-16 -1.5708" />
+        <axis xyz="-1 0 0" />
+        <parent link="part_1_4" />
+        <child link="transmission_link_1" />
         <limit effort="1" velocity="1" lower="-10000" upper="10000" />
     </joint>
 </robot>

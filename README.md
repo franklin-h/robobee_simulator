@@ -77,4 +77,12 @@ Verified with:
 
 I think OBJ works better than STL, otherwise you can't preview. 
 
-Don't forget: when importing the URDF for the wings, make sure the COM is coincident with the origin of the CAD. 
+Don't forget: when importing the URDF for the wings, make sure the COM is coincident with the origin of the CAD. (this is not relevant anymore) 
+
+
+## Simplified CAD for URDF: 
+- Take, say, the transmission. Export as a STEP file. 
+- Then, we need to simplify. Split along the middle of the capton. Then use boolean to combine various layers so they are just simplified linkage blocks. 
+- Then reimport into an assembly, and add revolute joints. 
+- When you put it back in main CAD, be careful about selecting faces for mates (such as Planar mates with offset. Boolean operation can create fucked up faces )
+- \In case mates stll fuck up: Might also try to do planar first for transmission base, move the slider closer to where it should be, THEN add slider.  
