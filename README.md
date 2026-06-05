@@ -86,3 +86,5 @@ Don't forget: when importing the URDF for the wings, make sure the COM is coinci
 - Then reimport into an assembly, and add revolute joints. 
 - When you put it back in main CAD, be careful about selecting faces for mates (such as Planar mates with offset. Boolean operation can create fucked up faces )
 - \In case mates stll fuck up: Might also try to do planar first for transmission base, move the slider closer to where it should be, THEN add slider.  
+- you can also fix the entire airframe so it is mechanical ground. each part of airframe must be fixed! 
+- start an restart meldis can help lmao 

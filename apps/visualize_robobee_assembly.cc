@@ -66,16 +66,18 @@ bool SolveWingKinematics(
 
   AddWorldPoseConstraint(plant, plant.GetFrameByName("transmission_base"),
                          X_WLeftBase, &ik);
-  AddWorldPoseConstraint(plant, plant.GetFrameByName("part_2_1"),
-                         X_WRightBase, &ik);
+  AddWorldPoseConstraint(
+      plant, plant.GetFrameByName("transmission_right_link_base"), X_WRightBase,
+      &ik);
 
   AddInitialCoincidenceConstraint(
       plant, *plant_context,
-      plant.GetFrameByName("transmission_hinge__2__loop_closure"),
-      plant.GetFrameByName("transmission_hinge"), &ik);
+      plant.GetFrameByName("transmission_link_2__1__loop_closure"),
+      plant.GetFrameByName("transmission_link_2"), &ik);
   AddInitialCoincidenceConstraint(
-      plant, *plant_context, plant.GetFrameByName("part_3__1__loop_closure"),
-      plant.GetFrameByName("part_3"), &ik);
+      plant, *plant_context,
+      plant.GetFrameByName("transmission_right_link_2__1__loop_closure"),
+      plant.GetFrameByName("transmission_right_link_2"), &ik);
 
   prog->AddQuadraticErrorCost(Eigen::MatrixXd::Identity(q.size(), q.size()),
                               *q_guess, q);
@@ -121,23 +123,24 @@ int main() {
       plant.CalcRelativeTransform(plant_context, plant.world_frame(),
                                   plant.GetFrameByName("transmission_base"));
   const drake::math::RigidTransformd X_WRightBase =
-      plant.CalcRelativeTransform(plant_context, plant.world_frame(),
-                                  plant.GetFrameByName("part_2_1"));
+      plant.CalcRelativeTransform(
+          plant_context, plant.world_frame(),
+          plant.GetFrameByName("transmission_right_link_base"));
 
   std::cout << "Robobee assembly geometry is being published on LCM "
                "for Meldis.\n"
             << "Start Meldis before or after this process:\n"
             << "  bazel run @drake//tools:meldis -- --open-window\n\n"
             << "Driving both transmission link 1 inputs through a "
-               "0.5 mm peak-to-peak stroke and solving both "
+               "0.2 mm peak-to-peak stroke and solving both "
                "transmission/hinge/wing chains.\n"
             << "Press Ctrl-C here to stop publishing.\n";
 
   drake::geometry::DrakeVisualizerd::DispatchLoadMessage(scene_graph, &lcm);
   const auto start_time = std::chrono::steady_clock::now();
   auto last_load_message = start_time;
-  constexpr double kSliderAmplitude = 0.00025;  // 0.5 mm peak-to-peak.
-  constexpr double kDriveFrequencyHz = 1.0;
+  constexpr double kSliderAmplitude = 0.00010;  // 0.2 mm peak-to-peak.
+  constexpr double kDriveFrequencyHz = 0.5;
   constexpr double kPi = 3.14159265358979323846;
 
   while (true) {

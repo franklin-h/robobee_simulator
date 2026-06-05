@@ -38,3 +38,19 @@ cc_binary(
         "@drake//systems/framework:diagram_builder",
     ],
 )
+
+cc_binary(
+    name = "visualize_robobee_assembly_fixed",
+    srcs = ["visualize_robobee_assembly_fixed.cc"],
+    data = [
+        "//models/robobee_assembly:files",
+    ],
+    deps = [
+        "@drake//geometry:drake_visualizer",
+        "@drake//lcm:drake_lcm",
+        "@drake//multibody/parsing:parsing",
+        "@drake//multibody/plant:plant",
+        "@drake//systems/analysis:simulator",
+        "@drake//systems/framework:diagram_builder",
+    ],
+)
