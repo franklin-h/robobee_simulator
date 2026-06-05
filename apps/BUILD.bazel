@@ -29,11 +29,8 @@ cc_binary(
     deps = [
         "@drake//geometry:drake_visualizer",
         "@drake//lcm:drake_lcm",
-        "@drake//math:geometric_transform",
-        "@drake//multibody/inverse_kinematics:inverse_kinematics",
         "@drake//multibody/parsing:parsing",
         "@drake//multibody/plant:plant",
-        "@drake//solvers:solve",
         "@drake//systems/analysis:simulator",
         "@drake//systems/framework:diagram_builder",
     ],

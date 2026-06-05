@@ -1,98 +1,13 @@
 #include <chrono>
-#include <cmath>
 #include <iostream>
 #include <thread>
 
 #include "drake/geometry/drake_visualizer.h"
 #include "drake/lcm/drake_lcm.h"
-#include "drake/math/rigid_transform.h"
-#include "drake/multibody/inverse_kinematics/inverse_kinematics.h"
 #include "drake/multibody/parsing/parser.h"
 #include "drake/multibody/plant/multibody_plant.h"
-#include "drake/solvers/solve.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/framework/diagram_builder.h"
-
-namespace {
-
-void AddWorldPoseConstraint(
-    const drake::multibody::MultibodyPlant<double>& plant,
-    const drake::multibody::Frame<double>& frame,
-    const drake::math::RigidTransformd& X_WF,
-    drake::multibody::InverseKinematics* ik) {
-  constexpr double kPositionTolerance = 1e-8;
-  ik->AddPositionConstraint(
-      frame, Eigen::Vector3d::Zero(), plant.world_frame(),
-      X_WF.translation() - Eigen::Vector3d::Constant(kPositionTolerance),
-      X_WF.translation() + Eigen::Vector3d::Constant(kPositionTolerance));
-  ik->AddOrientationConstraint(plant.world_frame(), X_WF.rotation(), frame,
-                               drake::math::RotationMatrixd(), 1e-6);
-}
-
-void AddInitialCoincidenceConstraint(
-    const drake::multibody::MultibodyPlant<double>& plant,
-    const drake::systems::Context<double>& plant_context,
-    const drake::multibody::Frame<double>& point_frame,
-    const drake::multibody::Frame<double>& target_frame,
-    drake::multibody::InverseKinematics* ik) {
-  const drake::math::RigidTransformd X_TP =
-      plant.CalcRelativeTransform(plant_context, target_frame, point_frame);
-  const Eigen::Vector3d p_PQ = X_TP.inverse().translation();
-  constexpr double kTolerance = 1e-7;
-  ik->AddPositionConstraint(
-      point_frame, p_PQ, target_frame,
-      Eigen::Vector3d::Constant(-kTolerance),
-      Eigen::Vector3d::Constant(kTolerance));
-}
-
-bool SolveWingKinematics(
-    const drake::multibody::MultibodyPlant<double>& plant,
-    drake::systems::Context<double>* plant_context,
-    const drake::math::RigidTransformd& X_WLeftBase,
-    const drake::math::RigidTransformd& X_WRightBase, double slider_position,
-    Eigen::VectorXd* q_guess) {
-  drake::multibody::InverseKinematics ik(plant, plant_context, false);
-  auto* prog = ik.get_mutable_prog();
-  const auto& q = ik.q();
-
-  const int right_slider_index =
-      plant.GetJointByName("slider_1").position_start();
-  const int left_slider_index =
-      plant.GetJointByName("slider_2").position_start();
-  prog->AddBoundingBoxConstraint(slider_position, slider_position,
-                                 q.segment<1>(right_slider_index));
-  prog->AddBoundingBoxConstraint(slider_position, slider_position,
-                                 q.segment<1>(left_slider_index));
-
-  AddWorldPoseConstraint(plant, plant.GetFrameByName("transmission_base"),
-                         X_WLeftBase, &ik);
-  AddWorldPoseConstraint(plant, plant.GetFrameByName("part_2_1"),
-                         X_WRightBase, &ik);
-
-  AddInitialCoincidenceConstraint(
-      plant, *plant_context,
-      plant.GetFrameByName("transmission_hinge__2__loop_closure"),
-      plant.GetFrameByName("transmission_hinge"), &ik);
-  AddInitialCoincidenceConstraint(
-      plant, *plant_context, plant.GetFrameByName("part_3__1__loop_closure"),
-      plant.GetFrameByName("part_3"), &ik);
-
-  prog->AddQuadraticErrorCost(Eigen::MatrixXd::Identity(q.size(), q.size()),
-                              *q_guess, q);
-  prog->SetInitialGuess(q, *q_guess);
-
-  const drake::solvers::MathematicalProgramResult result =
-      drake::solvers::Solve(ik.prog());
-  if (!result.is_success()) {
-    return false;
-  }
-
-  *q_guess = result.GetSolution(q);
-  plant.SetPositions(plant_context, *q_guess);
-  return true;
-}
-
-}  // namespace
 
 int main() {
   drake::systems::DiagramBuilder<double> builder;
@@ -115,49 +30,18 @@ int main() {
   drake::systems::Simulator<double> simulator(*diagram);
   simulator.Initialize();
   auto& root_context = simulator.get_mutable_context();
-  auto& plant_context = plant.GetMyMutableContextFromRoot(&root_context);
-  Eigen::VectorXd q_guess = plant.GetPositions(plant_context);
-  const drake::math::RigidTransformd X_WLeftBase =
-      plant.CalcRelativeTransform(plant_context, plant.world_frame(),
-                                  plant.GetFrameByName("transmission_base"));
-  const drake::math::RigidTransformd X_WRightBase =
-      plant.CalcRelativeTransform(plant_context, plant.world_frame(),
-                                  plant.GetFrameByName("part_2_1"));
 
   std::cout << "Robobee assembly geometry is being published on LCM "
                "for Meldis.\n"
             << "Start Meldis before or after this process:\n"
             << "  bazel run @drake//tools:meldis -- --open-window\n\n"
-            << "Driving both transmission link 1 inputs through a "
-               "0.5 mm peak-to-peak stroke and solving both "
-               "transmission/hinge/wing chains.\n"
+            << "Republishing the static geometry load message once per second.\n"
             << "Press Ctrl-C here to stop publishing.\n";
 
-  drake::geometry::DrakeVisualizerd::DispatchLoadMessage(scene_graph, &lcm);
-  const auto start_time = std::chrono::steady_clock::now();
-  auto last_load_message = start_time;
-  constexpr double kSliderAmplitude = 0.00025;  // 0.5 mm peak-to-peak.
-  constexpr double kDriveFrequencyHz = 1.0;
-  constexpr double kPi = 3.14159265358979323846;
-
   while (true) {
-    const auto now = std::chrono::steady_clock::now();
-    const double time =
-        std::chrono::duration<double>(now - start_time).count();
-    const double slider_position =
-        kSliderAmplitude * std::sin(2.0 * kPi * kDriveFrequencyHz * time);
-    if (!SolveWingKinematics(plant, &plant_context, X_WLeftBase, X_WRightBase,
-                             slider_position, &q_guess)) {
-      std::cerr << "Wing kinematic solve failed for slider inputs = "
-                << slider_position << " m\n";
-    }
-
-    if (now - last_load_message >= std::chrono::seconds(1)) {
-      drake::geometry::DrakeVisualizerd::DispatchLoadMessage(scene_graph, &lcm);
-      last_load_message = now;
-    }
+    drake::geometry::DrakeVisualizerd::DispatchLoadMessage(scene_graph, &lcm);
     diagram->ForcedPublish(root_context);
-    std::this_thread::sleep_for(std::chrono::milliseconds(33));
+    std::this_thread::sleep_for(std::chrono::seconds(1));
   }
 
   return 0;
