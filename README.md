@@ -170,3 +170,27 @@ transmission_link_2
 ```
 
 So the solver is not inventing the closure; it is restoring the physical mate relationship that had to be cut for URDF compatibility.
+
+
+## Proper Multibody Sim in ```visualize_robobee_linkage```
+Drafted the new constrained linkage visualizer in [apps/visualize_robobee_linkage.cc](/Users/franklinho/robobee_simulator/apps/visualize_robobee_linkage.cc) and added the Bazel target in [apps/BUILD.bazel](/Users/franklinho/robobee_simulator/apps/BUILD.bazel:55).
+
+What it does:
+- Loads `robobee_assembly.urdf`.
+- Uses a discrete `MultibodyPlant` with SAP-compatible constraints.
+- Closes the two transmission loops using `MultibodyPlant::AddWeldConstraint`, not per-frame IK.
+- Adds PD-controlled actuators on `slider_1` and `slider_2`.
+- Drives both sliders with a sinusoidal desired stroke source.
+- Publishes to Meldis like the existing visualizers.
+
+Verified:
+- `bazel build //apps:visualize_robobee_linkage`
+- Short `bazel run //apps:visualize_robobee_linkage` smoke test reached simulation startup and publishing.
+
+Run it with:
+
+```bash
+bazel run //apps:visualize_robobee_linkage
+```
+
+The PD gains and actuator force limits are starter visualization values, not calibrated RoboBee actuator parameters yet. Also, I left the existing modified `apps/visualize_robobee_assembly.cc` untouched.

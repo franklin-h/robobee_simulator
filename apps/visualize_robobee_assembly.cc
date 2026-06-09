@@ -13,6 +13,9 @@
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/framework/diagram_builder.h"
 
+/* TODO: 
+It seems that transmission_link_2 is not rotating; Drake happily breaks the revolute joint between link_2 and hinge, while keeping transmission_link_2 completely in line with transmission_link_1, when transmission_link_2 should also be on some arc like path. 
+*/
 namespace {
 
   // Adds position and orientation constraints to `ik` to hold `frame` at the
@@ -48,6 +51,21 @@ void AddInitialCoincidenceConstraint(
       Eigen::Vector3d::Constant(kTolerance));
 }
 
+void AddInitialAxisAlignmentConstraint(
+    const drake::multibody::MultibodyPlant<double>& plant,
+    const drake::systems::Context<double>& plant_context,
+    const drake::multibody::Frame<double>& axis_frame,
+    const drake::multibody::Frame<double>& target_frame,
+    drake::multibody::InverseKinematics* ik) {
+  const drake::math::RigidTransformd X_TA =
+      plant.CalcRelativeTransform(plant_context, target_frame, axis_frame);
+  const Eigen::Vector3d axis_A(0.0, -1.0, 0.0);
+  const Eigen::Vector3d axis_T = X_TA.rotation() * axis_A;
+  constexpr double kAxisTolerance = 1e-4;
+  ik->AddAngleBetweenVectorsConstraint(axis_frame, axis_A, target_frame, axis_T,
+                                       0.0, kAxisTolerance);
+}
+
 bool SolveWingKinematics(
     const drake::multibody::MultibodyPlant<double>& plant,
     drake::systems::Context<double>* plant_context,
@@ -79,7 +97,15 @@ bool SolveWingKinematics(
       plant, *plant_context,
       plant.GetFrameByName("transmission_link_2__1__loop_closure"),
       plant.GetFrameByName("transmission_link_2"), &ik);
+  AddInitialAxisAlignmentConstraint(
+      plant, *plant_context,
+      plant.GetFrameByName("transmission_link_2__1__loop_closure"),
+      plant.GetFrameByName("transmission_link_2"), &ik);
   AddInitialCoincidenceConstraint(
+      plant, *plant_context,
+      plant.GetFrameByName("transmission_right_link_2__1__loop_closure"),
+      plant.GetFrameByName("transmission_right_link_2"), &ik);
+  AddInitialAxisAlignmentConstraint(
       plant, *plant_context,
       plant.GetFrameByName("transmission_right_link_2__1__loop_closure"),
       plant.GetFrameByName("transmission_right_link_2"), &ik);
@@ -148,7 +174,7 @@ int main() {
   drake::geometry::DrakeVisualizerd::DispatchLoadMessage(scene_graph, &lcm);
   const auto start_time = std::chrono::steady_clock::now();
   auto last_load_message = start_time;
-  constexpr double kSliderAmplitude = 0.00010;  // 0.2 mm peak-to-peak.
+  constexpr double kSliderAmplitude = 0.00020;  // 0.2 mm peak-to-peak.
   constexpr double kDriveFrequencyHz = 0.5;
   constexpr double kPi = 3.14159265358979323846;
 

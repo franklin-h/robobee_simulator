@@ -54,3 +54,23 @@ cc_binary(
         "@drake//systems/framework:diagram_builder",
     ],
 )
+
+cc_binary(
+    name = "visualize_robobee_linkage",
+    srcs = ["visualize_robobee_linkage.cc"],
+    data = [
+        "//models/robobee_assembly:files",
+    ],
+    deps = [
+        "@drake//geometry:drake_visualizer",
+        "@drake//lcm:drake_lcm",
+        "@drake//math:geometric_transform",
+        "@drake//multibody/parsing:parsing",
+        "@drake//multibody/plant:plant",
+        "@drake//multibody/tree:tree",
+        "@drake//systems/analysis:simulator",
+        "@drake//systems/framework:diagram_builder",
+        "@drake//systems/framework:leaf_system",
+        "@drake//systems/framework:vector",
+    ],
+)
