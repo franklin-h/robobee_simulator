@@ -131,7 +131,7 @@ void AddLoopClosureBallConstraints(
 int main() {
   drake::systems::DiagramBuilder<double> builder;
 
-  constexpr double kPlantTimeStep = 1.0e-3;
+  constexpr double kPlantTimeStep = 1e-3;
   auto [plant, scene_graph] =
       drake::multibody::AddMultibodyPlantSceneGraph(&builder, kPlantTimeStep);
   plant.set_discrete_contact_approximation(
@@ -179,7 +179,7 @@ int main() {
 
   plant.Finalize();
 
-  constexpr double kSliderAmplitude = 0.00010;  // 0.2 mm peak-to-peak.
+  constexpr double kSliderAmplitude = 0.00020;  // 0.6 mm peak-to-peak.
   constexpr double kDriveFrequencyHz = 0.5;
   auto* slider_source =
       builder.AddSystem<SliderStrokeSource>(kSliderAmplitude, kDriveFrequencyHz);
@@ -189,9 +189,16 @@ int main() {
   drake::lcm::DrakeLcm lcm;
   drake::geometry::DrakeVisualizerd::AddToBuilder(&builder, scene_graph, &lcm);
 
+
+//   drake::geometry::DrakeVisualizerParams visualizer_params;
+// visualizer_params.publish_period = 1.0 / 64.0;
+
+//     drake::geometry::DrakeVisualizerd::AddToBuilder(
+//     &builder, scene_graph, &lcm, visualizer_params);
+
   auto diagram = builder.Build();
   drake::systems::Simulator<double> simulator(*diagram);
-  simulator.set_target_realtime_rate(1.0);
+  simulator.set_target_realtime_rate(0.01);
   simulator.Initialize();
 
   std::cout << "RoboBee constrained linkage model is being simulated and "
