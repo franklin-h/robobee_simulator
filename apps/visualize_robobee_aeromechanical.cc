@@ -1,4 +1,6 @@
 #include <cmath>
+#include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -82,11 +84,11 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
       : plant_(plant),
         plant_context_(plant.CreateDefaultContext()),
         wings_({WingAeroConfig{"hinge_wing", Eigen::Vector3d::UnitX(),
-                                Eigen::Vector3d::UnitY(),
+                                -Eigen::Vector3d::UnitY(),
                                 Eigen::Vector3d::UnitZ(), 1.0},
                 WingAeroConfig{"hinge_right_wing", Eigen::Vector3d::UnitX(),
                                 Eigen::Vector3d::UnitY(),
-                                -Eigen::Vector3d::UnitZ(), 1.0}}) {
+                                Eigen::Vector3d::UnitZ(), 1.0}}) {
     for (WingAeroConfig& wing : wings_) {
       const auto& body = plant_.GetBodyByName(wing.body_name);
       const Eigen::Matrix3d R_WB0 =
@@ -94,9 +96,14 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
       wing.reference_chord_axis_W = (R_WB0 * wing.chord_axis_B).normalized();
     }
     angular_histories_.resize(wings_.size());
+    latest_moments_.resize(wings_.size());
     this->DeclareVectorInputPort("plant_state", plant.num_multibody_states());
     this->DeclareAbstractOutputPort("spatial_forces",
                                     &WingAeromechanics::CalcSpatialForces);
+  }
+
+  const std::vector<robobee::WingMomentComponents>& latest_moments() const {
+    return latest_moments_;
   }
 
  private:
@@ -165,6 +172,7 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
       const WingAeroConfig& wing, int wing_index, double time_s) const {
     const auto& constants = robobee::kLeftWingAeromechanicalConstants;
     const auto& body = plant_.GetBodyByName(wing.body_name);
+    latest_moments_.at(wing_index) = {};
 
     const drake::math::RigidTransformd& X_WB =
         body.EvalPoseInWorld(*plant_context_);
@@ -233,6 +241,7 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
 
     const robobee::WingMomentComponents moments =
         robobee::CalcAeromechanicalMoments(constants, moment_input);
+    latest_moments_.at(wing_index) = moments;
 
     drake::multibody::ExternallyAppliedSpatialForce<double> force;
     force.body_index = body.index();
@@ -257,6 +266,7 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
   mutable std::unique_ptr<drake::systems::Context<double>> plant_context_;
   std::vector<WingAeroConfig> wings_;
   mutable std::vector<WingAngularHistory> angular_histories_;
+  mutable std::vector<robobee::WingMomentComponents> latest_moments_;
 };
 
 void RegisterRoboBeePackage(drake::multibody::Parser* parser) {
@@ -333,6 +343,33 @@ void AddLoopClosureBallConstraints(
                            p_RL + kAxisPointOffset * axis_R.normalized());
 }
 
+void WriteMomentCsvHeader(std::ostream* output) {
+  *output
+      << "time_s,"
+      << "left_aero_Nm,left_rot_Nm,left_added_Nm,left_hinge_Nm,"
+         "left_total_Nm,left_applied_Nm,"
+      << "right_aero_Nm,right_rot_Nm,right_added_Nm,right_hinge_Nm,"
+         "right_total_Nm,right_applied_Nm\n";
+}
+
+void WriteMomentCsvRow(
+    std::ostream* output, double time_s,
+    const std::vector<robobee::WingMomentComponents>& moments) {
+  const robobee::WingMomentComponents zero;
+  const robobee::WingMomentComponents& left =
+      moments.size() > 0 ? moments[0] : zero;
+  const robobee::WingMomentComponents& right =
+      moments.size() > 1 ? moments[1] : zero;
+
+  *output << std::setprecision(17) << time_s << ','
+          << left.aerodynamic_Nm << ',' << left.rotational_damping_Nm << ','
+          << left.added_mass_Nm << ',' << left.hinge_Nm << ','
+          << left.total_Nm << ',' << left.applied_total_Nm << ','
+          << right.aerodynamic_Nm << ',' << right.rotational_damping_Nm << ','
+          << right.added_mass_Nm << ',' << right.hinge_Nm << ','
+          << right.total_Nm << ',' << right.applied_total_Nm << '\n';
+}
+
 }  // namespace
 
 int main() {
@@ -393,6 +430,8 @@ int main() {
   constexpr double kSliderAmplitude = 0.00020;  // 0.4 mm peak-to-peak.
   constexpr double kDriveFrequencyHz = 100;
   constexpr double kCommandPeriod = kPlantTimeStep;
+  constexpr double kMomentLogPeriod = 5e-4;
+  constexpr char kMomentLogPath[] = "/tmp/aeromechanical_moments.csv";
 
   auto* slider_source =
       builder.AddSystem<SliderStrokeSource>(kSliderAmplitude, kDriveFrequencyHz);
@@ -420,6 +459,8 @@ int main() {
                "published on LCM for Meldis.\n"
             << "Start Meldis before or after this process:\n"
             << "  bazel run @drake//tools:meldis -- --open-window\n\n"
+            << "Aeromechanical moments are being logged to:\n"
+            << "  " << kMomentLogPath << "\n\n"
             << "The slider joints are driven by finite-gain joint actuators "
                "tracking a sinusoidal desired position and velocity; "
                "the transmission loops are closed with MultibodyPlant weld "
@@ -428,10 +469,22 @@ int main() {
 
   drake::geometry::DrakeVisualizerd::DispatchLoadMessage(scene_graph, &lcm);
 
+  std::ofstream moment_log(kMomentLogPath);
+  if (!moment_log) {
+    throw std::runtime_error("Could not open aeromechanical moment CSV log.");
+  }
+  WriteMomentCsvHeader(&moment_log);
+
   double next_time = 0.0;
+  double next_moment_log_time = 0.0;
   while (true) {
     next_time += kCommandPeriod;
     simulator.AdvanceTo(next_time);
+    if (next_time + 0.5 * kCommandPeriod >= next_moment_log_time) {
+      WriteMomentCsvRow(&moment_log, next_time, wing_aero->latest_moments());
+      moment_log.flush();
+      next_moment_log_time += kMomentLogPeriod;
+    }
   }
 
   return 0;
