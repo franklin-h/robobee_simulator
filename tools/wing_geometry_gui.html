@@ -299,15 +299,24 @@
       <label for="sampleCount">span stations</label>
       <input id="sampleCount" type="number" min="21" max="2001" step="2" value="401">
 
+      <h2>Export</h2>
+      <label for="constantSymbol">C++ symbol</label>
+      <input id="constantSymbol" type="text" value="kLeftWingAeromechanicalConstants">
+
       <div class="buttons">
         <button id="swapEdge">Swap leading edge</button>
         <button id="recalc">Recalculate</button>
+        <button id="copyHeader">Copy C++</button>
+        <button id="downloadHeader" class="primary">Download C++</button>
         <button id="copyJson">Copy JSON</button>
-        <button id="downloadJson" class="primary">Download JSON</button>
+        <button id="downloadJson">Download JSON</button>
       </div>
 
       <h2>Constants</h2>
       <dl id="constantList"></dl>
+
+      <h2>C++ Header</h2>
+      <pre id="headerOut">// Load an OBJ to generate a constants header.</pre>
 
       <h2>JSON</h2>
       <pre id="jsonOut">{}</pre>
@@ -344,11 +353,15 @@
       xOffset: document.getElementById("xOffset"),
       yOffset: document.getElementById("yOffset"),
       sampleCount: document.getElementById("sampleCount"),
+      constantSymbol: document.getElementById("constantSymbol"),
       swapEdge: document.getElementById("swapEdge"),
       recalc: document.getElementById("recalc"),
+      copyHeader: document.getElementById("copyHeader"),
+      downloadHeader: document.getElementById("downloadHeader"),
       copyJson: document.getElementById("copyJson"),
       downloadJson: document.getElementById("downloadJson"),
       constantList: document.getElementById("constantList"),
+      headerOut: document.getElementById("headerOut"),
       jsonOut: document.getElementById("jsonOut"),
       canvas: document.getElementById("canvas"),
       status: document.getElementById("status")
@@ -648,11 +661,13 @@
       try {
         state.result = computeConstants();
         renderConstants(state.result.constants);
+        els.headerOut.textContent = generateCxxHeader(state.result);
         els.jsonOut.textContent = JSON.stringify(state.result, null, 2);
         updateStatus();
       } catch (err) {
         state.result = null;
         els.constantList.innerHTML = "";
+        els.headerOut.textContent = `// ${err.message}`;
         els.jsonOut.textContent = JSON.stringify({ error: err.message }, null, 2);
         els.status.innerHTML = `<strong>Waiting:</strong> ${escapeHtml(err.message)}`;
       }
@@ -674,6 +689,108 @@
       els.constantList.innerHTML = rows.map(([key, value]) => {
         return `<dt>${escapeHtml(key)}</dt><dd>${formatNumber(value)}</dd>`;
       }).join("");
+    }
+
+    function sanitizeCxxIdentifier(name) {
+      let cleaned = String(name || "")
+        .trim()
+        .replace(/[^A-Za-z0-9_]/g, "_")
+        .replace(/_+/g, "_");
+      if (!cleaned) cleaned = "kWingAeromechanicalConstants";
+      if (!/^[A-Za-z_]/.test(cleaned)) cleaned = `k${cleaned}`;
+      return cleaned;
+    }
+
+    function cxxNumber(value) {
+      if (!Number.isFinite(value)) {
+        throw new Error(`Cannot export non-finite value ${value}`);
+      }
+      return Number(value).toExponential(17);
+    }
+
+    function cxxComment(text) {
+      return String(text).replaceAll("*/", "* /");
+    }
+
+    function generateCxxHeader(result) {
+      const symbol = sanitizeCxxIdentifier(els.constantSymbol.value);
+      const sourceFiles = result.source_files.length > 0
+        ? result.source_files.map(cxxComment).join(", ")
+        : "unknown";
+      const constants = result.constants;
+      const stations = result.distributions;
+      const stationLines = stations.map((s) => {
+        return `      {${cxxNumber(s.r_m)}, ${cxxNumber(s.r_hat)}, ${cxxNumber(s.chord_m)}, ${cxxNumber(s.c_hat)}, ${cxxNumber(s.leading_edge_q_m)}, ${cxxNumber(s.trailing_edge_q_m)}, ${cxxNumber(s.y_hinge_to_mid_chord_hat)}}`;
+      });
+
+      const lines = [
+        "#pragma once",
+        "",
+        "#include <array>",
+        "#include <cstddef>",
+        "",
+        "namespace robobee {",
+        "",
+        "struct AeromechanicalBladeStation {",
+        "  double r_m{};",
+        "  double r_hat{};",
+        "  double chord_m{};",
+        "  double c_hat{};",
+        "  double leading_edge_q_m{};",
+        "  double trailing_edge_q_m{};",
+        "  double y_hinge_to_mid_chord_hat{};",
+        "};",
+        "",
+        "template <std::size_t NumStations>",
+        "struct AeromechanicalWingConstants {",
+        "  double span_R_m{};",
+        "  double area_A_m2{};",
+        "  double mean_chord_cbar_m{};",
+        "  double x_r_hat_by_R{};",
+        "  double y_r_hat_by_cbar{};",
+        "  double r1_hat{};",
+        "  double r2_hat_squared{};",
+        "  double F_hat{};",
+        "  double Y_rd_hat{};",
+        "  double I_xy_am_hat{};",
+        "  double I_xx_am_hat{};",
+        "  std::array<AeromechanicalBladeStation, NumStations> blade_stations{};",
+        "};",
+        "",
+        "// Auto-generated by tools/wing_geometry_gui.html.",
+        `// Source OBJ file(s): ${sourceFiles}.`,
+        `// Root in projected OBJ x-y coordinates: (${cxxNumber(result.root.x)}, ${cxxNumber(result.root.y)}) m.`,
+        `// Span offset x_r: ${cxxNumber(result.inputs.span_offset_x_r_m)} m.`,
+        `// Chord offset y_r: ${cxxNumber(result.inputs.chord_offset_y_r_m)} m.`,
+        `// Leading edge convention: ${cxxComment(result.inputs.leading_edge_convention)}.`,
+        `inline constexpr AeromechanicalWingConstants<${stations.length}> ${symbol} = {`,
+        `    ${cxxNumber(constants.span_R_m)},`,
+        `    ${cxxNumber(constants.area_A_m2)},`,
+        `    ${cxxNumber(constants.mean_chord_cbar_m)},`,
+        `    ${cxxNumber(constants.x_r_hat_by_R)},`,
+        `    ${cxxNumber(constants.y_r_hat_by_cbar)},`,
+        `    ${cxxNumber(constants.r1_hat)},`,
+        `    ${cxxNumber(constants.r2_hat_squared)},`,
+        `    ${cxxNumber(constants.F_hat)},`,
+        `    ${cxxNumber(constants.Y_rd_hat)},`,
+        `    ${cxxNumber(constants.I_xy_am_hat)},`,
+        `    ${cxxNumber(constants.I_xx_am_hat)},`,
+        "    {{"
+      ];
+
+      for (let i = 0; i < stationLines.length; i++) {
+        lines.push(`${stationLines[i]}${i + 1 === stationLines.length ? "" : ","}`);
+      }
+
+      lines.push(
+        "    }}",
+        "};",
+        "",
+        "}  // namespace robobee",
+        ""
+      );
+
+      return lines.join("\n");
     }
 
     function updateStatus() {
@@ -848,11 +965,30 @@
       URL.revokeObjectURL(url);
     }
 
+    function downloadHeader() {
+      if (!state.result) return;
+      const blob = new Blob([generateCxxHeader(state.result)], { type: "text/x-c++hdr" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "aeromechanical_wing_constants.h";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
     async function copyJson() {
       if (!state.result) return;
       const text = JSON.stringify(state.result, null, 2);
       await navigator.clipboard.writeText(text);
       els.status.innerHTML = "<strong>Copied:</strong> geometry JSON copied to clipboard.";
+    }
+
+    async function copyHeader() {
+      if (!state.result) return;
+      await navigator.clipboard.writeText(generateCxxHeader(state.result));
+      els.status.innerHTML = "<strong>Copied:</strong> C++ constants header copied to clipboard.";
     }
 
     els.objInput.addEventListener("change", (event) => {
@@ -874,6 +1010,7 @@
     els.xOffset.addEventListener("change", recalculate);
     els.yOffset.addEventListener("change", recalculate);
     els.sampleCount.addEventListener("change", recalculate);
+    els.constantSymbol.addEventListener("change", recalculate);
     els.recalc.addEventListener("click", recalculate);
 
     els.swapEdge.addEventListener("click", () => {
@@ -887,6 +1024,13 @@
       });
     });
 
+    els.copyHeader.addEventListener("click", () => {
+      copyHeader().catch((err) => {
+        els.status.innerHTML = `<strong>Error:</strong> ${escapeHtml(err.message)}`;
+      });
+    });
+
+    els.downloadHeader.addEventListener("click", downloadHeader);
     els.downloadJson.addEventListener("click", downloadJson);
 
     els.canvas.addEventListener("click", (event) => {

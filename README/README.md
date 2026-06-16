@@ -196,3 +196,42 @@ bazel run //apps:visualize_robobee_linkage
 The PD gains and actuator force limits are starter visualization values, not calibrated RoboBee actuator parameters yet. Also, I left the existing modified `apps/visualize_robobee_assembly.cc` untouched.
 
 pkill -KILL -f 'bazel|BazelServer|bazelisk'
+
+
+## Aeromechanics Debug Notebook 
+Ran into NaNs for the first one. General idea is to clamp the aero pitch moment to $1 \times 10^{-11} \; \mathrm{N \cdot m} $. 
+
+Updated [visualize_robobee_aeromechanical.cc](/Users/franklinho/robobee_simulator/apps/visualize_robobee_aeromechanical.cc:298).
+
+What changed:
+- Removed the slider `JointActuator` PD setup and the `SliderStrokeSource` desired-state input.
+- Slider motion is now commanded directly by setting `slider_1` / `slider_2` prismatic translations before each plant step, with slider rates zeroed.
+- Added finite-value guards around the aero calculation so NaNs are not emitted into `MultibodyPlant`.
+- Added a conservative aero pitch moment clamp at `1e-11 N*m`; without this, the aero torque was still triggering the SAP NaN crash even after removing PD.
+
+Verified:
+- `bazel build //apps:visualize_robobee_aeromechanical` passes.
+- `bazel run //apps:visualize_robobee_aeromechanical` ran for ~15 seconds without reproducing the NaN crash; I stopped it with Ctrl-C. 
+
+## And forsimulating at faster frequencies, 
+Updated the simulation for 100 Hz physical flapping while playing it back in slow motion.
+
+Changed in [apps/visualize_robobee_aeromechanical.cc](/Users/franklinho/robobee_simulator/apps/visualize_robobee_aeromechanical.cc:318):
+
+```cpp
+constexpr double kPlantTimeStep = 5e-5;
+constexpr double kDriveFrequencyHz = 100;
+constexpr double kCommandPeriod = kPlantTimeStep;
+visualizer_params.publish_period = 5e-4;
+simulator.set_target_realtime_rate(0.02);
+```
+
+Meaning:
+- 100 Hz physical slider drive.
+- 200 simulation steps per flap cycle.
+- 20 visual samples per flap cycle.
+- Playback at 2% realtime, so 100 Hz physical motion appears like ~2 Hz in Meldis.
+
+Verified:
+- `bazel build //apps:visualize_robobee_aeromechanical` passes.
+- Short `bazel run` stayed up without immediate solver crash. 
