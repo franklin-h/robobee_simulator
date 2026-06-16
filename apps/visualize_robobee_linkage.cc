@@ -198,7 +198,7 @@ int main() {
 
   auto diagram = builder.Build();
   drake::systems::Simulator<double> simulator(*diagram);
-  simulator.set_target_realtime_rate(0.01);
+  simulator.set_target_realtime_rate(1);
   simulator.Initialize();
 
   std::cout << "RoboBee constrained linkage model is being simulated and "

@@ -194,3 +194,5 @@ bazel run //apps:visualize_robobee_linkage
 ```
 
 The PD gains and actuator force limits are starter visualization values, not calibrated RoboBee actuator parameters yet. Also, I left the existing modified `apps/visualize_robobee_assembly.cc` untouched.
+
+pkill -KILL -f 'bazel|BazelServer|bazelisk'

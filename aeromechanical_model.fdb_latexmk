@@ -1,6 +1,5 @@
 # Fdb version 4
-["pdflatex"] 1781582441.2076 "/Users/franklinho/robobee_simulator/README/aeromechanical_model.tex" "aeromechanical_model.pdf" "aeromechanical_model" 1781582441.77339 0
-  "/Users/franklinho/robobee_simulator/README/aeromechanical_model.tex" 1781582440.97793 17909 642f487b733a2131a8cc9f32db24e0af ""
+["pdflatex"] 1781582520.69142 "README/aeromechanical_model.tex" "aeromechanical_model.pdf" "aeromechanical_model" 1781582521.14583 0
   "/usr/local/texlive/2025/texmf-dist/fonts/enc/dvips/cm-super/cm-super-ts1.enc" 1136849721 2900 1537cc8184ad1792082cd229ecc269f4 ""
   "/usr/local/texlive/2025/texmf-dist/fonts/map/fontname/texfonts.map" 1577235249 3524 cb3e574dea2d1052e39280babc910dc8 ""
   "/usr/local/texlive/2025/texmf-dist/fonts/tfm/jknappen/ec/tcrm1000.tfm" 1136768653 1536 e07581a4bb3136ece9eeb4c3ffab8233 ""
@@ -41,6 +40,7 @@
   "/usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmib10.pfb" 1248133631 36912 b448ef9ad9d7228ec3c6e71005136d55 ""
   "/usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb" 1248133631 35752 024fb6c41858982481f6968b5fc26508 ""
   "/usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr17.pfb" 1248133631 32362 179c33bbf43f19adbb3825bb4e36e57a ""
+  "/usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr5.pfb" 1248133631 31809 8670ca339bf94e56da1fc21c80635e2a ""
   "/usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb" 1248133631 32762 224316ccc9ad3ca0423a14971cfa7fc1 ""
   "/usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb" 1248133631 32569 5e5ddc8df908dea60932f3c484a54c0d ""
   "/usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy5.pfb" 1248133631 32915 7bf7720c61a5b3a7ff25b0964421c9b6 ""
@@ -80,10 +80,10 @@
   "/usr/local/texlive/2025/texmf-var/fonts/map/pdftex/updmap/pdftex.map" 1770960900 5467155 19efa205003f9ecad95fbbaa6ff24da1 ""
   "/usr/local/texlive/2025/texmf-var/web2c/pdftex/pdflatex.fmt" 1741450574 3345740 46b66fdb0378f7bf5921b5eabf1762b8 ""
   "/usr/local/texlive/2025/texmf.cnf" 1741450484 577 418a7058ec8e006d8704f60ecd22c938 ""
-  "Figs/planiform.png" 1781156999.42173 77659 d471dbbb08fed76a3a259828f9a0084e ""
-  "Figs/wing_coordinates.jpeg" 1781561807.49142 253353 b9e9d2a50bf9b43630cdc42dd8b6ea8c ""
-  "aeromechanical_model.aux" 1781582441.69328 2663 21699b7abee483ef60c8088b7f184183 "pdflatex"
-  "aeromechanical_model.tex" 1781582440.97793 17909 642f487b733a2131a8cc9f32db24e0af ""
+  "README/Figs/planiform.png" 1781156999.42173 77659 d471dbbb08fed76a3a259828f9a0084e ""
+  "README/Figs/wing_coordinates.jpeg" 1781561807.49142 253353 b9e9d2a50bf9b43630cdc42dd8b6ea8c ""
+  "README/aeromechanical_model.tex" 1781582509.72939 17972 cae00cf9ad63e42132eeba4fa6564a0f ""
+  "aeromechanical_model.aux" 1781582521.09331 2663 21699b7abee483ef60c8088b7f184183 "pdflatex"
   (generated)
   "aeromechanical_model.aux"
   "aeromechanical_model.log"

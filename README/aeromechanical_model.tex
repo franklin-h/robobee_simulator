@@ -3,12 +3,15 @@
 \usepackage{amsfonts}
 \usepackage{cite}
 \usepackage{graphicx}
+\graphicspath{{Figs/}{README/Figs/}}
 \usepackage{algorithmic}
 \usepackage{algorithm}
 \usepackage{float}
 \usepackage[margin=0.75in]{geometry}
 \usepackage{arydshln}
+\usepackage{wrapfig}
 
+\newcommand{\D}{\mathrm{d}}
 \title{Aeromechanical Model for Robobee Simulator}
 \author{}
 \date{}
@@ -19,16 +22,455 @@
 Much of what is found here can be found in Whitney and Wood's 2010 paper, "Aeromechanics of passive rotation in flapping flight". 
 
 The overall simulation framework looks like 
-\begim{itemize}
+\begin{itemize}
     \item Grab current wing/body state 
     \item Hinge moment balance 
     \item Aerodynamic force and moment calculation. 
     \item Applied Drake forces/torques 
     \item Integration 
-    
+\end{itemize}
 
+\section{Methods} 
+\subsection{Current Kinematic State}
+Note that \(\phi\) is the stroke angle (the angle as the wing sweeps back and forth), \(\psi\) is the passive wing pitch angle, and \(\theta\) is the deviation angle (the angle as the wing moves up and down). The total wing angular velocity can be expressed as a vector sum, where 
+\begin{equation}
+    \label{eq:vector_sum}
+    \boldsymbol{\omega} = -\dot{\phi} \mathbf{e}_X + \dot{\theta} \mathbf{e}_z + \dot{\psi} \mathbf{e}_x.
+\end{equation}
+But since there is no DOF in the \(\theta\) direction, we can set them to 0. 
+Then, the equation simply means it is a sum of the sweep angular velocity and the pitch angle velocity. 
+We then want to break apart \(\omega\) into \(\omega_h\) and \(\omega_x\) (angular velocity around the wing's own pitch axis). Then, we can define 
+\begin{equation}
+   \boldsymbol{\omega}_h = \boldsymbol{\omega} - {\omega}_x \mathbf{e}_x. 
+\end{equation}
+(which is literally just saying removing the \(\mathbf{e}_x\) component from rotation). Then, for the no stroke-plane-deviation case, 
+\begin{equation}
+    \boldsymbol{\omega}_h = -\dot{\phi}.
+\end{equation}
+And after a change of basis (see Appendix \ref{sec:change_of_basis_derivation}), we can express the angular velocity in the wing-fixed frame as
+\begin{align}
+    \boldsymbol{\omega}_x &= \dot{\psi} - \dot{\phi}\sin\theta \\ 
+    &= \dot{\psi},
+\end{align}
+again because \(\theta = 0\) in our simplified planar case. 
 
+\subsection{Compute Aerodynamic Coefficients} 
+\subsubsection{Computing \(\alpha\)} 
+\begin{equation}
+\alpha = f(\psi, \dot{\phi}, \text{stroke direction}, \text{body velocity}, \text{wind})
+\end{equation}
+If \(W\) is the world frame, 
+\begin{equation}
+    \mathbf{v}_{rel}^{W}
+=
+\mathbf{v}_{wing}^{W}
+-
+\mathbf{v}_{air}^{W}
+\end{equation}
+
+\begin{equation}
+    \mathbf{v}_{rel}^{wing}
+=
+R_{W}^{wing}\mathbf{v}_{rel}^{W}
+\end{equation}
+
+\begin{equation}
+    \alpha = \operatorname{atan2}
+\left(
+-v_{normal},
+-v_{chord}
+\right)
+\end{equation}
+Another quick note: 
+\begin{equation}
+    O' = O + (x_r, y_r).
+\end{equation}
+See Fig. \ref{fig:coordinate_axes} for the coordinate axes superimposed on the CAD model. For the latest CAD model, that equals \(3.73, -0.86 \: \mathrm{mm}\). 
+\subsubsection{Computing Aerodynamic Coefficients} 
+We make the quasi-steady assumption, where we pretend that in every instant, the wing is in a steady flow with its current velocity and angle of attack. An empircal fit for the coefficient of lift gives us 
+\begin{equation}
+    C_L(\alpha) = C_{L,\mathrm{max}} \sin(2\alpha). 
+\end{equation}
+For the coefficient of drag, we have 
+\begin{equation}
+    C_D(\alpha) = \frac{C_{D,\mathrm{max}} + C_{D,0}}{2} - \frac{C_{D,\mathrm{max}} - C_{D,0}}{2} \cos(2\alpha).
+\end{equation}
+For Drosophilia, we have \(C_{L,\mathrm{max}} = 1.8\), \(C_{D,\mathrm{max}} = 3.4\), and \(C_{D,0} = 0.4\), from Dickinson et al. (1999). 
+
+The normal-force coefficient, which describes the coefficient for force normal to wing surface (and ultimately generates a moment about the pitch hinge), is given by 
+\begin{equation}
+    C_N = C_L \cos(\alpha) + C_D \sin(\alpha). 
+\end{equation}
+
+\subsection{Compute blade-element lift and drag} 
+\begin{wrapfigure}{r}{0.42\textwidth}
+  \centering
+  \includegraphics[width=0.60\textwidth]{planiform.png}
+  \caption{Aeromechanical model of the RoboBee.}
+  \label{fig:aeromechanical-model}
+\end{wrapfigure}
+Before starting, note the sign conventions, where \(+\phi\), \(+\omega_x\), and \(+\alpha\) are all positive for the local \(+x\) axis of the wing (i.e. pointing away from the root, along the hinge). For each strip, shown in Fig. \ref{fig:aeromechanical-model}, we have 
+\begin{align}
+    \label{eq:differential_lift_drag}
+    \D F_{L} &= \frac{1}{2} \rho V_i^2 C_L(\alpha) c(r') \D r, \\
+    \D F_{D} &= \frac{1}{2} \rho V_i^2 C_D(\alpha) c(r') \D r, 
+\end{align}
+where \(V_i = |\omega_h|(r + x_r)\). To derive this velocity, observe that a blade element has radial distance \(r + x_r\) (see Fig. \ref{fig:aeromechanical-model}). Then, the tangential speed (around the stroke, \(X'\) axis), is \(u(r) = |\omega_h| (r + x_r)\), so \(V_i^2 = \omega_h^2(r + x_r)^2\). Furthermore, \(c(r')\) is the chord length at the blade element, where \(r'\) is the distance from the wing root to the blade element. 
+Then, the total lift is the integral over the wing span: 
+\begin{align}
+    F_L &= \int_0^R \D F_L \\ 
+    &= \frac{1}{2} \rho \omega_h^2 C_L(\alpha)
+    \underbrace{\int_0^R (r + x_r)^2 c(r') \D r}_{R^3\bar{c}\hat{F}}, 
+\end{align}
+where \(\hat{F}\) is the dimensionless wing-shape factor. 
+\begin{wrapfigure}{h!}{0.42\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{wing_coordinates.jpeg}
+    \caption{Coordinate axes superimposed on CAD model.}
+    \label{fig:coordinate_axes}
+\end{wrapfigure}
+Full derivation can be found in Appendix \ref{sec:non_dimensionalization_derivation}.
+To non-dimensionalize the integral, set 
+\begin{align}
+    \hat{r} &= \frac{r'}{R}, \\
+    \hat{x}_r &= \frac{x_r}{R}, \\
+    \hat{c}(\hat{r}) &= \frac{c(r')}{\bar{c}},    
+\end{align}
+where \(\bar{c}\) is the mean chord length \(\frac{A}{R}\). (\(R\) is the wing span). 
+
+\subsection{Compute aerodynamic pitch moment about the hinge}
+\(M_{x,\mathrm{aero}}\) is combination of lift and drag forces, but as a moment. While the integral form given by Whitney and Wood is 
+\begin{equation}
+    M_{x,\mathrm{aero}} = \frac{1}{2} \rho \omega_h^2 C_N(\alpha) \int_0^R y_{cp}(r') (r' + x_r)^2 c(r') \D r'. 
+\end{equation}
+Note that \(\alpha\), the angle of attack. In discrete form, we have 
+\begin{equation}
+    M_{x,\mathrm{aero}} \approx \sum_{i=1}^{N} y_{cp,i} \D F_{N,i}. 
+\end{equation}
+Substituting in Eq. \ref{eq:differential_lift_drag}, then we have 
+\begin{equation}
+    M_{x,\mathrm{aero}} \approx -\sum_{i=1}^{N} \mathrm{sgn} (\alpha) y_{cp,i} \frac{1}{2} \rho V_i^2 C_N(\alpha_i) c_i \Delta r_i.
+\end{equation}
+Note the inclusion of \(\mathrm{sgn}\) because \(\textbf{F}_N = F_N \textbf{e}_N = -\mathrm{sgn}(\alpha) F_N \mathbf{e}_z\).
+Here, \(y_{cp}(r')\) is the distance from the leading edge to the center of pressure for the blade element at \(r'\), and is given by 
+\begin{equation}
+    y_{cp} = y_r + y_{LE}(r') - c(r')\hat{d}_{cp}. 
+\end{equation}
+\(y_{LE}\) is basically the distance from the leading edge to the rotation axis, while \(\hat{d}_{cp}\) is the dimensionless distance from the leading edge to the center of pressure, which is given by Dickson et al. (2006): 
+\begin{equation}
+    \hat{d}_{cp} = \frac{0.82}{\pi} |\alpha| + 0.05. 
+\end{equation}
+
+\subsection{Compute passive hinge restoring moment} 
+\(M_{x, \mathrm{hinge}} = -\kappa_H \psi\) is a simple linear torsional spring model, where \(k\) is the torsional stiffness.
+The torsial stiffness is given by 
+\begin{equation}
+    \kappa_H = \frac{E_h t_h^3 w_h}{12 L_h}, 
+\end{equation}
+where \(t_h = 0.025\,\mathrm{mm}\), \(w_h = 2.7\,\mathrm{mm}\), and \(L_h = 0.10\,\mathrm{m}\) are the thickness, width, and length of the central layer. For Kapton, \(E_h = 2.5\,\mathrm{GPa}\).
+\subsection{Compute aerodynamic damping moment} 
+\begin{equation}
+    M_{x, \mathrm{rd}} = -\frac{1}{2} \rho \omega_x |\omega_x| C_{rd} \bar{c}^{4} R \hat{Y}_{rd}. 
+\end{equation}
+where
+\begin{equation}
+\hat{Y}_{rd}
+=
+\int_0^1 \hat{y}_{rd}(\hat{r})\,d\hat{r}.
+\end{equation}
+and 
+\begin{equation}
+\hat{y}_{rd}(\hat{r})
+=
+\frac{1}{4}
+\left[
+\left|\hat{y}_r + \hat{y}_{LE}\right|
+\left(\hat{y}_r + \hat{y}_{LE}\right)^3
+-
+\left|\hat{y}_r + \hat{y}_{LE} - \hat{c}\right|
+\left(\hat{y}_r + \hat{y}_{LE} - \hat{c}\right)^3
+\right],
+\end{equation}
+the non-dimensional location of the effective moment arm of the rotational damping term. 
+Set \(C_{\mathrm{rd}} = 2.0\) as the rotational damping moment coefficient. Again, \(\hat{y}_r\) is the dimensionless distance from the rotation axis to the root of the wing, while \(\hat{y}_{LE}\) is the dimensionless distance from the leading edge (outline of the wing planiform) to the rotation axis.
+
+\subsection{Compute added mass effect moment}
+The air inertia resisting wing acceleration, i.e. aerodynamic forces and moments that depend on the body's acceleration, adds another term to the total moment. The reduced expression is 
+
+\begin{equation}
+M_{x,am}
+=
+-
+\left(
+\frac{\pi}{4}\rho \bar{c}^{3} R^{2}\hat{I}_{xy,am}
+\right)
+\left(
+\dot{\omega}_y - \omega_x\omega_z
+\right)
+-
+\left(
+\frac{\pi}{4}\rho \bar{c}^{4} R \hat{I}_{xx,am}. 
+\right)
+\dot{\omega}_x
+\end{equation}
+Here, \(\hat{I}_{xy,\mathrm{am}}\) is the added mass analogue of \(I_{xx}\), and is a constant found by the integration here 
+\begin{align}
+\hat{I}_{xy,am}
+&= \int_{0}^{1}
+(\hat{r} + \hat{x}_r)\hat{c}(\hat{r})^2 \hat{y}_h(\hat{r}) \, d\hat{r}, \\[4pt]
+\hat{I}_{xx,am}
+&= \int_{0}^{1}
+\hat{c}(\hat{r})^2
+\left(
+\hat{y}_h(\hat{r})^2 + \frac{1}{32}\hat{c}(\hat{r})^2
+\right)
+\, d\hat{r}.
+\end{align}
+
+\subsection{Integration} 
+\begin{equation}
+    I_{xx}\ddot{\psi}
+    = M_x
+    + I_{xy}\ddot{\phi}\cos\psi
+    + \frac{1}{2} I_{xx}\dot{\phi}^{2}\sin(2\psi).
+\end{equation} 
+
+\begin{equation}
+    \ddot{\psi}
+    =
+    \frac{
+        M_x
+        + I_{xy}\ddot{\phi}\cos\psi
+        + \frac{1}{2} I_{xx}\dot{\phi}^{2}\sin(2\psi)
+    }{
+        I_{xx}
+    }, 
+\end{equation}
+where \(\ddot{\phi}\) is the stroke angular acceleration, which we can compute from the current stroke angle and velocity/actuator input. See Appendix \ref{sec:moment_of_inertia} for derivation of \(I_{xx}\) and \(I_{xy}\). In particular, assume \(\phi(t)\) (taken at transmission link 1) is commanded from the control algorithms (typically a sin wave with \(\omega = 170 \mathrm{Hz}\), i.e at resonance of transmission mechanism). This should be parametrized in the code. Then total moment is just 
+\begin{equation}
+    M_{\mathrm{total}}
+    =
+    M_{\mathrm{aero}}
+    + M_{\mathrm{rot}}
+    + M_{\mathrm{added}}
+    + M_{\mathrm{hinge}}
+\end{equation}. 
+ 
 \section{Conclusion and Open Questions} 
-Some open questions do remain
 
+
+\section{Appendix} 
+\subsection{Change of Basis Derivation} 
+\label{sec:change_of_basis_derivation}
+The derivation is a change of basis from the mixed-frame angular velocity
+\begin{equation}
+    \boldsymbol{\omega}
+    = -\dot{\phi}\,\mathbf{e}_{X'}
+      + \dot{\theta}\,\mathbf{e}_{z'}
+      + \dot{\psi}\,\mathbf{e}_x
+\end{equation}
+to the wing-fixed basis \((\mathbf{e}_x, \mathbf{e}_y, \mathbf{e}_z)\).
+Using the paper's sign convention,
+\begin{align}
+    \mathbf{e}_{z'}
+        &= \sin\psi\,\mathbf{e}_y + \cos\psi\,\mathbf{e}_z, \\
+    \mathbf{e}_{X'}
+        &= \sin\theta\,\mathbf{e}_x
+           + \cos\theta
+             \left(\cos\psi\,\mathbf{e}_y
+             - \sin\psi\,\mathbf{e}_z\right).
+\end{align}
+Substitution gives
+\begin{align}
+    \boldsymbol{\omega}
+        &= -\dot{\phi}
+           \left[
+             \sin\theta\,\mathbf{e}_x
+             + \cos\theta
+               \left(\cos\psi\,\mathbf{e}_y
+               - \sin\psi\,\mathbf{e}_z\right)
+           \right] \nonumber \\
+        &\quad
+           + \dot{\theta}
+             \left(\sin\psi\,\mathbf{e}_y
+             + \cos\psi\,\mathbf{e}_z\right)
+           + \dot{\psi}\,\mathbf{e}_x \nonumber \\
+        &= \left(\dot{\psi} - \dot{\phi}\sin\theta\right)\mathbf{e}_x
+           + \left(-\dot{\phi}\cos\theta\cos\psi
+             + \dot{\theta}\sin\psi\right)\mathbf{e}_y \nonumber \\
+        &\quad
+           + \left(\dot{\phi}\cos\theta\sin\psi
+             + \dot{\theta}\cos\psi\right)\mathbf{e}_z .
+\end{align}
+Therefore, the wing-fixed angular velocity components are
+\begin{align}
+    \omega_x &= \dot{\psi} - \dot{\phi}\sin\theta, \\
+    \omega_y &= -\dot{\phi}\cos\theta\cos\psi
+                + \dot{\theta}\sin\psi, \\
+    \omega_z &= \dot{\phi}\cos\theta\sin\psi
+                + \dot{\theta}\cos\psi .
+\end{align}
+The \(-\dot{\phi}\sin\theta\) term in \(\omega_x\) appears because wing deviation projects part of the flapping angular velocity onto the wing pitch axis. In the planar case, \(\theta = 0\), so \(\omega_x = \dot{\psi}\).
+
+\subsection{Non-dimensionalization Derivation} 
+\label{sec:non_dimensionalization_derivation} 
+Start with the dimensional spanwise integral from the lift expression:
+\begin{equation}
+    I_F = \int_0^R (r + x_r)^2 c(r') \D r.
+\end{equation}
+Here \(r\) is the spanwise coordinate used in the blade-element integral, and
+\(r'\) is the same physical distance measured from the wing root for evaluating
+the local chord distribution. Thus, for this simplified planar wing model, we
+take \(r' = r\).
+
+Using the normalized dimensions for the distance along the wing root, the distance from the wing root to the rotation axis, and the chord length, 
+\begin{align}
+    \hat{r} &= \frac{r}{R}, &
+    \hat{x}_r &= \frac{x_r}{R}, &
+    \hat{c}(\hat{r}) &= \frac{c(r)}{\bar{c}},
+\end{align}
+we have
+\begin{align}
+    r &= R\hat{r}, &
+    x_r &= R\hat{x}_r, &
+    c(r) &= \bar{c}\hat{c}(\hat{r}), &
+    \D r &= R \D \hat{r}.
+\end{align}
+Note that \((x_r, y_r)\) are the coordinates of the root of the wing (which is basically the hinge). Substituting these into \(I_F\) gives
+\begin{align}
+    I_F
+        &= \int_0^1
+           \left(R\hat{r} + R\hat{x}_r\right)^2
+           \bar{c}\hat{c}(\hat{r})
+           R \D \hat{r} \\
+        &= R^3\bar{c}
+           \int_0^1
+           \left(\hat{r} + \hat{x}_r\right)^2
+           \hat{c}(\hat{r}) \D \hat{r}.
+\end{align}
+Therefore, the nondimensionalized integral is
+\begin{equation}
+    \hat{F}
+        = \frac{I_F}{R^3\bar{c}}
+        = \int_0^1
+          \left(\hat{r} + \hat{x}_r\right)^2
+          \hat{c}(\hat{r}) \D \hat{r}.
+\end{equation}
+Expanding the square,
+\begin{align}
+    \hat{F}
+        &= \int_0^1
+           \left(\hat{r}^2
+           + 2\hat{x}_r\hat{r}
+           + \hat{x}_r^2\right)
+           \hat{c}(\hat{r}) \D \hat{r} \\
+        &= \int_0^1 \hat{r}^2\hat{c}(\hat{r}) \D \hat{r}
+           + 2\hat{x}_r
+             \int_0^1 \hat{r}\hat{c}(\hat{r}) \D \hat{r}
+           + \hat{x}_r^2
+             \int_0^1 \hat{c}(\hat{r}) \D \hat{r}.
+\end{align}
+Since \(\bar{c} = A/R\),
+\begin{equation}
+    \int_0^1 \hat{c}(\hat{r}) \D \hat{r}
+        = \frac{1}{R\bar{c}}\int_0^R c(r) \D r
+        = \frac{A}{R\bar{c}}
+        = 1.
+\end{equation}
+Define the nondimensional radius moments by
+\begin{align}
+    \hat{r}_1
+        &= \int_0^1 \hat{r}\hat{c}(\hat{r}) \D \hat{r}, \\
+    \hat{r}_2^2
+        &= \int_0^1 \hat{r}^2\hat{c}(\hat{r}) \D \hat{r}.
+\end{align}
+Then the compact form is
+\begin{equation}
+    \hat{F}
+        = \hat{r}_2^2
+          + 2\hat{x}_r\hat{r}_1
+          + \hat{x}_r^2.
+\end{equation}
+
+\section{Moment of Inertia Derivation}
+\label{sec:moment_of_inertia} 
+The moment of inertia for the left wing \(I_{xx,\mathrm{CM}} = 1.3 \times 10^{-6}\) and \(I_{xy,\mathrm{CM}} = 2.25 \times 10^{-7}\), from the CAD model, and around the center of mass. All other elements of the matrix can be approximated as 0 for this pitch equation. However, these need to be expressed around the pitch hinge axis. Assuming the CAD axes are already aligned with the wing-fixed axes used in the derivation, the tensor parallel axis theorem tells us that 
+\begin{equation}
+I_H
+=
+I_{CM}
++
+m\left((\mathbf{d}^T \mathbf{d})\mathbf{1} - \mathbf{d}\mathbf{d}^T\right),
+\end{equation}
+where \(m\) is the wing mass, \(\mathbf{1}\) is the \(3 \times 3\) identity matrix, and \(\mathbf{d}\) is the displacement vector from the wing center of mass to the pitch hinge origin, expressed in the same wing-fixed frame as \(I_{CM}\). The displacement vector is
+\begin{equation}
+\mathbf{d}
+=
+\begin{bmatrix}
+d_x \\
+d_y \\
+d_z
+\end{bmatrix}
+=
+\begin{bmatrix}
+-7.6171 \\
+-0.5949 \\
+0.000
+\end{bmatrix}.
+\end{equation}
+All distances must be in units consistent with the CAD inertia units. If the inertia is used in SI units, then the displacement vector should be converted from millimeters to meters before applying the theorem.
+
+Expanding the parallel-axis term gives
+\begin{equation}
+(\mathbf{d}^T \mathbf{d})\mathbf{1} - \mathbf{d}\mathbf{d}^T
+=
+\begin{bmatrix}
+d_y^2 + d_z^2 & -d_xd_y & -d_xd_z \\
+-d_yd_x & d_x^2 + d_z^2 & -d_yd_z \\
+-d_zd_x & -d_zd_y & d_x^2 + d_y^2
+\end{bmatrix}.
+\end{equation}
+Therefore, the hinge-frame inertia components needed by the pitch equation are
+\begin{align}
+I_{xx,H}
+&=
+I_{xx,\mathrm{CM}} + m(d_y^2 + d_z^2), \\
+I_{xy,H}
+&=
+I_{xy,\mathrm{CM}} - m d_x d_y.
+\end{align}
+Substituting the displacement vector above,
+\begin{align}
+I_{xx,H}
+&=
+1.3 \times 10^{-6}
++ m\left((-0.5949)^2 + 0^2\right), \\
+I_{xy,H}
+&=
+2.25 \times 10^{-7}
+- m(-7.6171)(-0.5949).
+\end{align}
+Equivalently, using the millimeter CAD coordinates as written,
+\begin{align}
+I_{xx,H}
+&=
+1.3 \times 10^{-6}
++ 0.35390601\,m, \\
+I_{xy,H}
+&=
+2.25 \times 10^{-7}
+- 4.53141279\,m.
+\end{align}
+These are the constants to use for \(I_{xx}\) and \(I_{xy}\) in the pitch dynamics equation:
+\begin{align}
+I_{xx} &= I_{xx,H}, \\
+I_{xy} &= I_{xy,H}.
+\end{align}
+If the CAD inertia tensor is reported in a frame that is rotated relative to the wing-fixed frame, first rotate it into the wing-fixed frame,
+\begin{equation}
+I_{CM}^{wing}
+=
+R I_{CM}^{CAD} R^T,
+\end{equation}
+and then apply the parallel axis theorem above.
 \end{document}

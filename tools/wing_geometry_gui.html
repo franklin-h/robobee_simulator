@@ -1,0 +1,909 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wing Geometry Constants</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --line: #d8dde6;
+      --text: #1f2937;
+      --muted: #667085;
+      --accent: #0f766e;
+      --accent-dark: #115e59;
+      --danger: #b42318;
+      --blue: #2563eb;
+      --orange: #ea580c;
+      --shadow: 0 1px 2px rgba(16, 24, 40, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: minmax(320px, 390px) minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    aside {
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      padding: 16px;
+      overflow: auto;
+    }
+
+    main {
+      min-width: 0;
+      padding: 16px;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 12px;
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: 20px;
+      line-height: 1.2;
+      font-weight: 700;
+    }
+
+    h2 {
+      margin: 18px 0 8px;
+      font-size: 13px;
+      text-transform: uppercase;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+    }
+
+    label {
+      display: block;
+      margin: 10px 0 5px;
+      font-weight: 600;
+      color: #344054;
+    }
+
+    input[type="file"],
+    input[type="number"],
+    input[type="text"] {
+      width: 100%;
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 7px 9px;
+      background: #fff;
+      color: var(--text);
+      font: inherit;
+    }
+
+    input[type="number"] {
+      font-variant-numeric: tabular-nums;
+    }
+
+    .grid2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    button {
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 7px 10px;
+      background: #fff;
+      color: var(--text);
+      font: inherit;
+      font-weight: 650;
+      cursor: pointer;
+      box-shadow: var(--shadow);
+    }
+
+    button.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+    }
+
+    button.primary:hover {
+      background: var(--accent-dark);
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .note {
+      color: var(--muted);
+      line-height: 1.35;
+      margin: 8px 0 0;
+    }
+
+    .status {
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 6px;
+      box-shadow: var(--shadow);
+      color: #344054;
+    }
+
+    .status strong {
+      color: var(--accent-dark);
+    }
+
+    .viewer {
+      position: relative;
+      min-height: 520px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      min-height: 520px;
+      cursor: crosshair;
+      background:
+        linear-gradient(#f2f4f7 1px, transparent 1px),
+        linear-gradient(90deg, #f2f4f7 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+
+    .legend {
+      position: absolute;
+      right: 12px;
+      top: 12px;
+      display: grid;
+      gap: 6px;
+      padding: 8px 10px;
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      box-shadow: var(--shadow);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .key {
+      display: grid;
+      grid-template-columns: 14px auto;
+      gap: 7px;
+      align-items: center;
+    }
+
+    .swatch {
+      width: 14px;
+      height: 3px;
+      border-radius: 3px;
+      background: #667085;
+    }
+
+    .swatch.le {
+      background: var(--orange);
+    }
+
+    .swatch.te {
+      background: var(--blue);
+    }
+
+    .swatch.axis {
+      background: var(--accent);
+    }
+
+    dl {
+      margin: 0;
+      display: grid;
+      grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr);
+      gap: 6px 10px;
+      align-items: baseline;
+    }
+
+    dt {
+      color: var(--muted);
+    }
+
+    dd {
+      margin: 0;
+      text-align: right;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    pre {
+      margin: 10px 0 0;
+      max-height: 260px;
+      overflow: auto;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #101828;
+      color: #e4e7ec;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    @media (max-width: 880px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+
+      aside {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside>
+      <h1>Wing Geometry Constants</h1>
+
+      <label for="objInput">OBJ files</label>
+      <input id="objInput" type="file" accept=".obj,text/plain" multiple>
+      <p class="note">Load one OBJ or several OBJs that are already expressed in the same coordinate frame. Coordinates are treated as meters.</p>
+
+      <h2>Root Selection</h2>
+      <div class="grid2">
+        <div>
+          <label for="rootX">root x</label>
+          <input id="rootX" type="number" step="0.000001" value="0">
+        </div>
+        <div>
+          <label for="rootY">root y</label>
+          <input id="rootY" type="number" step="0.000001" value="0">
+        </div>
+      </div>
+      <p class="note">Click the canvas to move the selected root. The span axis is inferred from the selected root to the farthest projected vertex.</p>
+
+      <h2>Model Offsets</h2>
+      <div class="grid2">
+        <div>
+          <label for="xOffset">x_r offset</label>
+          <input id="xOffset" type="number" step="0.000001" value="0">
+        </div>
+        <div>
+          <label for="yOffset">y_r offset</label>
+          <input id="yOffset" type="number" step="0.000001" value="0">
+        </div>
+      </div>
+      <p class="note">Use zero when the clicked root is the pitch-axis origin. Otherwise enter spanwise x_r and chordwise y_r in meters, matching the model notation.</p>
+
+      <h2>Sampling</h2>
+      <label for="sampleCount">span stations</label>
+      <input id="sampleCount" type="number" min="21" max="2001" step="2" value="401">
+
+      <div class="buttons">
+        <button id="swapEdge">Swap leading edge</button>
+        <button id="recalc">Recalculate</button>
+        <button id="copyJson">Copy JSON</button>
+        <button id="downloadJson" class="primary">Download JSON</button>
+      </div>
+
+      <h2>Constants</h2>
+      <dl id="constantList"></dl>
+
+      <h2>JSON</h2>
+      <pre id="jsonOut">{}</pre>
+    </aside>
+
+    <main>
+      <div id="status" class="status">Load an OBJ file, then click the wing root on the canvas.</div>
+      <div class="viewer">
+        <canvas id="canvas"></canvas>
+        <div class="legend">
+          <div class="key"><span class="swatch axis"></span><span>span axis</span></div>
+          <div class="key"><span class="swatch le"></span><span>leading edge</span></div>
+          <div class="key"><span class="swatch te"></span><span>trailing edge</span></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const state = {
+      files: [],
+      vertices: [],
+      triangles: [],
+      root: { x: 0, y: 0 },
+      chordSign: 1,
+      result: null,
+      view: null
+    };
+
+    const els = {
+      objInput: document.getElementById("objInput"),
+      rootX: document.getElementById("rootX"),
+      rootY: document.getElementById("rootY"),
+      xOffset: document.getElementById("xOffset"),
+      yOffset: document.getElementById("yOffset"),
+      sampleCount: document.getElementById("sampleCount"),
+      swapEdge: document.getElementById("swapEdge"),
+      recalc: document.getElementById("recalc"),
+      copyJson: document.getElementById("copyJson"),
+      downloadJson: document.getElementById("downloadJson"),
+      constantList: document.getElementById("constantList"),
+      jsonOut: document.getElementById("jsonOut"),
+      canvas: document.getElementById("canvas"),
+      status: document.getElementById("status")
+    };
+
+    function parseObj(text, name) {
+      const vertices = [];
+      const triangles = [];
+      const lines = text.split(/\r?\n/);
+
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line || line.startsWith("#")) continue;
+        const parts = line.split(/\s+/);
+
+        if (parts[0] === "v" && parts.length >= 4) {
+          const x = Number(parts[1]);
+          const y = Number(parts[2]);
+          const z = Number(parts[3]);
+          if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
+            vertices.push({ x, y, z });
+          }
+          continue;
+        }
+
+        if (parts[0] === "f" && parts.length >= 4) {
+          const indices = [];
+          for (let i = 1; i < parts.length; i++) {
+            const token = parts[i].split("/")[0];
+            let index = Number(token);
+            if (!Number.isInteger(index) || index === 0) continue;
+            if (index < 0) index = vertices.length + index;
+            else index = index - 1;
+            if (index >= 0 && index < vertices.length) indices.push(index);
+          }
+          for (let i = 1; i + 1 < indices.length; i++) {
+            triangles.push({
+              source: name,
+              points: [
+                vertices[indices[0]],
+                vertices[indices[i]],
+                vertices[indices[i + 1]]
+              ]
+            });
+          }
+        }
+      }
+
+      return { vertices, triangles };
+    }
+
+    async function loadFiles(fileList) {
+      const allVertices = [];
+      const allTriangles = [];
+      const fileNames = [];
+
+      for (const file of Array.from(fileList)) {
+        const text = await file.text();
+        const parsed = parseObj(text, file.name);
+        allVertices.push(...parsed.vertices);
+        for (const tri of parsed.triangles) {
+          allTriangles.push(tri);
+        }
+        fileNames.push(file.name);
+        if (parsed.vertices.length === 0 || parsed.triangles.length === 0) {
+          console.warn(`No mesh data parsed from ${file.name}`);
+        }
+      }
+
+      state.files = fileNames;
+      state.vertices = allVertices;
+      state.triangles = allTriangles;
+
+      if (allVertices.length > 0) {
+        const box = boundsOfPoints(allVertices);
+        state.root = { x: box.minX, y: (box.minY + box.maxY) / 2 };
+        syncRootInputs();
+      }
+
+      updateStatus();
+      recalculate();
+    }
+
+    function boundsOfPoints(points) {
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minY = Infinity;
+      let maxY = -Infinity;
+      for (const p of points) {
+        minX = Math.min(minX, p.x);
+        maxX = Math.max(maxX, p.x);
+        minY = Math.min(minY, p.y);
+        maxY = Math.max(maxY, p.y);
+      }
+      return { minX, maxX, minY, maxY };
+    }
+
+    function dot(a, b) {
+      return a.x * b.x + a.y * b.y;
+    }
+
+    function inferBasis(root) {
+      let best = null;
+      let bestD2 = -Infinity;
+      for (const p of state.vertices) {
+        const dx = p.x - root.x;
+        const dy = p.y - root.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 > bestD2) {
+          bestD2 = d2;
+          best = { x: dx, y: dy };
+        }
+      }
+      const length = Math.sqrt(bestD2);
+      if (!best || length <= 0) {
+        throw new Error("Could not infer a span axis from the selected root.");
+      }
+      const spanAxis = { x: best.x / length, y: best.y / length };
+      const chordAxis = {
+        x: -spanAxis.y * state.chordSign,
+        y: spanAxis.x * state.chordSign
+      };
+      return { spanAxis, chordAxis };
+    }
+
+    function toLocal(point, root, basis) {
+      const delta = { x: point.x - root.x, y: point.y - root.y };
+      return {
+        r: dot(delta, basis.spanAxis),
+        q: dot(delta, basis.chordAxis)
+      };
+    }
+
+    function toWorld(r, q, root, basis) {
+      return {
+        x: root.x + basis.spanAxis.x * r + basis.chordAxis.x * q,
+        y: root.y + basis.spanAxis.y * r + basis.chordAxis.y * q
+      };
+    }
+
+    function triangleIntersectionsAtR(tri, rStation, root, basis, eps) {
+      const p = tri.points.map((point) => toLocal(point, root, basis));
+      const values = [];
+      for (let i = 0; i < 3; i++) {
+        const a = p[i];
+        const b = p[(i + 1) % 3];
+        const da = a.r - rStation;
+        const db = b.r - rStation;
+
+        if (Math.abs(da) <= eps && Math.abs(db) <= eps) {
+          values.push(a.q, b.q);
+          continue;
+        }
+
+        if ((da <= eps && db >= -eps) || (db <= eps && da >= -eps)) {
+          const denom = b.r - a.r;
+          if (Math.abs(denom) <= eps) continue;
+          const t = (rStation - a.r) / denom;
+          if (t >= -eps && t <= 1 + eps) {
+            values.push(a.q + t * (b.q - a.q));
+          }
+        }
+      }
+      return values;
+    }
+
+    function makeStations(root, basis, count) {
+      let rMax = 0;
+      for (const p of state.vertices) {
+        const local = toLocal(p, root, basis);
+        if (local.r > rMax) rMax = local.r;
+      }
+      if (rMax <= 0) {
+        throw new Error("The selected root places the whole mesh behind the inferred span axis.");
+      }
+
+      const eps = Math.max(rMax, 1) * 1e-10;
+      const stations = [];
+      for (let i = 0; i < count; i++) {
+        const r = rMax * i / (count - 1);
+        const qValues = [];
+        for (const tri of state.triangles) {
+          qValues.push(...triangleIntersectionsAtR(tri, r, root, basis, eps));
+        }
+        if (qValues.length < 2) continue;
+        let qMin = Infinity;
+        let qMax = -Infinity;
+        for (const q of qValues) {
+          if (!Number.isFinite(q)) continue;
+          qMin = Math.min(qMin, q);
+          qMax = Math.max(qMax, q);
+        }
+        const chord = qMax - qMin;
+        if (Number.isFinite(chord) && chord > eps) {
+          stations.push({
+            r,
+            rHat: r / rMax,
+            qLeading: qMax,
+            qTrailing: qMin,
+            chord
+          });
+        }
+      }
+      return { span: rMax, stations };
+    }
+
+    function integrateSamples(samples, valueFn) {
+      let total = 0;
+      for (let i = 1; i < samples.length; i++) {
+        const a = samples[i - 1];
+        const b = samples[i];
+        const dx = b.rHat - a.rHat;
+        total += 0.5 * dx * (valueFn(a) + valueFn(b));
+      }
+      return total;
+    }
+
+    function computeConstants() {
+      if (state.vertices.length === 0 || state.triangles.length === 0) {
+        throw new Error("Load at least one OBJ file.");
+      }
+
+      const root = { ...state.root };
+      const basis = inferBasis(root);
+      const sampleCount = Math.max(21, Math.min(2001, Math.round(Number(els.sampleCount.value) || 401)));
+      const { span, stations } = makeStations(root, basis, sampleCount);
+      if (stations.length < 3) {
+        throw new Error("Not enough valid span stations. Move the root or use a different mesh projection.");
+      }
+
+      const area = span * integrateSamples(stations, (s) => s.chord);
+      const meanChord = area / span;
+      const xOffset = Number(els.xOffset.value) || 0;
+      const yOffset = Number(els.yOffset.value) || 0;
+      const xHat = xOffset / span;
+      const yHatRoot = yOffset / meanChord;
+
+      const enriched = stations.map((s) => {
+        const cHat = s.chord / meanChord;
+        const yLeadingHat = (yOffset + s.qLeading) / meanChord;
+        const yTrailingHat = (yOffset + s.qLeading - s.chord) / meanChord;
+        const yHingeHat = (yOffset + s.qLeading - 0.5 * s.chord) / meanChord;
+        const yrd = 0.25 * (
+          Math.abs(yLeadingHat) * Math.pow(yLeadingHat, 3) -
+          Math.abs(yTrailingHat) * Math.pow(yTrailingHat, 3)
+        );
+        return {
+          ...s,
+          cHat,
+          yLeadingHat,
+          yTrailingHat,
+          yHingeHat,
+          yrd
+        };
+      });
+
+      const constants = {
+        span_R_m: span,
+        area_A_m2: area,
+        mean_chord_cbar_m: meanChord,
+        x_r_hat_by_R: xHat,
+        y_r_hat_by_cbar: yHatRoot,
+        r1_hat: integrateSamples(enriched, (s) => s.rHat * s.cHat),
+        r2_hat_squared: integrateSamples(enriched, (s) => s.rHat * s.rHat * s.cHat),
+        F_hat: integrateSamples(enriched, (s) => Math.pow(s.rHat + xHat, 2) * s.cHat),
+        Y_rd_hat: integrateSamples(enriched, (s) => s.yrd),
+        I_xy_am_hat: integrateSamples(enriched, (s) => (s.rHat + xHat) * s.cHat * s.cHat * s.yHingeHat),
+        I_xx_am_hat: integrateSamples(enriched, (s) => s.cHat * s.cHat * (s.yHingeHat * s.yHingeHat + s.cHat * s.cHat / 32))
+      };
+
+      return {
+        source_files: state.files,
+        units: "meters",
+        root,
+        basis,
+        inputs: {
+          span_offset_x_r_m: xOffset,
+          chord_offset_y_r_m: yOffset,
+          sample_count_requested: sampleCount,
+          sample_count_used: enriched.length,
+          leading_edge_convention: "qLeading is the maximum local chord coordinate after optional swap"
+        },
+        constants,
+        distributions: enriched.map((s) => ({
+          r_m: s.r,
+          r_hat: s.rHat,
+          chord_m: s.chord,
+          c_hat: s.cHat,
+          leading_edge_q_m: s.qLeading,
+          trailing_edge_q_m: s.qTrailing,
+          y_hinge_to_mid_chord_hat: s.yHingeHat
+        }))
+      };
+    }
+
+    function recalculate() {
+      try {
+        state.result = computeConstants();
+        renderConstants(state.result.constants);
+        els.jsonOut.textContent = JSON.stringify(state.result, null, 2);
+        updateStatus();
+      } catch (err) {
+        state.result = null;
+        els.constantList.innerHTML = "";
+        els.jsonOut.textContent = JSON.stringify({ error: err.message }, null, 2);
+        els.status.innerHTML = `<strong>Waiting:</strong> ${escapeHtml(err.message)}`;
+      }
+      draw();
+    }
+
+    function renderConstants(constants) {
+      const rows = [
+        ["R", constants.span_R_m],
+        ["A", constants.area_A_m2],
+        ["c_bar", constants.mean_chord_cbar_m],
+        ["r1_hat", constants.r1_hat],
+        ["r2_hat_sq", constants.r2_hat_squared],
+        ["F_hat", constants.F_hat],
+        ["Y_rd_hat", constants.Y_rd_hat],
+        ["I_xy_am_hat", constants.I_xy_am_hat],
+        ["I_xx_am_hat", constants.I_xx_am_hat]
+      ];
+      els.constantList.innerHTML = rows.map(([key, value]) => {
+        return `<dt>${escapeHtml(key)}</dt><dd>${formatNumber(value)}</dd>`;
+      }).join("");
+    }
+
+    function updateStatus() {
+      if (state.vertices.length === 0) {
+        els.status.textContent = "Load an OBJ file, then click the wing root on the canvas.";
+        return;
+      }
+      const triCount = state.triangles.length;
+      const vertCount = state.vertices.length;
+      const used = state.result ? state.result.inputs.sample_count_used : 0;
+      els.status.innerHTML = `<strong>${state.files.length} file(s)</strong>, ${vertCount} vertices, ${triCount} triangles, ${used} sampled stations.`;
+    }
+
+    function formatNumber(value) {
+      if (!Number.isFinite(value)) return String(value);
+      if (Math.abs(value) >= 1e4 || (Math.abs(value) > 0 && Math.abs(value) < 1e-3)) {
+        return value.toExponential(6);
+      }
+      return value.toPrecision(8);
+    }
+
+    function escapeHtml(text) {
+      return String(text)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function syncRootInputs() {
+      els.rootX.value = state.root.x.toPrecision(9);
+      els.rootY.value = state.root.y.toPrecision(9);
+    }
+
+    function syncRootFromInputs() {
+      const x = Number(els.rootX.value);
+      const y = Number(els.rootY.value);
+      if (Number.isFinite(x) && Number.isFinite(y)) {
+        state.root = { x, y };
+      }
+    }
+
+    function resizeCanvas() {
+      const rect = els.canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const w = Math.max(320, Math.floor(rect.width * dpr));
+      const h = Math.max(320, Math.floor(rect.height * dpr));
+      if (els.canvas.width !== w || els.canvas.height !== h) {
+        els.canvas.width = w;
+        els.canvas.height = h;
+      }
+    }
+
+    function buildView() {
+      resizeCanvas();
+      const w = els.canvas.width;
+      const h = els.canvas.height;
+      if (state.vertices.length === 0) {
+        return { w, h, scale: 1, offsetX: 0, offsetY: 0, minX: 0, minY: 0, maxX: 1, maxY: 1 };
+      }
+      const box = boundsOfPoints([...state.vertices, state.root]);
+      const padX = Math.max((box.maxX - box.minX) * 0.08, 1e-4);
+      const padY = Math.max((box.maxY - box.minY) * 0.08, 1e-4);
+      const minX = box.minX - padX;
+      const maxX = box.maxX + padX;
+      const minY = box.minY - padY;
+      const maxY = box.maxY + padY;
+      const sx = w / Math.max(maxX - minX, 1e-9);
+      const sy = h / Math.max(maxY - minY, 1e-9);
+      const scale = Math.min(sx, sy);
+      const offsetX = (w - (maxX - minX) * scale) / 2;
+      const offsetY = (h - (maxY - minY) * scale) / 2;
+      return { w, h, scale, offsetX, offsetY, minX, minY, maxX, maxY };
+    }
+
+    function worldToScreen(p, view) {
+      return {
+        x: view.offsetX + (p.x - view.minX) * view.scale,
+        y: view.h - (view.offsetY + (p.y - view.minY) * view.scale)
+      };
+    }
+
+    function screenToWorld(p, view) {
+      return {
+        x: (p.x - view.offsetX) / view.scale + view.minX,
+        y: ((view.h - p.y) - view.offsetY) / view.scale + view.minY
+      };
+    }
+
+    function drawPolyline(ctx, points, color, width, view) {
+      if (points.length < 2) return;
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      const first = worldToScreen(points[0], view);
+      ctx.moveTo(first.x, first.y);
+      for (let i = 1; i < points.length; i++) {
+        const p = worldToScreen(points[i], view);
+        ctx.lineTo(p.x, p.y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function draw() {
+      const ctx = els.canvas.getContext("2d");
+      const view = buildView();
+      state.view = view;
+      ctx.clearRect(0, 0, view.w, view.h);
+
+      ctx.save();
+      ctx.strokeStyle = "rgba(102, 112, 133, 0.22)";
+      ctx.lineWidth = 1;
+      const maxEdges = 12000;
+      const step = Math.max(1, Math.ceil(state.triangles.length / (maxEdges / 3)));
+      for (let i = 0; i < state.triangles.length; i += step) {
+        const tri = state.triangles[i];
+        const a = worldToScreen(tri.points[0], view);
+        const b = worldToScreen(tri.points[1], view);
+        const c = worldToScreen(tri.points[2], view);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.lineTo(c.x, c.y);
+        ctx.closePath();
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      if (state.result) {
+        const basis = state.result.basis;
+        const root = state.result.root;
+        const le = [];
+        const te = [];
+        for (const s of state.result.distributions) {
+          le.push(toWorld(s.r_m, s.leading_edge_q_m, root, basis));
+          te.push(toWorld(s.r_m, s.trailing_edge_q_m, root, basis));
+        }
+        drawPolyline(ctx, te, "#2563eb", 3, view);
+        drawPolyline(ctx, le, "#ea580c", 3, view);
+
+        const axisEnd = toWorld(state.result.constants.span_R_m, 0, root, basis);
+        drawPolyline(ctx, [root, axisEnd], "#0f766e", 2, view);
+      }
+
+      const rootScreen = worldToScreen(state.root, view);
+      ctx.save();
+      ctx.fillStyle = "#101828";
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(rootScreen.x, rootScreen.y, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function downloadJson() {
+      if (!state.result) return;
+      const blob = new Blob([JSON.stringify(state.result, null, 2) + "\n"], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "wing_geometry_constants.json";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    async function copyJson() {
+      if (!state.result) return;
+      const text = JSON.stringify(state.result, null, 2);
+      await navigator.clipboard.writeText(text);
+      els.status.innerHTML = "<strong>Copied:</strong> geometry JSON copied to clipboard.";
+    }
+
+    els.objInput.addEventListener("change", (event) => {
+      loadFiles(event.target.files).catch((err) => {
+        els.status.innerHTML = `<strong>Error:</strong> ${escapeHtml(err.message)}`;
+      });
+    });
+
+    els.rootX.addEventListener("change", () => {
+      syncRootFromInputs();
+      recalculate();
+    });
+
+    els.rootY.addEventListener("change", () => {
+      syncRootFromInputs();
+      recalculate();
+    });
+
+    els.xOffset.addEventListener("change", recalculate);
+    els.yOffset.addEventListener("change", recalculate);
+    els.sampleCount.addEventListener("change", recalculate);
+    els.recalc.addEventListener("click", recalculate);
+
+    els.swapEdge.addEventListener("click", () => {
+      state.chordSign *= -1;
+      recalculate();
+    });
+
+    els.copyJson.addEventListener("click", () => {
+      copyJson().catch((err) => {
+        els.status.innerHTML = `<strong>Error:</strong> ${escapeHtml(err.message)}`;
+      });
+    });
+
+    els.downloadJson.addEventListener("click", downloadJson);
+
+    els.canvas.addEventListener("click", (event) => {
+      if (!state.view || state.vertices.length === 0) return;
+      const rect = els.canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const screen = {
+        x: (event.clientX - rect.left) * dpr,
+        y: (event.clientY - rect.top) * dpr
+      };
+      state.root = screenToWorld(screen, state.view);
+      syncRootInputs();
+      recalculate();
+    });
+
+    window.addEventListener("resize", draw);
+    draw();
+  </script>
+</body>
+</html>
