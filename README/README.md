@@ -235,3 +235,6 @@ Meaning:
 Verified:
 - `bazel build //apps:visualize_robobee_aeromechanical` passes.
 - Short `bazel run` stayed up without immediate solver crash. 
+
+## To simulate the actuator in drake... 
+We need to model it as a simple PD servo slider actuator. 

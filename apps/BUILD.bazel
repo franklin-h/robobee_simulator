@@ -82,7 +82,7 @@ cc_binary(
         "//models/robobee_assembly:files",
     ],
     deps = [
-        "//:aeromechanical_wing_constants",
+        "//:aeromechanical_moments",
         "@drake//geometry:drake_visualizer",
         "@drake//lcm:drake_lcm",
         "@drake//math:geometric_transform",

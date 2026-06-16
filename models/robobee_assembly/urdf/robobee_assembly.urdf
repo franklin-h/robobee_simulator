@@ -503,12 +503,14 @@
         <axis xyz="1 0 0" />
         <parent link="hinge_right_base" />
         <child link="hinge_right_wing" />
+        <limit effort="1" velocity="1" lower="-0.523599" upper="0.523599" />
     </joint>
     <joint name="revolute_1_4" type="continuous">
         <origin xyz="-0.00171622 -0.00098 0.0005265" rpy="3.33067e-16 4.78506e-14 2.22045e-16" />
         <axis xyz="-0 1 -0" />
         <parent link="transmission_base" />
         <child link="transmission_hinge" />
+        <limit effort="1" velocity="1" lower="-0.523599" upper="0.523599" />
     </joint>
     <joint name="revolute_1_5" type="continuous">
         <origin xyz="-2.84212e-05 -0.000570095 0.000255887" rpy="-4.87542e-22 -1.51459e-12 2.58466e-26" />

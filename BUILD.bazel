@@ -5,3 +5,10 @@ cc_library(
     hdrs = ["aeromechanical_wing_constants.h"],
     visibility = ["//visibility:public"],
 )
+
+cc_library(
+    name = "aeromechanical_moments",
+    hdrs = ["aeromechanical_moments.h"],
+    visibility = ["//visibility:public"],
+    deps = [":aeromechanical_wing_constants"],
+)
