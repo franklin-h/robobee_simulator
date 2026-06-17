@@ -19,12 +19,12 @@ struct AeromechanicalModelParameters {
   double cd_0{0.4};
   double rotational_damping_coefficient{2.0};
 
-  double kapton_youngs_modulus_pa{2.5e9};
+  double kapton_youngs_modulus_pa{2.1e9};
   double hinge_thickness_m{0.025e-3};
   double hinge_width_m{2.7e-3};
-  double hinge_length_m{0.10};
+  double hinge_length_m{0.10e-3};
 
-  double max_abs_applied_total_moment_Nm{2.0e-05};
+  double max_abs_applied_total_moment_Nm{2.0e-01};
 };
 
 struct BladeElementFlow {
@@ -242,7 +242,7 @@ WingMomentComponents CalcAeromechanicalMoments(
       CalcRotationalDampingMoment(constants, input, params);
   moments.added_mass_Nm = CalcAddedMassMoment(constants, input, params);
   moments.hinge_Nm = CalcHingeRestoringMoment(input, params);
-  moments.total_Nm = moments.aerodynamic_Nm + moments.rotational_damping_Nm*10 +
+  moments.total_Nm = moments.aerodynamic_Nm + moments.rotational_damping_Nm +
                      moments.added_mass_Nm + moments.hinge_Nm;
   // moments.total_Nm = moments.hinge_Nm*20 + moments.aerodynamic_Nm;
   moments.applied_total_Nm = moments.total_Nm;

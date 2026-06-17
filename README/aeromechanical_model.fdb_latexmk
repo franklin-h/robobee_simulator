@@ -1,6 +1,6 @@
 # Fdb version 4
-["pdflatex"] 1781659085.38246 "/Users/franklinho/robobee_simulator/bazel-robobee_simulator/README/aeromechanical_model.tex" "aeromechanical_model.pdf" "aeromechanical_model" 1781659085.92938 0
-  "/Users/franklinho/robobee_simulator/bazel-robobee_simulator/README/aeromechanical_model.tex" 1781659084.50644 17972 cae00cf9ad63e42132eeba4fa6564a0f ""
+["pdflatex"] 1781681948.33515 "/Users/franklinho/robobee_simulator/bazel-robobee_simulator/README/aeromechanical_model.tex" "aeromechanical_model.pdf" "aeromechanical_model" 1781681948.9192 0
+  "/Users/franklinho/robobee_simulator/bazel-robobee_simulator/README/aeromechanical_model.tex" 1781681948.10123 17973 f753e7ea97a20d704cd715bbf8e89eb2 ""
   "/usr/local/texlive/2025/texmf-dist/fonts/enc/dvips/cm-super/cm-super-ts1.enc" 1136849721 2900 1537cc8184ad1792082cd229ecc269f4 ""
   "/usr/local/texlive/2025/texmf-dist/fonts/map/fontname/texfonts.map" 1577235249 3524 cb3e574dea2d1052e39280babc910dc8 ""
   "/usr/local/texlive/2025/texmf-dist/fonts/tfm/jknappen/ec/tcrm1000.tfm" 1136768653 1536 e07581a4bb3136ece9eeb4c3ffab8233 ""
@@ -83,7 +83,7 @@
   "/usr/local/texlive/2025/texmf.cnf" 1741450484 577 418a7058ec8e006d8704f60ecd22c938 ""
   "Figs/planiform.png" 1781156999.42173 77659 d471dbbb08fed76a3a259828f9a0084e ""
   "Figs/wing_coordinates.jpeg" 1781561807.49142 253353 b9e9d2a50bf9b43630cdc42dd8b6ea8c ""
-  "aeromechanical_model.aux" 1781659085.87575 2663 21699b7abee483ef60c8088b7f184183 "pdflatex"
+  "aeromechanical_model.aux" 1781681948.85671 2663 21699b7abee483ef60c8088b7f184183 "pdflatex"
   (generated)
   "aeromechanical_model.aux"
   "aeromechanical_model.log"
