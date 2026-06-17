@@ -10,8 +10,10 @@
 #include <Eigen/Dense>
 
 #include "drake/geometry/drake_visualizer.h"
+#include "drake/geometry/shape_specification.h"
 #include "drake/lcm/drake_lcm.h"
 #include "drake/math/rigid_transform.h"
+#include "drake/multibody/plant/coulomb_friction.h"
 #include "drake/multibody/parsing/parser.h"
 #include "drake/multibody/plant/externally_applied_spatial_force.h"
 #include "drake/multibody/plant/multibody_plant.h"
@@ -31,6 +33,11 @@ constexpr char kPackagePath[] = "models/robobee_assembly";
 constexpr char kAssemblyUrl[] =
     "package://robobee_assembly/urdf/robobee_assembly.urdf";
 constexpr double kPi = 3.14159265358979323846;
+constexpr double kMaxAbsWingNetForceN = 5.0e-4;
+constexpr double kBodyLinearDampingNsPerM = 2.0e-4;
+constexpr double kBodyAngularDampingNmsPerRad = 1.0e-6;
+constexpr double kGroundZ = -5.0e-3;
+constexpr double kGroundThickness = 1.0e-3;
 
 /* 
 TODO: Have a GUI interface with simulation parameters for a section. And also a section (placeholder for now) which will have robobee parameters. 
@@ -166,15 +173,17 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     plant_.SetPositionsAndVelocities(plant_context_.get(), x);
 
     output->clear();
-    output->reserve(wings_.size());
+    output->reserve(wings_.size() + 1);
 
     for (int i = 0; i < static_cast<int>(wings_.size()); ++i) {
       output->push_back(CalcWingSpatialForce(wings_[i], i, context.get_time()));
     }
+    output->push_back(CalcBodyDampingSpatialForce());
   }
 
   drake::multibody::ExternallyAppliedSpatialForce<double> CalcWingSpatialForce(
       const WingAeroConfig& wing, int wing_index, double time_s) const {
+    const robobee::AeromechanicalModelParameters aero_params;
     const auto& constants = *wing.constants;
     const auto& body = plant_.GetBodyByName(wing.body_name);
     latest_moments_.at(wing_index) = {};
@@ -203,6 +212,8 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     const auto& stations = constants.blade_stations;
     robobee::WingMomentInput moment_input;
     moment_input.station_flows.reserve(stations.size());
+    Eigen::Vector3d force_W = Eigen::Vector3d::Zero();
+    Eigen::Vector3d force_moment_about_Bo_W = Eigen::Vector3d::Zero();
 
     for (int i = 0; i < static_cast<int>(stations.size()); ++i) {
       const auto& station = stations[i];
@@ -225,8 +236,49 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
         moment_input.station_flows.push_back({});
         continue;
       }
-      moment_input.station_flows.push_back(
-          {v_rel_W.dot(chord_axis_W), v_rel_W.dot(normal_axis_W)});
+      const robobee::BladeElementFlow flow{
+          v_rel_W.dot(chord_axis_W), v_rel_W.dot(normal_axis_W)};
+      moment_input.station_flows.push_back(flow);
+
+      const double dr = robobee::StationWidth(constants, i);
+      const double speed_squared =
+          flow.v_chord_mps * flow.v_chord_mps +
+          flow.v_normal_mps * flow.v_normal_mps;
+      if (!std::isfinite(dr) || dr <= 0.0 ||
+          !std::isfinite(station.chord_m) || station.chord_m <= 0.0 ||
+          !std::isfinite(station.leading_edge_q_m) ||
+          !std::isfinite(speed_squared) || speed_squared <= 1.0e-16) {
+        continue;
+      }
+
+      const double alpha_rad =
+          std::atan2(-flow.v_normal_mps, -flow.v_chord_mps);
+      const double c_n =
+          robobee::NormalForceCoefficient(std::abs(alpha_rad), aero_params);
+      const double d_force_N =
+          0.5 * aero_params.air_density_kg_m3 * speed_squared * c_n *
+          station.chord_m * dr;
+      const double d_cp_hat =
+          0.82 / robobee::kAeromechanicalPi * std::abs(alpha_rad) + 0.05;
+      const double y_le_m =
+          constants.y_r_hat_by_cbar * constants.mean_chord_cbar_m +
+          station.leading_edge_q_m;
+      const double y_cp_m = y_le_m - station.chord_m * d_cp_hat;
+      if (!std::isfinite(alpha_rad) || !std::isfinite(c_n) ||
+          !std::isfinite(d_force_N) || !std::isfinite(y_cp_m)) {
+        continue;
+      }
+
+      const Eigen::Vector3d d_force_W =
+          -robobee::Sign(alpha_rad) * d_force_N * normal_axis_W;
+      const Eigen::Vector3d p_BoCp_B =
+          station.r_m * wing.span_axis_B + y_cp_m * wing.chord_axis_B;
+      const Eigen::Vector3d p_BoCp_W = R_WB * p_BoCp_B;
+      if (!IsFinite(d_force_W) || !IsFinite(p_BoCp_W)) {
+        continue;
+      }
+      force_W += d_force_W;
+      force_moment_about_Bo_W += p_BoCp_W.cross(d_force_W);
     }
 
     const Eigen::Vector3d omega_B = R_WB.transpose() * V_WB.rotational();
@@ -245,15 +297,35 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     moment_input.omega_dot_y_rad_s2 = omega_dot_B.y();
 
     const robobee::WingMomentComponents moments =
-        robobee::CalcAeromechanicalMoments(constants, moment_input);
+        robobee::CalcAeromechanicalMoments(constants, moment_input,
+                                           aero_params);
     latest_moments_.at(wing_index) = moments;
+    if (!IsFinite(force_W) || !IsFinite(force_moment_about_Bo_W)) {
+      return MakeZeroForce(body);
+    }
+    const double force_norm = force_W.norm();
+    if (force_norm > kMaxAbsWingNetForceN) {
+      const double force_scale = kMaxAbsWingNetForceN / force_norm;
+      force_W *= force_scale;
+      force_moment_about_Bo_W *= force_scale;
+    }
+
+    const double force_span_moment_Nm =
+        force_moment_about_Bo_W.dot(span_axis_W);
+    const double non_force_moment_Nm =
+        moments.applied_total_Nm - force_span_moment_Nm;
+    const Eigen::Vector3d moment_W =
+        wing.moment_sign *
+            (force_span_moment_Nm + non_force_moment_Nm) *
+            span_axis_W +
+        (force_moment_about_Bo_W -
+         force_span_moment_Nm * span_axis_W);
 
     drake::multibody::ExternallyAppliedSpatialForce<double> force;
     force.body_index = body.index();
     force.p_BoBq_B = Eigen::Vector3d::Zero();
-    force.F_Bq_W = drake::multibody::SpatialForce<double>(
-        wing.moment_sign * moments.applied_total_Nm * span_axis_W,
-        Eigen::Vector3d::Zero());
+    force.F_Bq_W =
+        drake::multibody::SpatialForce<double>(moment_W, force_W);
     return force;
   }
 
@@ -264,6 +336,23 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     force.p_BoBq_B = Eigen::Vector3d::Zero();
     force.F_Bq_W = drake::multibody::SpatialForce<double>(
         Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero());
+    return force;
+  }
+
+  drake::multibody::ExternallyAppliedSpatialForce<double>
+  CalcBodyDampingSpatialForce() const {
+    const auto& body = plant_.GetBodyByName("part_1_4");
+    const auto& V_WB = body.EvalSpatialVelocityInWorld(*plant_context_);
+    if (!IsFinite(V_WB.translational()) || !IsFinite(V_WB.rotational())) {
+      return MakeZeroForce(body);
+    }
+
+    drake::multibody::ExternallyAppliedSpatialForce<double> force;
+    force.body_index = body.index();
+    force.p_BoBq_B = Eigen::Vector3d::Zero();
+    force.F_Bq_W = drake::multibody::SpatialForce<double>(
+        -kBodyAngularDampingNmsPerRad * V_WB.rotational(),
+        -kBodyLinearDampingNsPerM * V_WB.translational());
     return force;
   }
 
@@ -348,6 +437,42 @@ void AddLoopClosureBallConstraints(
                            p_RL + kAxisPointOffset * axis_R.normalized());
 }
 
+void AddGroundAndContactGeometry(
+    drake::multibody::MultibodyPlant<double>* plant) {
+  const drake::multibody::CoulombFriction<double> ground_friction(1.0, 0.8);
+  const drake::math::RigidTransformd X_WG(
+      Eigen::Vector3d(0.0, 0.0, kGroundZ - 0.5 * kGroundThickness));
+  const drake::geometry::Box ground_box(0.20, 0.20, kGroundThickness);
+  plant->RegisterCollisionGeometry(
+      plant->world_body(), X_WG, ground_box, "ground_collision",
+      ground_friction);
+  plant->RegisterVisualGeometry(
+      plant->world_body(), X_WG, ground_box, "ground_visual",
+      Eigen::Vector4d(0.45, 0.48, 0.50, 1.0));
+
+  const drake::multibody::CoulombFriction<double> robot_friction(0.8, 0.6);
+  auto add_sphere = [&](const std::string& body_name, double radius_m) {
+    plant->RegisterCollisionGeometry(
+        plant->GetBodyByName(body_name), drake::math::RigidTransformd(),
+        drake::geometry::Sphere(radius_m), body_name + "_contact",
+        robot_friction);
+  };
+
+  // The exported URDF has no collision tags, so these small proxies make the
+  // visual-only model interact with the floor without changing the CAD meshes.
+  add_sphere("part_1_4", 1.5e-3);
+  add_sphere("part_1", 1.0e-3);
+  add_sphere("part_1_1", 1.0e-3);
+  add_sphere("part_1_2", 7.5e-4);
+  add_sphere("part_1_3", 7.5e-4);
+  add_sphere("transmission_base", 7.5e-4);
+  add_sphere("transmission_right_link_base", 7.5e-4);
+  add_sphere("hinge_left_wing", 5.0e-4);
+  add_sphere("hinge_right_wing", 5.0e-4);
+  add_sphere("wing_cf", 5.0e-4);
+  add_sphere("wing_cf_1", 5.0e-4);
+}
+
 void WriteMomentCsvHeader(std::ostream* output) {
   *output
       << "time_s,"
@@ -398,7 +523,7 @@ int main() {
   const drake::multibody::ModelInstanceIndex model_instance =
       model_instances.front();
 
-  plant.WeldFrames(plant.world_frame(), plant.GetFrameByName("root"));
+  AddGroundAndContactGeometry(&plant);
 
   // more rigid constraints to ensure 
   AddLoopClosureWeldConstraint(&plant,
@@ -416,10 +541,9 @@ int main() {
                                 "transmission_right_link_hinge",
                                 "transmission_right_link_2");
 
-  // constexpr double kSliderEffortLimitN = 1.0e-1;
-  constexpr double kSliderEffortLimitN = 1.0; 
-  constexpr double kSliderKp = 800.0;
-  constexpr double kSliderKd = 5.0e-3;
+  constexpr double kSliderEffortLimitN = 2.0e-1;
+  constexpr double kSliderKp = 200.0;
+  constexpr double kSliderKd = 5.0e-4;
 
   const auto& right_slider_actuator = plant.AddJointActuator(
       "right_slider_drive", plant.GetJointByName("slider_1"),
@@ -469,7 +593,9 @@ int main() {
             << "  bazel run @drake//tools:meldis -- --open-window\n\n"
             << "Aeromechanical moments are being logged to:\n"
             << "  " << kMomentLogPath << "\n\n"
-            << "The slider joints are driven by finite-gain joint actuators "
+            << "The root frame is free-floating, so generated wing forces can "
+               "move the body under gravity. The slider joints are driven by "
+               "finite-gain joint actuators "
                "tracking a sinusoidal desired position and velocity; "
                "the transmission loops are closed with MultibodyPlant weld "
                "constraints, not per-frame IK.\n"
