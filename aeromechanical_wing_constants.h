@@ -453,4 +453,16 @@ inline constexpr AeromechanicalWingConstants<400> kLeftWingAeromechanicalConstan
     }}
 };
 
+template <std::size_t NumStations>
+constexpr AeromechanicalWingConstants<NumStations>
+WithMirroredAddedMassProductInertia(
+    AeromechanicalWingConstants<NumStations> constants) {
+  constants.I_xy_am_hat = -constants.I_xy_am_hat;
+  return constants;
+}
+
+inline constexpr AeromechanicalWingConstants<400>
+    kRightWingAeromechanicalConstants =
+        WithMirroredAddedMassProductInertia(kLeftWingAeromechanicalConstants);
+
 }  // namespace robobee

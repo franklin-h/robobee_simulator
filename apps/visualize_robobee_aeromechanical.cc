@@ -64,6 +64,7 @@ class SliderStrokeSource final : public drake::systems::LeafSystem<double> {
 
 struct WingAeroConfig {
   std::string body_name;
+  const robobee::AeromechanicalWingConstants<400>* constants{};
   Eigen::Vector3d span_axis_B;
   Eigen::Vector3d chord_axis_B;
   Eigen::Vector3d normal_axis_B;
@@ -83,10 +84,14 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
   explicit WingAeromechanics(const drake::multibody::MultibodyPlant<double>& plant)
       : plant_(plant),
         plant_context_(plant.CreateDefaultContext()),
-        wings_({WingAeroConfig{"hinge_wing", Eigen::Vector3d::UnitX(),
+        wings_({WingAeroConfig{"hinge_wing",
+                                &robobee::kLeftWingAeromechanicalConstants,
+                                Eigen::Vector3d::UnitX(),
                                 -Eigen::Vector3d::UnitY(),
                                 Eigen::Vector3d::UnitZ(), 1.0},
-                WingAeroConfig{"hinge_right_wing", Eigen::Vector3d::UnitX(),
+                WingAeroConfig{"hinge_right_wing",
+                                &robobee::kRightWingAeromechanicalConstants,
+                                Eigen::Vector3d::UnitX(),
                                 Eigen::Vector3d::UnitY(),
                                 Eigen::Vector3d::UnitZ(), 1.0}}) {
     for (WingAeroConfig& wing : wings_) {
@@ -170,7 +175,7 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
 
   drake::multibody::ExternallyAppliedSpatialForce<double> CalcWingSpatialForce(
       const WingAeroConfig& wing, int wing_index, double time_s) const {
-    const auto& constants = robobee::kLeftWingAeromechanicalConstants;
+    const auto& constants = *wing.constants;
     const auto& body = plant_.GetBodyByName(wing.body_name);
     latest_moments_.at(wing_index) = {};
 
@@ -409,8 +414,9 @@ int main() {
                                 "transmission_right_link_hinge",
                                 "transmission_right_link_2");
 
-  constexpr double kSliderEffortLimitN = 1.0e-1;
-  constexpr double kSliderKp = 50.0;
+  // constexpr double kSliderEffortLimitN = 1.0e-1;
+  constexpr double kSliderEffortLimitN = 1.0; 
+  constexpr double kSliderKp = 60.0;
   constexpr double kSliderKd = 2.0e-3;
 
   const auto& right_slider_actuator = plant.AddJointActuator(

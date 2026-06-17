@@ -24,7 +24,7 @@ struct AeromechanicalModelParameters {
   double hinge_width_m{2.7e-3};
   double hinge_length_m{0.10};
 
-  double max_abs_applied_total_moment_Nm{2.0e-11};
+  double max_abs_applied_total_moment_Nm{2.0e-05};
 };
 
 struct BladeElementFlow {
@@ -122,7 +122,10 @@ double CalcAerodynamicPitchMoment(
 
     const double alpha_rad =
         std::atan2(-flow.v_normal_mps, -flow.v_chord_mps);
-    const double c_n = NormalForceCoefficient(alpha_rad, params);
+    const double alpha_abs_rad = std::abs(alpha_rad);
+    // The paper's moment expression carries the aerodynamic direction in
+    // sgn(alpha), so C_N and d_force_N are magnitudes here.
+    const double c_n = NormalForceCoefficient(alpha_abs_rad, params);
     const double d_force_N =
         0.5 * params.air_density_kg_m3 * speed_squared * c_n *
         station.chord_m * dr;
