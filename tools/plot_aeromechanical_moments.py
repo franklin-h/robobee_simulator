@@ -47,7 +47,7 @@ def main():
 
     path = pathlib.Path(args.csv_path)
     plt.ion()
-    fig, axes = plt.subplots(2, 1, sharex=True, figsize=(11, 7))
+    fig, axes = plt.subplots(3, 1, sharex=True, figsize=(11, 9))
     channels = [
         ("aero_Nm", "aero"),
         ("rot_Nm", "rot"),
@@ -78,7 +78,7 @@ def main():
       rows_window = rows[first:]
       t_window = t[first:]
 
-      for axis, wing in zip(axes, ["right", "left"]):
+      for axis, wing in zip(axes[:2], ["left", "right"]):
           axis.clear()
           for suffix, label in channels:
               key = f"{wing}_{suffix}"
@@ -86,6 +86,26 @@ def main():
           axis.set_ylabel(f"{wing} moment [N*m]")
           axis.grid(True, alpha=0.3)
           axis.legend(loc="upper right", ncol=3, fontsize="small")
+
+      alpha_axis = axes[2]
+      alpha_axis.clear()
+      has_alpha = False
+      for wing in ["left", "right"]:
+          key = f"{wing}_alpha_rad"
+          alpha = series(rows_window, key)
+          if alpha:
+              has_alpha = True
+              alpha_axis.plot(t_window, alpha, label=f"{wing} alpha")
+      alpha_axis.set_ylabel("angle of attack [rad]")
+      alpha_axis.grid(True, alpha=0.3)
+      if has_alpha:
+          alpha_axis.legend(loc="upper right", ncol=2, fontsize="small")
+      else:
+          alpha_axis.text(
+              0.5, 0.5, "angle of attack not logged",
+              transform=alpha_axis.transAxes,
+              ha="center", va="center",
+          )
 
       axes[-1].set_xlabel("simulation time [s]")
       fig.suptitle(f"Aeromechanical moments from {path}")

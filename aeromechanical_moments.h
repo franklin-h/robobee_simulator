@@ -43,6 +43,7 @@ struct WingMomentInput {
 };
 
 struct WingMomentComponents {
+  double angle_of_attack_alpha_rad{};
   double aerodynamic_Nm{};
   double rotational_damping_Nm{};
   double added_mass_Nm{};
@@ -91,6 +92,45 @@ double StationWidth(const AeromechanicalWingConstants<NumStations>& constants,
     return 0.5 * (stations[index].r_m - stations[index - 1].r_m);
   }
   return 0.5 * (stations[index + 1].r_m - stations[index - 1].r_m);
+}
+
+template <std::size_t NumStations>
+double CalcMeanAngleOfAttack(
+    const AeromechanicalWingConstants<NumStations>& constants,
+    const WingMomentInput& input) {
+  double weighted_sin = 0.0;
+  double weighted_cos = 0.0;
+  const int count =
+      std::min(static_cast<int>(constants.blade_stations.size()),
+               static_cast<int>(input.station_flows.size()));
+
+  for (int i = 0; i < count; ++i) {
+    const auto& station = constants.blade_stations[i];
+    const auto& flow = input.station_flows[i];
+    const double dr = StationWidth(constants, i);
+    if (!std::isfinite(dr) || dr <= 0.0 ||
+        !std::isfinite(station.chord_m) || station.chord_m <= 0.0 ||
+        !std::isfinite(flow.v_chord_mps) ||
+        !std::isfinite(flow.v_normal_mps)) {
+      continue;
+    }
+
+    const double speed_squared =
+        flow.v_chord_mps * flow.v_chord_mps +
+        flow.v_normal_mps * flow.v_normal_mps;
+    if (!std::isfinite(speed_squared) || speed_squared <= 1.0e-16) continue;
+
+    const double alpha_rad =
+        std::atan2(-flow.v_normal_mps, -flow.v_chord_mps);
+    if (!std::isfinite(alpha_rad)) continue;
+
+    const double weight = speed_squared * station.chord_m * dr;
+    weighted_sin += weight * std::sin(alpha_rad);
+    weighted_cos += weight * std::cos(alpha_rad);
+  }
+
+  const double alpha_rad = std::atan2(weighted_sin, weighted_cos);
+  return std::isfinite(alpha_rad) ? alpha_rad : 0.0;
 }
 
 template <std::size_t NumStations>
@@ -195,14 +235,16 @@ WingMomentComponents CalcAeromechanicalMoments(
     const AeromechanicalModelParameters& params =
         AeromechanicalModelParameters{}) {
   WingMomentComponents moments;
+  moments.angle_of_attack_alpha_rad = CalcMeanAngleOfAttack(constants, input);
   moments.aerodynamic_Nm =
       CalcAerodynamicPitchMoment(constants, input, params);
   moments.rotational_damping_Nm =
       CalcRotationalDampingMoment(constants, input, params);
   moments.added_mass_Nm = CalcAddedMassMoment(constants, input, params);
   moments.hinge_Nm = CalcHingeRestoringMoment(input, params);
-  moments.total_Nm = moments.aerodynamic_Nm + moments.rotational_damping_Nm +
+  moments.total_Nm = moments.aerodynamic_Nm + moments.rotational_damping_Nm*10 +
                      moments.added_mass_Nm + moments.hinge_Nm;
+  // moments.total_Nm = moments.hinge_Nm*20 + moments.aerodynamic_Nm;
   moments.applied_total_Nm = moments.total_Nm;
   if (std::isfinite(params.max_abs_applied_total_moment_Nm)) {
     moments.applied_total_Nm =

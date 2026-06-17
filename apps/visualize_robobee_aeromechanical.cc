@@ -84,12 +84,12 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
   explicit WingAeromechanics(const drake::multibody::MultibodyPlant<double>& plant)
       : plant_(plant),
         plant_context_(plant.CreateDefaultContext()),
-        wings_({WingAeroConfig{"hinge_right_wing",
+        wings_({WingAeroConfig{"hinge_left_wing",
                                 &robobee::kLeftWingAeromechanicalConstants,
                                 Eigen::Vector3d::UnitX(),
-                                -Eigen::Vector3d::UnitY(),
+                                Eigen::Vector3d::UnitY(),
                                 Eigen::Vector3d::UnitZ(), 1.0},
-                WingAeroConfig{"hinge_left_wing",
+                WingAeroConfig{"hinge_right_wing",
                                 &robobee::kRightWingAeromechanicalConstants,
                                 Eigen::Vector3d::UnitX(),
                                 Eigen::Vector3d::UnitY(),
@@ -351,9 +351,9 @@ void AddLoopClosureBallConstraints(
 void WriteMomentCsvHeader(std::ostream* output) {
   *output
       << "time_s,"
-      << "left_aero_Nm,left_rot_Nm,left_added_Nm,left_hinge_Nm,"
+      << "left_alpha_rad,left_aero_Nm,left_rot_Nm,left_added_Nm,left_hinge_Nm,"
          "left_total_Nm,left_applied_Nm,"
-      << "right_aero_Nm,right_rot_Nm,right_added_Nm,right_hinge_Nm,"
+      << "right_alpha_rad,right_aero_Nm,right_rot_Nm,right_added_Nm,right_hinge_Nm,"
          "right_total_Nm,right_applied_Nm\n";
 }
 
@@ -367,9 +367,11 @@ void WriteMomentCsvRow(
       moments.size() > 1 ? moments[1] : zero;
 
   *output << std::setprecision(17) << time_s << ','
+          << left.angle_of_attack_alpha_rad << ','
           << left.aerodynamic_Nm << ',' << left.rotational_damping_Nm << ','
           << left.added_mass_Nm << ',' << left.hinge_Nm << ','
           << left.total_Nm << ',' << left.applied_total_Nm << ','
+          << right.angle_of_attack_alpha_rad << ','
           << right.aerodynamic_Nm << ',' << right.rotational_damping_Nm << ','
           << right.added_mass_Nm << ',' << right.hinge_Nm << ','
           << right.total_Nm << ',' << right.applied_total_Nm << '\n';
@@ -416,8 +418,8 @@ int main() {
 
   // constexpr double kSliderEffortLimitN = 1.0e-1;
   constexpr double kSliderEffortLimitN = 1.0; 
-  constexpr double kSliderKp = 60.0;
-  constexpr double kSliderKd = 2.0e-3;
+  constexpr double kSliderKp = 800.0;
+  constexpr double kSliderKd = 5.0e-3;
 
   const auto& right_slider_actuator = plant.AddJointActuator(
       "right_slider_drive", plant.GetJointByName("slider_1"),
