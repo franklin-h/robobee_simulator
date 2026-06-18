@@ -81,24 +81,6 @@ struct WingAngularHistory {
   Eigen::Vector3d omega_dot_B{Eigen::Vector3d::Zero()};
 };
 
-Eigen::Vector3d CalcAeroSpanAxisInBody(
-    const robobee::AeromechanicalWingConstants<400>& constants) {
-  const double c = std::cos(constants.span_axis_angle_rad);
-  const double s = std::sin(constants.span_axis_angle_rad);
-  return (c * Eigen::Vector3d::UnitX() + s * Eigen::Vector3d::UnitY())
-      .normalized();
-}
-
-Eigen::Vector3d CalcAeroChordAxisInBody(
-    const robobee::AeromechanicalWingConstants<400>& constants) {
-  const double c = std::cos(constants.span_axis_angle_rad);
-  const double s = std::sin(constants.span_axis_angle_rad);
-  const double chord_sign = constants.chord_axis_sign >= 0.0 ? 1.0 : -1.0;
-  return (chord_sign *
-          (-s * Eigen::Vector3d::UnitX() + c * Eigen::Vector3d::UnitY()))
-      .normalized();
-}
-
 class WingAeromechanics final : public drake::systems::LeafSystem<double> {
  public:
   explicit WingAeromechanics(const drake::multibody::MultibodyPlant<double>& plant)
@@ -106,17 +88,13 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
         plant_context_(plant.CreateDefaultContext()),
         wings_({WingAeroConfig{"hinge_left_wing",
                                 &robobee::kLeftWingAeromechanicalConstants,
-                                CalcAeroSpanAxisInBody(
-                                    robobee::kLeftWingAeromechanicalConstants),
-                                CalcAeroChordAxisInBody(
-                                    robobee::kLeftWingAeromechanicalConstants),
+                                Eigen::Vector3d::UnitX(),
+                                Eigen::Vector3d::UnitY(),
                                 Eigen::Vector3d::UnitZ(), 1.0},
                 WingAeroConfig{"hinge_right_wing",
                                 &robobee::kRightWingAeromechanicalConstants,
-                                CalcAeroSpanAxisInBody(
-                                    robobee::kRightWingAeromechanicalConstants),
-                                CalcAeroChordAxisInBody(
-                                    robobee::kRightWingAeromechanicalConstants),
+                                Eigen::Vector3d::UnitX(),
+                                Eigen::Vector3d::UnitY(),
                                 Eigen::Vector3d::UnitZ(), 1.0}}) {
     for (WingAeroConfig& wing : wings_) {
       const auto& body = plant_.GetBodyByName(wing.body_name);
@@ -231,21 +209,16 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     for (int i = 0; i < static_cast<int>(stations.size()); ++i) {
       const auto& station = stations[i];
       if (!std::isfinite(station.r_m) ||
-          !std::isfinite(station.leading_edge_q_m) ||
           !std::isfinite(station.y_hinge_to_mid_chord_hat) ||
           !std::isfinite(station.chord_m)) {
         moment_input.station_flows.push_back({});
         continue;
       }
 
-      const double r_hinge_to_station_m =
-          station.r_m + constants.span_offset_x_r_m;
-      const double y_hinge_to_mid_chord_m =
-          constants.chord_offset_y_r_m + station.leading_edge_q_m -
-          0.5 * station.chord_m;
       const Eigen::Vector3d p_BoP_B =
-          r_hinge_to_station_m * wing.span_axis_B +
-          y_hinge_to_mid_chord_m * wing.chord_axis_B;
+          station.r_m * wing.span_axis_B +
+          station.y_hinge_to_mid_chord_hat * constants.mean_chord_cbar_m *
+              wing.chord_axis_B;
       const Eigen::Vector3d p_BoP_W = R_WB * p_BoP_B;
       const Eigen::Vector3d v_P_W =
           V_WB.translational() + V_WB.rotational().cross(p_BoP_W);
@@ -496,9 +469,9 @@ int main() {
   plant.get_mutable_joint_actuator(left_slider_actuator.index())
       .set_controller_gains({kSliderKp, kSliderKd});
 
-  // AddBodyFrameTriadVisual(&plant, "wing_membrane", "left_wing_membrane_frame");
-  // AddBodyFrameTriadVisual(&plant, "wing_membrane_1",
-  //                         "right_wing_membrane_frame");
+  AddBodyFrameTriadVisual(&plant, "wing_membrane", "left_wing_membrane_frame");
+  AddBodyFrameTriadVisual(&plant, "wing_membrane_1",
+                          "right_wing_membrane_frame");
 
   plant.Finalize();
 

@@ -84,6 +84,7 @@ cc_binary(
     deps = [
         "//:aeromechanical_moments",
         "@drake//geometry:drake_visualizer",
+        "@drake//geometry:shape_specification",
         "@drake//lcm:drake_lcm",
         "@drake//math:geometric_transform",
         "@drake//multibody/parsing:parsing",
