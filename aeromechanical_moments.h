@@ -242,7 +242,7 @@ WingMomentComponents CalcAeromechanicalMoments(
       CalcRotationalDampingMoment(constants, input, params);
   moments.added_mass_Nm = CalcAddedMassMoment(constants, input, params);
   moments.hinge_Nm = CalcHingeRestoringMoment(input, params);
-  moments.total_Nm = moments.aerodynamic_Nm + moments.rotational_damping_Nm*10 +
+  moments.total_Nm = moments.aerodynamic_Nm + moments.rotational_damping_Nm +
                      moments.added_mass_Nm + moments.hinge_Nm;
   // moments.total_Nm = moments.hinge_Nm*20 + moments.aerodynamic_Nm;
   moments.applied_total_Nm = moments.total_Nm;

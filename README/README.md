@@ -213,6 +213,28 @@ Verified:
 - `bazel build //apps:visualize_robobee_aeromechanical` passes.
 - `bazel run //apps:visualize_robobee_aeromechanical` ran for ~15 seconds without reproducing the NaN crash; I stopped it with Ctrl-C. 
 
+## Wing Geometry GUI
+
+[tools/wing_geometry_gui.html](/Users/franklinho/robobee_simulator/tools/wing_geometry_gui.html) is a browser-only tool for turning an exported wing OBJ mesh into the nondimensional geometry constants used by the aeromechanical model.
+
+What it does:
+- Loads one or more `.obj` files that are already in the same coordinate frame. The coordinates are treated as meters.
+- Projects the mesh into the OBJ `x-y` plane and lets you click or type the wing root location.
+- Infers the span axis from the selected root to the farthest projected vertex.
+- Slices the projected mesh at many span stations to recover the local leading edge, trailing edge, chord, normalized radius, and normalized chord distribution.
+- Computes the integrated constants used by the aeromechanical equations, including `R`, `A`, `c_bar`, `r1_hat`, `r2_hat_squared`, `F_hat`, `Y_rd_hat`, `I_xy_am_hat`, and `I_xx_am_hat`.
+- Exports either JSON for inspection/debugging or a C++ header compatible with [aeromechanical_wing_constants.h](/Users/franklinho/robobee_simulator/aeromechanical_wing_constants.h).
+
+How to use it:
+1. Open `tools/wing_geometry_gui.html` directly in a browser.
+2. Load the wing membrane OBJ file.
+3. Click the wing root on the canvas, or enter `root x` / `root y` manually.
+4. Set `x_r offset` and `y_r offset` only if the clicked root is not the pitch-axis origin.
+5. Use `Swap leading edge` if the displayed leading and trailing edges are reversed.
+6. Download or copy the generated C++ header, then use the generated values in `aeromechanical_wing_constants.h`.
+
+The tool is intended for geometry extraction only. It does not run the Drake simulation or validate the aerodynamic model; it provides the measured wing geometry constants that the simulation code consumes.
+
 ## And forsimulating at faster frequencies, 
 Updated the simulation for 100 Hz physical flapping while playing it back in slow motion.
 
@@ -238,3 +260,35 @@ Verified:
 
 ## To simulate the actuator in drake... 
 We need to model it as a simple PD servo slider actuator. 
+
+## Aeromechanics debug 
+Yes. A few concrete suspects, ordered by likelihood:
+
+1. **Actual stroke velocity may be too low.**  
+   Your logged aero moment is about `1.3e-6 N*m RMS`, while hinge is about `2.0e-6 N*m RMS`. Aero scales as `omega_h^2`, so if the linkage is only producing half the expected stroke angular speed, aero is `4x` too small. The CSV does not currently log `omega_y`, `omega_z`, or `omega_h = sqrt(omega_y^2 + omega_z^2)`, so we are partly blind here.
+
+2. **The aerodynamic geometry may be in the wrong body frame.**  
+   The constants come from `wing_membrane.obj`, but the code applies stations in the `hinge_left_wing` / `hinge_right_wing` body frames using `UnitX/UnitY/UnitZ` at [visualize_robobee_aeromechanical.cc:216](/Users/franklinho/robobee_simulator/apps/visualize_robobee_aeromechanical.cc:216). There are fixed transforms between `hinge_*_wing` and the actual `wing_cf` / membrane geometry. If the station root/chord axes are not transformed into the hinge body frame correctly, the velocity arm and pitch moment arm can be wrong.
+
+3. **The center-of-pressure moment arm may be too small or offset wrong.**  
+   Current formula is at [aeromechanical_moments.h:174](/Users/franklinho/robobee_simulator/aeromechanical_moments.h:174):
+   ```cpp
+   y_cp = y_r * cbar + leading_edge_q - chord * d_cp
+   ```
+   With your constants, at `alpha ~= 90 deg`, the mean `y_cp` is only about `-1.2 mm`. If `y_r`, leading-edge sign, or hinge-to-chord convention is off, aero pitch moment changes a lot.
+
+4. **The code only applies pitch torque, not blade-element lift force.**  
+   At [visualize_robobee_aeromechanical.cc:254](/Users/franklinho/robobee_simulator/apps/visualize_robobee_aeromechanical.cc:254), the spatial force has torque but zero force:
+   ```cpp
+   SpatialForce(moment, Eigen::Vector3d::Zero())
+   ```
+   That is fine for passive pitch torque debugging, but it is not a full aerodynamic force model.
+
+5. **`x_r` is ignored.**  
+   The paper uses `(r + x_r)^2`. The code uses actual station position, but only:
+   ```cpp
+   station.r_m * span_axis
+   ```
+   Since your generated `x_r_hat_by_R` is currently `0`, this does not matter now, but it is a latent mismatch if you later set a nonzero span offset.
+
+One sanity number: with the corrected hinge stiffness `7.38e-5 N*m/rad`, a `45 deg` passive pitch needs about `5.8e-5 N*m`. Your current aero peak is only around `3e-6 N*m`, so either the hinge is physically much stiffer than the aero can drive, or the simulated stroke speed / aero geometry is underestimating moment by roughly an order of magnitude. The next best diagnostic is to log `psi`, `omega_x`, `omega_y`, `omega_z`, and `omega_h` alongside the moment terms.

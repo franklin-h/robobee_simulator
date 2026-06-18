@@ -254,8 +254,18 @@ where \(\ddot{\phi}\) is the stroke angular acceleration, which we can compute f
     + M_{\mathrm{rot}}
     + M_{\mathrm{added}}
     + M_{\mathrm{hinge}}
-\end{equation}. 
- 
+\end{equation}
+But since aero forces originate as translational forces applied to the center of pressure, we can't just apply them purely as moments. 
+
+So really, \(M_{\mathrm{aero}}\) needs to be applied as 
+\begin{equation}
+    \sum_i \mathbf{r}_{cp,i} \times \D \mathbf{F}_i, 
+\end{equation}
+where 
+\begin{equation}
+    \mathbf{r}_{cp,i} = (r+x_r)\mathbf{e}_x + y_{cp}(r)\mathbf{e}_y.
+\end{equation}
+
 \section{Conclusion and Open Questions} 
 
 
