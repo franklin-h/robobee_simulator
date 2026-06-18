@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <iomanip>
@@ -81,20 +82,58 @@ struct WingAngularHistory {
   Eigen::Vector3d omega_dot_B{Eigen::Vector3d::Zero()};
 };
 
+struct BladeElementAppliedForce {
+  Eigen::Vector3d p_BoBq_B{Eigen::Vector3d::Zero()};
+  Eigen::Vector3d force_W{Eigen::Vector3d::Zero()};
+};
+
+Eigen::Vector3d CalcAeroSpanAxisInBody(
+    const robobee::AeromechanicalWingConstants<400>& constants) {
+  const double c = std::cos(constants.span_axis_angle_rad);
+  const double s = std::sin(constants.span_axis_angle_rad);
+  return (c * Eigen::Vector3d::UnitX() + s * Eigen::Vector3d::UnitY())
+      .normalized();
+}
+
+Eigen::Vector3d CalcAeroChordAxisInBody(
+    const robobee::AeromechanicalWingConstants<400>& constants) {
+  const double c = std::cos(constants.span_axis_angle_rad);
+  const double s = std::sin(constants.span_axis_angle_rad);
+  const double chord_sign = constants.chord_axis_sign >= 0.0 ? 1.0 : -1.0;
+  return (chord_sign *
+          (-s * Eigen::Vector3d::UnitX() + c * Eigen::Vector3d::UnitY()))
+      .normalized();
+}
+
+double ClampMoment(double moment_Nm,
+                   const robobee::AeromechanicalModelParameters& params) {
+  if (!std::isfinite(moment_Nm)) return 0.0;
+  if (!std::isfinite(params.max_abs_applied_total_moment_Nm)) {
+    return moment_Nm;
+  }
+  const double limit = params.max_abs_applied_total_moment_Nm;
+  if (limit < 0.0) return moment_Nm;
+  return std::min(std::max(moment_Nm, -limit), limit);
+}
+
 class WingAeromechanics final : public drake::systems::LeafSystem<double> {
  public:
   explicit WingAeromechanics(const drake::multibody::MultibodyPlant<double>& plant)
       : plant_(plant),
         plant_context_(plant.CreateDefaultContext()),
-        wings_({WingAeroConfig{"hinge_left_wing",
+        wings_({WingAeroConfig{"wing_membrane",
                                 &robobee::kLeftWingAeromechanicalConstants,
-                                Eigen::Vector3d::UnitX(),
-                                Eigen::Vector3d::UnitY(),
+                                CalcAeroSpanAxisInBody(
+                                    robobee::kLeftWingAeromechanicalConstants),
+                                CalcAeroChordAxisInBody(
+                                    robobee::kLeftWingAeromechanicalConstants),
                                 Eigen::Vector3d::UnitZ(), 1.0},
-                WingAeroConfig{"hinge_right_wing",
+                WingAeroConfig{"wing_membrane_1",
                                 &robobee::kRightWingAeromechanicalConstants,
-                                Eigen::Vector3d::UnitX(),
-                                Eigen::Vector3d::UnitY(),
+                                CalcAeroSpanAxisInBody(
+                                    robobee::kRightWingAeromechanicalConstants),
+                                CalcAeroChordAxisInBody(
+                                    robobee::kRightWingAeromechanicalConstants),
                                 Eigen::Vector3d::UnitZ(), 1.0}}) {
     for (WingAeroConfig& wing : wings_) {
       const auto& body = plant_.GetBodyByName(wing.body_name);
@@ -168,25 +207,32 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     plant_.SetPositionsAndVelocities(plant_context_.get(), x);
 
     output->clear();
-    output->reserve(wings_.size());
+    int force_count = 0;
+    for (const WingAeroConfig& wing : wings_) {
+      force_count += 1 + static_cast<int>(wing.constants->blade_stations.size());
+    }
+    output->reserve(force_count);
 
     for (int i = 0; i < static_cast<int>(wings_.size()); ++i) {
-      output->push_back(CalcWingSpatialForce(wings_[i], i, context.get_time()));
+      AppendWingSpatialForces(wings_[i], i, context.get_time(), output);
     }
   }
 
-  drake::multibody::ExternallyAppliedSpatialForce<double> CalcWingSpatialForce(
-      const WingAeroConfig& wing, int wing_index, double time_s) const {
+  void AppendWingSpatialForces(
+      const WingAeroConfig& wing, int wing_index, double time_s,
+      std::vector<drake::multibody::ExternallyAppliedSpatialForce<double>>*
+          output) const {
     const auto& constants = *wing.constants;
     const auto& body = plant_.GetBodyByName(wing.body_name);
     latest_moments_.at(wing_index) = {};
+    const robobee::AeromechanicalModelParameters params;
 
     const drake::math::RigidTransformd& X_WB =
         body.EvalPoseInWorld(*plant_context_);
     const auto& V_WB = body.EvalSpatialVelocityInWorld(*plant_context_);
     if (!X_WB.GetAsMatrix4().array().isFinite().all() ||
         !IsFinite(V_WB.translational()) || !IsFinite(V_WB.rotational())) {
-      return MakeZeroForce(body);
+      return;
     }
 
     const Eigen::Matrix3d R_WB = X_WB.rotation().matrix();
@@ -198,25 +244,32 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
         (R_WB * wing.normal_axis_B).normalized();
     if (!IsFinite(span_axis_W) || !IsFinite(chord_axis_W) ||
         !IsFinite(normal_axis_W)) {
-      return MakeZeroForce(body);
+      return;
     }
 
     const Eigen::Vector3d wind_W = Eigen::Vector3d::Zero();
     const auto& stations = constants.blade_stations;
     robobee::WingMomentInput moment_input;
     moment_input.station_flows.reserve(stations.size());
+    std::vector<BladeElementAppliedForce> blade_forces;
+    blade_forces.reserve(stations.size());
+    double total_blade_force_magnitude_N = 0.0;
 
     for (int i = 0; i < static_cast<int>(stations.size()); ++i) {
       const auto& station = stations[i];
+      const double dr = robobee::StationWidth(constants, i);
       if (!std::isfinite(station.r_m) ||
+          !std::isfinite(station.leading_edge_q_m) ||
           !std::isfinite(station.y_hinge_to_mid_chord_hat) ||
-          !std::isfinite(station.chord_m)) {
+          !std::isfinite(station.chord_m) || station.chord_m <= 0.0 ||
+          !std::isfinite(dr) || dr <= 0.0) {
         moment_input.station_flows.push_back({});
         continue;
       }
 
+      const double x_r_m = constants.x_r_hat_by_R * constants.span_R_m;
       const Eigen::Vector3d p_BoP_B =
-          station.r_m * wing.span_axis_B +
+          (station.r_m + x_r_m) * wing.span_axis_B +
           station.y_hinge_to_mid_chord_hat * constants.mean_chord_cbar_m *
               wing.chord_axis_B;
       const Eigen::Vector3d p_BoP_W = R_WB * p_BoP_B;
@@ -227,15 +280,75 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
         moment_input.station_flows.push_back({});
         continue;
       }
-      moment_input.station_flows.push_back(
-          {v_rel_W.dot(chord_axis_W), v_rel_W.dot(normal_axis_W)});
+      const double v_chord_mps = v_rel_W.dot(chord_axis_W);
+      const double v_normal_mps = v_rel_W.dot(normal_axis_W);
+      moment_input.station_flows.push_back({v_chord_mps, v_normal_mps});
+
+      const double speed_squared =
+          v_chord_mps * v_chord_mps + v_normal_mps * v_normal_mps;
+      if (!std::isfinite(speed_squared) || speed_squared <= 1.0e-16) {
+        continue;
+      }
+
+      const double speed_mps = std::sqrt(speed_squared);
+      const double alpha_rad = std::atan2(-v_normal_mps, -v_chord_mps);
+      if (!std::isfinite(alpha_rad)) continue;
+
+      const double d_cp_hat =
+          0.82 / robobee::kAeromechanicalPi * std::abs(alpha_rad) + 0.05;
+      const double y_le_m =
+          constants.y_r_hat_by_cbar * constants.mean_chord_cbar_m +
+          station.leading_edge_q_m;
+      const double y_cp_m = y_le_m - station.chord_m * d_cp_hat;
+      if (!std::isfinite(y_cp_m)) continue;
+
+      const double dynamic_pressure_times_area =
+          0.5 * params.air_density_kg_m3 * speed_squared * station.chord_m *
+          dr;
+      const Eigen::Vector3d v_rel_in_aero_plane_W =
+          v_chord_mps * chord_axis_W + v_normal_mps * normal_axis_W;
+      const Eigen::Vector3d drag_axis_W =
+          -v_rel_in_aero_plane_W / speed_mps;
+      const Eigen::Vector3d lift_axis_W =
+          drag_axis_W.cross(span_axis_W).normalized();
+      const Eigen::Vector3d blade_force_W =
+          dynamic_pressure_times_area *
+          (robobee::LiftCoefficient(alpha_rad, params) * lift_axis_W +
+           robobee::DragCoefficient(alpha_rad, params) * drag_axis_W);
+      if (!IsFinite(blade_force_W)) continue;
+
+      BladeElementAppliedForce blade_force;
+      blade_force.p_BoBq_B =
+          (station.r_m + x_r_m) * wing.span_axis_B +
+          y_cp_m * wing.chord_axis_B;
+      blade_force.force_W = blade_force_W;
+      blade_forces.push_back(blade_force);
+      total_blade_force_magnitude_N += blade_force_W.norm();
+    }
+
+    double force_scale = 1.0;
+    if (std::isfinite(params.max_abs_total_aerodynamic_force_N) &&
+        params.max_abs_total_aerodynamic_force_N >= 0.0 &&
+        std::isfinite(total_blade_force_magnitude_N) &&
+        total_blade_force_magnitude_N >
+            params.max_abs_total_aerodynamic_force_N) {
+      force_scale = params.max_abs_total_aerodynamic_force_N /
+                    total_blade_force_magnitude_N;
+    }
+    for (const BladeElementAppliedForce& blade_force : blade_forces) {
+      drake::multibody::ExternallyAppliedSpatialForce<double> force;
+      force.body_index = body.index();
+      force.p_BoBq_B = blade_force.p_BoBq_B;
+      force.F_Bq_W = drake::multibody::SpatialForce<double>(
+          Eigen::Vector3d::Zero(), force_scale * blade_force.force_W);
+      output->push_back(force);
     }
 
     const Eigen::Vector3d omega_B = R_WB.transpose() * V_WB.rotational();
     const Eigen::Vector3d omega_dot_B =
         EstimateAngularAccelerationInBody(wing_index, time_s, omega_B);
     if (!IsFinite(omega_B) || !IsFinite(omega_dot_B)) {
-      return MakeZeroForce(body);
+      return;
     }
 
     moment_input.pitch_angle_psi_rad =
@@ -247,26 +360,18 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     moment_input.omega_dot_y_rad_s2 = omega_dot_B.y();
 
     const robobee::WingMomentComponents moments =
-        robobee::CalcAeromechanicalMoments(constants, moment_input);
+        robobee::CalcAeromechanicalMoments(constants, moment_input, params);
     latest_moments_.at(wing_index) = moments;
 
+    const double non_translational_pitch_moment_Nm =
+        ClampMoment(moments.total_Nm - moments.aerodynamic_Nm, params);
     drake::multibody::ExternallyAppliedSpatialForce<double> force;
     force.body_index = body.index();
     force.p_BoBq_B = Eigen::Vector3d::Zero();
     force.F_Bq_W = drake::multibody::SpatialForce<double>(
-        wing.moment_sign * moments.applied_total_Nm * span_axis_W,
+        wing.moment_sign * non_translational_pitch_moment_Nm * span_axis_W,
         Eigen::Vector3d::Zero());
-    return force;
-  }
-
-  static drake::multibody::ExternallyAppliedSpatialForce<double> MakeZeroForce(
-      const drake::multibody::RigidBody<double>& body) {
-    drake::multibody::ExternallyAppliedSpatialForce<double> force;
-    force.body_index = body.index();
-    force.p_BoBq_B = Eigen::Vector3d::Zero();
-    force.F_Bq_W = drake::multibody::SpatialForce<double>(
-        Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero());
-    return force;
+    output->push_back(force);
   }
 
   const drake::multibody::MultibodyPlant<double>& plant_;
