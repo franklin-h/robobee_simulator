@@ -213,28 +213,6 @@ Verified:
 - `bazel build //apps:visualize_robobee_aeromechanical` passes.
 - `bazel run //apps:visualize_robobee_aeromechanical` ran for ~15 seconds without reproducing the NaN crash; I stopped it with Ctrl-C. 
 
-## Wing Geometry GUI
-
-[tools/wing_geometry_gui.html](/Users/franklinho/robobee_simulator/tools/wing_geometry_gui.html) is a browser-only tool for turning an exported wing OBJ mesh into the nondimensional geometry constants used by the aeromechanical model.
-
-What it does:
-- Loads one or more `.obj` files that are already in the same coordinate frame. The coordinates are treated as meters.
-- Projects the mesh into the OBJ `x-y` plane and lets you click or type the wing root location.
-- Infers the span axis from the selected root to the farthest projected vertex.
-- Slices the projected mesh at many span stations to recover the local leading edge, trailing edge, chord, normalized radius, and normalized chord distribution.
-- Computes the integrated constants used by the aeromechanical equations, including `R`, `A`, `c_bar`, `r1_hat`, `r2_hat_squared`, `F_hat`, `Y_rd_hat`, `I_xy_am_hat`, and `I_xx_am_hat`.
-- Exports either JSON for inspection/debugging or a C++ header compatible with [aeromechanical_wing_constants.h](/Users/franklinho/robobee_simulator/aeromechanical_wing_constants.h).
-
-How to use it:
-1. Open `tools/wing_geometry_gui.html` directly in a browser.
-2. Load the wing membrane OBJ file.
-3. Click the wing root on the canvas, or enter `root x` / `root y` manually.
-4. Set `x_r offset` and `y_r offset` only if the clicked root is not the pitch-axis origin.
-5. Use `Swap leading edge` if the displayed leading and trailing edges are reversed.
-6. Download or copy the generated C++ header, then use the generated values in `aeromechanical_wing_constants.h`.
-
-The tool is intended for geometry extraction only. It does not run the Drake simulation or validate the aerodynamic model; it provides the measured wing geometry constants that the simulation code consumes.
-
 ## And forsimulating at faster frequencies, 
 Updated the simulation for 100 Hz physical flapping while playing it back in slow motion.
 

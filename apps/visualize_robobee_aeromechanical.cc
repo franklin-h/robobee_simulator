@@ -480,7 +480,7 @@ int main() {
                                 "transmission_right_link_2");
 
   // constexpr double kSliderEffortLimitN = 1.0e-1;
-  constexpr double kSliderEffortLimitN = 10.0; 
+  constexpr double kSliderEffortLimitN = 1.0; 
   constexpr double kSliderKp = 800.0;
   constexpr double kSliderKd = 5.0e-3;
 
