@@ -120,9 +120,9 @@ Then, the total lift is the integral over the wing span:
 \begin{align}
     F_L &= \int_0^R \D F_L \\ 
     &= \frac{1}{2} \rho \omega_h^2 C_L(\alpha)
-    \underbrace{\int_0^R (r + x_r)^2 c(r') \D r}_{R^3\bar{c}\hat{F}}, 
+    \underbrace{\int_0^R (r + x_r)^2 c(r') \D r}_{\hat{F}}, 
 \end{align}
-where \(\hat{F}\) is the dimensionless wing-shape factor. 
+where \(\hat{F}\) is the dimensionless wing-shape factor. The integral is similarly performed for drag. 
 \begin{wrapfigure}{h!}{0.42\textwidth}
     \centering
     \includegraphics[width=\linewidth]{wing_coordinates.jpeg}
@@ -137,6 +137,89 @@ To non-dimensionalize the integral, set
     \hat{c}(\hat{r}) &= \frac{c(r')}{\bar{c}},    
 \end{align}
 where \(\bar{c}\) is the mean chord length \(\frac{A}{R}\). (\(R\) is the wing span). 
+
+Combining into a total force, we then have 
+\begin{equation}
+    \D \mathbf{F} = \D F_L \mathbf{e}_L + \D F_D \mathbf{e}_D,
+\end{equation}
+Note that \(\mathbf{e}_L = -\mathbf{e}_{{\omega}_h}\), and \(\mathbf{e}_D = -\mathbf{e}_{v_h}\).  
+
+In the wing-fixed frame, if
+\begin{equation}
+\boldsymbol{\omega}
+=
+\omega_x \mathbf e_x
++
+\omega_y \mathbf e_y
++
+\omega_z \mathbf e_z ,
+\end{equation}
+then
+\begin{equation}
+\boldsymbol{\omega}_h
+=
+\omega_y \mathbf e_y
++
+\omega_z \mathbf e_z .
+\end{equation}
+
+So
+\begin{equation}
+\mathbf e_{\omega_h}
+=
+\frac{
+\omega_y \mathbf e_y
++
+\omega_z \mathbf e_z
+}{
+\sqrt{\omega_y^2+\omega_z^2}
+}.
+\end{equation}
+
+Assuming
+\begin{equation}
+\sqrt{\omega_y^2+\omega_z^2}\neq 0 .
+\end{equation}
+
+Then for a blade element at radial distance \(r\),
+\begin{equation}
+\mathbf v_h
+=
+\boldsymbol{\omega}_h \times r\mathbf e_x .
+\end{equation}
+
+\begin{equation}
+\mathbf v_h
+=
+r\left(
+\omega_z \mathbf e_y
+-
+\omega_y \mathbf e_z
+\right).
+\end{equation}
+
+So the unit velocity direction is
+\begin{equation}
+\mathbf e_{v_h}
+=
+\frac{
+\omega_z \mathbf e_y
+-
+\omega_y \mathbf e_z
+}{
+\sqrt{\omega_y^2+\omega_z^2}
+}.
+\end{equation}
+Note that since \(x\), \(y\), and \(z\) are defined as the wing-fixed axes, we need to rotate from the hinge to the Drake wing body frame to the aero/span-chord frame. 
+
+Finally, we just need to apply each \(\D F_L\) and \(\D F_D\) to the blade's \(r_{cp}\). The formula is given by 
+\begin{equation}
+    % rcp,i​(t)=(ri​+xr​)ex​+ycp,i​(t)ey​.
+    r_{cp,i}(t) = (r_i + x_r)\mathbf{e}_x + y_{cp,i}(t)\mathbf{e}_y.
+\end{equation}
+Again, the wing-fixed axes are defined by the span, chord, and normal axes calculated in the HTML GUI. 
+
+Don't forget to rotate from the wing-fixed Drake frame to the slightly rotated aero/span-chord frame. 
 
 \subsection{Compute aerodynamic pitch moment about the hinge}
 \(M_{x,\mathrm{aero}}\) is combination of lift and drag forces, but as a moment. While the integral form given by Whitney and Wood is 

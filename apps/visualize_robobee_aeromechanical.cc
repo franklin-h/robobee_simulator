@@ -10,8 +10,10 @@
 #include <Eigen/Dense>
 
 #include "drake/geometry/drake_visualizer.h"
+#include "drake/geometry/shape_specification.h"
 #include "drake/lcm/drake_lcm.h"
 #include "drake/math/rigid_transform.h"
+#include "drake/math/rotation_matrix.h"
 #include "drake/multibody/parsing/parser.h"
 #include "drake/multibody/plant/externally_applied_spatial_force.h"
 #include "drake/multibody/plant/multibody_plant.h"
@@ -79,6 +81,24 @@ struct WingAngularHistory {
   Eigen::Vector3d omega_dot_B{Eigen::Vector3d::Zero()};
 };
 
+Eigen::Vector3d CalcAeroSpanAxisInBody(
+    const robobee::AeromechanicalWingConstants<400>& constants) {
+  const double c = std::cos(constants.span_axis_angle_rad);
+  const double s = std::sin(constants.span_axis_angle_rad);
+  return (c * Eigen::Vector3d::UnitX() + s * Eigen::Vector3d::UnitY())
+      .normalized();
+}
+
+Eigen::Vector3d CalcAeroChordAxisInBody(
+    const robobee::AeromechanicalWingConstants<400>& constants) {
+  const double c = std::cos(constants.span_axis_angle_rad);
+  const double s = std::sin(constants.span_axis_angle_rad);
+  const double chord_sign = constants.chord_axis_sign >= 0.0 ? 1.0 : -1.0;
+  return (chord_sign *
+          (-s * Eigen::Vector3d::UnitX() + c * Eigen::Vector3d::UnitY()))
+      .normalized();
+}
+
 class WingAeromechanics final : public drake::systems::LeafSystem<double> {
  public:
   explicit WingAeromechanics(const drake::multibody::MultibodyPlant<double>& plant)
@@ -86,13 +106,17 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
         plant_context_(plant.CreateDefaultContext()),
         wings_({WingAeroConfig{"hinge_left_wing",
                                 &robobee::kLeftWingAeromechanicalConstants,
-                                Eigen::Vector3d::UnitX(),
-                                Eigen::Vector3d::UnitY(),
+                                CalcAeroSpanAxisInBody(
+                                    robobee::kLeftWingAeromechanicalConstants),
+                                CalcAeroChordAxisInBody(
+                                    robobee::kLeftWingAeromechanicalConstants),
                                 Eigen::Vector3d::UnitZ(), 1.0},
                 WingAeroConfig{"hinge_right_wing",
                                 &robobee::kRightWingAeromechanicalConstants,
-                                Eigen::Vector3d::UnitX(),
-                                Eigen::Vector3d::UnitY(),
+                                CalcAeroSpanAxisInBody(
+                                    robobee::kRightWingAeromechanicalConstants),
+                                CalcAeroChordAxisInBody(
+                                    robobee::kRightWingAeromechanicalConstants),
                                 Eigen::Vector3d::UnitZ(), 1.0}}) {
     for (WingAeroConfig& wing : wings_) {
       const auto& body = plant_.GetBodyByName(wing.body_name);
@@ -207,16 +231,21 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     for (int i = 0; i < static_cast<int>(stations.size()); ++i) {
       const auto& station = stations[i];
       if (!std::isfinite(station.r_m) ||
+          !std::isfinite(station.leading_edge_q_m) ||
           !std::isfinite(station.y_hinge_to_mid_chord_hat) ||
           !std::isfinite(station.chord_m)) {
         moment_input.station_flows.push_back({});
         continue;
       }
 
+      const double r_hinge_to_station_m =
+          station.r_m + constants.span_offset_x_r_m;
+      const double y_hinge_to_mid_chord_m =
+          constants.chord_offset_y_r_m + station.leading_edge_q_m -
+          0.5 * station.chord_m;
       const Eigen::Vector3d p_BoP_B =
-          station.r_m * wing.span_axis_B +
-          station.y_hinge_to_mid_chord_hat * constants.mean_chord_cbar_m *
-              wing.chord_axis_B;
+          r_hinge_to_station_m * wing.span_axis_B +
+          y_hinge_to_mid_chord_m * wing.chord_axis_B;
       const Eigen::Vector3d p_BoP_W = R_WB * p_BoP_B;
       const Eigen::Vector3d v_P_W =
           V_WB.translational() + V_WB.rotational().cross(p_BoP_W);
@@ -348,6 +377,40 @@ void AddLoopClosureBallConstraints(
                            p_RL + kAxisPointOffset * axis_R.normalized());
 }
 
+void AddBodyFrameTriadVisual(drake::multibody::MultibodyPlant<double>* plant,
+                             const std::string& body_name,
+                             const std::string& name_prefix) {
+  constexpr double kAxisLength = 2.0e-3;
+  constexpr double kAxisRadius = 3.5e-5;
+  constexpr double kOriginRadius = 6.0e-5;
+
+  const auto& body = plant->GetBodyByName(body_name);
+  const auto add_axis =
+      [&](const std::string& suffix,
+          const drake::math::RotationMatrixd& R_BC,
+          const Eigen::Vector3d& p_BC,
+          const Eigen::Vector4d& color) {
+        plant->RegisterVisualGeometry(
+            body, drake::math::RigidTransformd(R_BC, p_BC),
+            drake::geometry::Cylinder(kAxisRadius, kAxisLength),
+            name_prefix + "_" + suffix, color);
+      };
+
+  plant->RegisterVisualGeometry(
+      body, drake::math::RigidTransformd::Identity(),
+      drake::geometry::Sphere(kOriginRadius), name_prefix + "_origin",
+      Eigen::Vector4d(1.0, 1.0, 1.0, 1.0));
+  add_axis("x", drake::math::RotationMatrixd::MakeYRotation(0.5 * kPi),
+           0.5 * kAxisLength * Eigen::Vector3d::UnitX(),
+           Eigen::Vector4d(1.0, 0.0, 0.0, 1.0));
+  add_axis("y", drake::math::RotationMatrixd::MakeXRotation(-0.5 * kPi),
+           0.5 * kAxisLength * Eigen::Vector3d::UnitY(),
+           Eigen::Vector4d(0.0, 0.8, 0.0, 1.0));
+  add_axis("z", drake::math::RotationMatrixd::Identity(),
+           0.5 * kAxisLength * Eigen::Vector3d::UnitZ(),
+           Eigen::Vector4d(0.0, 0.2, 1.0, 1.0));
+}
+
 void WriteMomentCsvHeader(std::ostream* output) {
   *output
       << "time_s,"
@@ -432,6 +495,10 @@ int main() {
       kSliderEffortLimitN);
   plant.get_mutable_joint_actuator(left_slider_actuator.index())
       .set_controller_gains({kSliderKp, kSliderKd});
+
+  // AddBodyFrameTriadVisual(&plant, "wing_membrane", "left_wing_membrane_frame");
+  // AddBodyFrameTriadVisual(&plant, "wing_membrane_1",
+  //                         "right_wing_membrane_frame");
 
   plant.Finalize();
 

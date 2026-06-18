@@ -24,7 +24,7 @@ struct AeromechanicalModelParameters {
   double hinge_width_m{2.7e-3};
   double hinge_length_m{0.10e-3};
 
-  double max_abs_applied_total_moment_Nm{2.0e-01};
+  double max_abs_applied_total_moment_Nm{2.0e-05};
 };
 
 struct BladeElementFlow {
@@ -171,9 +171,8 @@ double CalcAerodynamicPitchMoment(
         station.chord_m * dr;
     const double d_cp_hat =
         0.82 / kAeromechanicalPi * std::abs(alpha_rad) + 0.05;
-    const double y_le_m =
-        constants.y_r_hat_by_cbar * constants.mean_chord_cbar_m +
-        station.leading_edge_q_m;
+    const double y_le_m = constants.chord_offset_y_r_m +
+                          station.leading_edge_q_m;
     const double y_cp_m = y_le_m - station.chord_m * d_cp_hat;
     if (!std::isfinite(alpha_rad) || !std::isfinite(c_n) ||
         !std::isfinite(d_force_N) || !std::isfinite(y_cp_m)) {
