@@ -118,9 +118,15 @@ double ClampMoment(double moment_Nm,
 
 class WingAeromechanics final : public drake::systems::LeafSystem<double> {
  public:
-  explicit WingAeromechanics(const drake::multibody::MultibodyPlant<double>& plant)
+  WingAeromechanics(const drake::multibody::MultibodyPlant<double>& plant,
+                    double angular_acceleration_sample_period_s,
+                    double angular_acceleration_filter_time_constant_s)
       : plant_(plant),
         plant_context_(plant.CreateDefaultContext()),
+        angular_acceleration_sample_period_s_(
+            angular_acceleration_sample_period_s),
+        angular_acceleration_filter_time_constant_s_(
+            angular_acceleration_filter_time_constant_s),
         wings_({WingAeroConfig{"wing_membrane",
                                 &robobee::kLeftWingAeromechanicalConstants,
                                 CalcAeroSpanAxisInBody(
@@ -186,11 +192,27 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     }
 
     const double dt = time_s - history.time_s;
-    if (dt > 1.0e-12) {
-      history.omega_dot_B = (omega_B - history.omega_B) / dt;
-      history.omega_B = omega_B;
-      history.time_s = time_s;
+    if (dt <= 1.0e-12) {
+      return history.omega_dot_B;
     }
+
+    if (dt < angular_acceleration_sample_period_s_) {
+      return history.omega_dot_B;
+    }
+
+    const Eigen::Vector3d raw_omega_dot_B = (omega_B - history.omega_B) / dt;
+    if (!IsFinite(raw_omega_dot_B)) {
+      return history.omega_dot_B;
+    }
+
+    const double filter_alpha =
+        angular_acceleration_filter_time_constant_s_ > 0.0
+            ? dt / (angular_acceleration_filter_time_constant_s_ + dt)
+            : 1.0;
+    history.omega_dot_B +=
+        filter_alpha * (raw_omega_dot_B - history.omega_dot_B);
+    history.omega_B = omega_B;
+    history.time_s = time_s;
     return history.omega_dot_B;
   }
 
@@ -207,11 +229,7 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     plant_.SetPositionsAndVelocities(plant_context_.get(), x);
 
     output->clear();
-    int force_count = 0;
-    for (const WingAeroConfig& wing : wings_) {
-      force_count += 1 + static_cast<int>(wing.constants->blade_stations.size());
-    }
-    output->reserve(force_count);
+    output->reserve(wings_.size());
 
     for (int i = 0; i < static_cast<int>(wings_.size()); ++i) {
       AppendWingSpatialForces(wings_[i], i, context.get_time(), output);
@@ -254,6 +272,8 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     std::vector<BladeElementAppliedForce> blade_forces;
     blade_forces.reserve(stations.size());
     double total_blade_force_magnitude_N = 0.0;
+    double total_lift_N = 0.0;
+    double total_drag_N = 0.0;
 
     for (int i = 0; i < static_cast<int>(stations.size()); ++i) {
       const auto& station = stations[i];
@@ -311,10 +331,14 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
           -v_rel_in_aero_plane_W / speed_mps;
       const Eigen::Vector3d lift_axis_W =
           drag_axis_W.cross(span_axis_W).normalized();
-      const Eigen::Vector3d blade_force_W =
+      const double d_lift_N =
           dynamic_pressure_times_area *
-          (robobee::LiftCoefficient(alpha_rad, params) * lift_axis_W +
-           robobee::DragCoefficient(alpha_rad, params) * drag_axis_W);
+          robobee::LiftCoefficient(alpha_rad, params);
+      const double d_drag_N =
+          dynamic_pressure_times_area *
+          robobee::DragCoefficient(alpha_rad, params);
+      const Eigen::Vector3d blade_force_W =
+          d_lift_N * lift_axis_W + d_drag_N * drag_axis_W;
       if (!IsFinite(blade_force_W)) continue;
 
       BladeElementAppliedForce blade_force;
@@ -324,6 +348,8 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
       blade_force.force_W = blade_force_W;
       blade_forces.push_back(blade_force);
       total_blade_force_magnitude_N += blade_force_W.norm();
+      total_lift_N += d_lift_N;
+      total_drag_N += d_drag_N;
     }
 
     double force_scale = 1.0;
@@ -335,13 +361,13 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
       force_scale = params.max_abs_total_aerodynamic_force_N /
                     total_blade_force_magnitude_N;
     }
+    Eigen::Vector3d total_aero_force_W = Eigen::Vector3d::Zero();
+    Eigen::Vector3d total_aero_moment_W = Eigen::Vector3d::Zero();
     for (const BladeElementAppliedForce& blade_force : blade_forces) {
-      drake::multibody::ExternallyAppliedSpatialForce<double> force;
-      force.body_index = body.index();
-      force.p_BoBq_B = blade_force.p_BoBq_B;
-      force.F_Bq_W = drake::multibody::SpatialForce<double>(
-          Eigen::Vector3d::Zero(), force_scale * blade_force.force_W);
-      output->push_back(force);
+      const Eigen::Vector3d scaled_force_W = force_scale * blade_force.force_W;
+      total_aero_force_W += scaled_force_W;
+      total_aero_moment_W +=
+          (R_WB * blade_force.p_BoBq_B).cross(scaled_force_W);
     }
 
     const Eigen::Vector3d omega_B = R_WB.transpose() * V_WB.rotational();
@@ -359,8 +385,11 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     moment_input.omega_dot_x_rad_s2 = omega_dot_B.x();
     moment_input.omega_dot_y_rad_s2 = omega_dot_B.y();
 
-    const robobee::WingMomentComponents moments =
+    robobee::WingMomentComponents moments =
         robobee::CalcAeromechanicalMoments(constants, moment_input, params);
+    moments.lift_N = force_scale * total_lift_N;
+    moments.drag_N = force_scale * total_drag_N;
+    moments.vertical_force_N = total_aero_force_W.z();
     latest_moments_.at(wing_index) = moments;
 
     const double non_translational_pitch_moment_Nm =
@@ -369,13 +398,16 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     force.body_index = body.index();
     force.p_BoBq_B = Eigen::Vector3d::Zero();
     force.F_Bq_W = drake::multibody::SpatialForce<double>(
-        wing.moment_sign * non_translational_pitch_moment_Nm * span_axis_W,
-        Eigen::Vector3d::Zero());
+        total_aero_moment_W +
+            wing.moment_sign * non_translational_pitch_moment_Nm * span_axis_W,
+        total_aero_force_W);
     output->push_back(force);
   }
 
   const drake::multibody::MultibodyPlant<double>& plant_;
   mutable std::unique_ptr<drake::systems::Context<double>> plant_context_;
+  double angular_acceleration_sample_period_s_{};
+  double angular_acceleration_filter_time_constant_s_{};
   std::vector<WingAeroConfig> wings_;
   mutable std::vector<WingAngularHistory> angular_histories_;
   mutable std::vector<robobee::WingMomentComponents> latest_moments_;
@@ -492,10 +524,13 @@ void AddBodyFrameTriadVisual(drake::multibody::MultibodyPlant<double>* plant,
 void WriteMomentCsvHeader(std::ostream* output) {
   *output
       << "time_s,"
-      << "left_alpha_rad,left_aero_Nm,left_rot_Nm,left_added_Nm,left_hinge_Nm,"
-         "left_total_Nm,left_applied_Nm,"
-      << "right_alpha_rad,right_aero_Nm,right_rot_Nm,right_added_Nm,right_hinge_Nm,"
-         "right_total_Nm,right_applied_Nm\n";
+      << "left_alpha_rad,left_lift_N,left_drag_N,left_force_z_N,"
+         "left_aero_Nm,left_rot_Nm,"
+         "left_added_Nm,left_hinge_Nm,left_total_Nm,left_applied_Nm,"
+      << "right_alpha_rad,right_lift_N,right_drag_N,right_force_z_N,"
+         "right_aero_Nm,"
+         "right_rot_Nm,right_added_Nm,right_hinge_Nm,right_total_Nm,"
+         "right_applied_Nm\n";
 }
 
 void WriteMomentCsvRow(
@@ -509,10 +544,14 @@ void WriteMomentCsvRow(
 
   *output << std::setprecision(17) << time_s << ','
           << left.angle_of_attack_alpha_rad << ','
+          << left.lift_N << ',' << left.drag_N << ','
+          << left.vertical_force_N << ','
           << left.aerodynamic_Nm << ',' << left.rotational_damping_Nm << ','
           << left.added_mass_Nm << ',' << left.hinge_Nm << ','
           << left.total_Nm << ',' << left.applied_total_Nm << ','
           << right.angle_of_attack_alpha_rad << ','
+          << right.lift_N << ',' << right.drag_N << ','
+          << right.vertical_force_N << ','
           << right.aerodynamic_Nm << ',' << right.rotational_damping_Nm << ','
           << right.added_mass_Nm << ',' << right.hinge_Nm << ','
           << right.total_Nm << ',' << right.applied_total_Nm << '\n';
@@ -523,7 +562,28 @@ void WriteMomentCsvRow(
 int main() {
   drake::systems::DiagramBuilder<double> builder;
 
-  constexpr double kPlantTimeStep = 5e-5;
+  constexpr double kSliderAmplitude = 0.00020;  // 0.4 mm peak-to-peak.
+  constexpr double kDriveFrequencyHz = 180;
+  constexpr double kPlantStepsPerDriveCycle = 1000.0;
+  constexpr double kVisualizerSamplesPerDriveCycle = 24.0;
+  constexpr double kMomentLogSamplesPerDriveCycle = 96.0;
+  constexpr double kAngularAccelerationSamplesPerDriveCycle = 24.0;
+  constexpr double kAngularAccelerationFilterCycles = 0.05;
+  constexpr double kPlantTimeStep =
+      1.0 / (kDriveFrequencyHz * kPlantStepsPerDriveCycle);
+  constexpr double kVisualizerPublishPeriod =
+      1.0 / (kDriveFrequencyHz * kVisualizerSamplesPerDriveCycle);
+  constexpr double kMomentLogPeriod =
+      1.0 / (kDriveFrequencyHz * kMomentLogSamplesPerDriveCycle);
+  constexpr double kAngularAccelerationSamplePeriod =
+      1.0 / (kDriveFrequencyHz * kAngularAccelerationSamplesPerDriveCycle);
+  constexpr double kAngularAccelerationFilterTimeConstant =
+      kAngularAccelerationFilterCycles / kDriveFrequencyHz;
+  constexpr double kCommandPeriod = kMomentLogPeriod;
+  constexpr double kMomentLogFlushPeriod = 5.0e-2;
+  constexpr double kTargetRealtimeRate = 0.02;
+  constexpr char kMomentLogPath[] = "/tmp/aeromechanical_moments.csv";
+
   auto [plant, scene_graph] =
       drake::multibody::AddMultibodyPlantSceneGraph(&builder, kPlantTimeStep);
   plant.set_discrete_contact_approximation(
@@ -580,18 +640,14 @@ int main() {
 
   plant.Finalize();
 
-  constexpr double kSliderAmplitude = 0.00020;  // 0.4 mm peak-to-peak.
-  constexpr double kDriveFrequencyHz = 100;
-  constexpr double kCommandPeriod = kPlantTimeStep;
-  constexpr double kMomentLogPeriod = 5e-4;
-  constexpr char kMomentLogPath[] = "/tmp/aeromechanical_moments.csv";
-
   auto* slider_source =
       builder.AddSystem<SliderStrokeSource>(kSliderAmplitude, kDriveFrequencyHz);
   builder.Connect(slider_source->get_output_port(),
                   plant.get_desired_state_input_port(model_instance));
 
-  auto* wing_aero = builder.AddSystem<WingAeromechanics>(plant);
+  auto* wing_aero = builder.AddSystem<WingAeromechanics>(
+      plant, kAngularAccelerationSamplePeriod,
+      kAngularAccelerationFilterTimeConstant);
   builder.Connect(plant.get_state_output_port(),
                   wing_aero->get_input_port(0));
   builder.Connect(wing_aero->get_output_port(0),
@@ -599,13 +655,13 @@ int main() {
 
   drake::lcm::DrakeLcm lcm;
   drake::geometry::DrakeVisualizerParams visualizer_params;
-  visualizer_params.publish_period = 5e-4;
+  visualizer_params.publish_period = kVisualizerPublishPeriod;
   drake::geometry::DrakeVisualizerd::AddToBuilder(
       &builder, scene_graph, &lcm, visualizer_params);
 
   auto diagram = builder.Build();
   drake::systems::Simulator<double> simulator(*diagram);
-  simulator.set_target_realtime_rate(0.02);
+  simulator.set_target_realtime_rate(kTargetRealtimeRate);
   simulator.Initialize();
 
   std::cout << "RoboBee constrained linkage model is being simulated and "
@@ -614,6 +670,21 @@ int main() {
             << "  bazel run @drake//tools:meldis -- --open-window\n\n"
             << "Aeromechanical moments are being logged to:\n"
             << "  " << kMomentLogPath << "\n\n"
+            << "Timing:\n"
+            << "  drive frequency: " << kDriveFrequencyHz << " Hz\n"
+            << "  plant timestep: " << kPlantTimeStep << " s ("
+            << kPlantStepsPerDriveCycle << " steps/cycle)\n"
+            << "  visualizer period: " << kVisualizerPublishPeriod << " s ("
+            << kVisualizerSamplesPerDriveCycle << " samples/cycle)\n"
+            << "  moment log period: " << kMomentLogPeriod << " s ("
+            << kMomentLogSamplesPerDriveCycle << " samples/cycle)\n"
+            << "  angular acceleration sample period: "
+            << kAngularAccelerationSamplePeriod << " s ("
+            << kAngularAccelerationSamplesPerDriveCycle << " samples/cycle)\n"
+            << "  angular acceleration filter time constant: "
+            << kAngularAccelerationFilterTimeConstant << " s ("
+            << kAngularAccelerationFilterCycles << " cycles)\n"
+            << "  target realtime rate: " << kTargetRealtimeRate << "\n\n"
             << "The slider joints are driven by finite-gain joint actuators "
                "tracking a sinusoidal desired position and velocity; "
                "the transmission loops are closed with MultibodyPlant weld "
@@ -630,13 +701,17 @@ int main() {
 
   double next_time = 0.0;
   double next_moment_log_time = 0.0;
+  double next_moment_log_flush_time = kMomentLogFlushPeriod;
   while (true) {
     next_time += kCommandPeriod;
     simulator.AdvanceTo(next_time);
     if (next_time + 0.5 * kCommandPeriod >= next_moment_log_time) {
       WriteMomentCsvRow(&moment_log, next_time, wing_aero->latest_moments());
-      moment_log.flush();
       next_moment_log_time += kMomentLogPeriod;
+    }
+    if (next_time + 0.5 * kCommandPeriod >= next_moment_log_flush_time) {
+      moment_log.flush();
+      next_moment_log_flush_time += kMomentLogFlushPeriod;
     }
   }
 

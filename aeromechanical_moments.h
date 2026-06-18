@@ -25,7 +25,7 @@ struct AeromechanicalModelParameters {
   double hinge_length_m{0.10e-3};
 
   double max_abs_applied_total_moment_Nm{2.0e-05};
-  double max_abs_total_aerodynamic_force_N{1.0e-05};
+  double max_abs_total_aerodynamic_force_N{1.0e-02};
 };
 
 struct BladeElementFlow {
@@ -45,6 +45,9 @@ struct WingMomentInput {
 
 struct WingMomentComponents {
   double angle_of_attack_alpha_rad{};
+  double lift_N{};
+  double drag_N{};
+  double vertical_force_N{};
   double aerodynamic_Nm{};
   double rotational_damping_Nm{};
   double added_mass_Nm{};
