@@ -20,12 +20,12 @@ struct AeromechanicalModelParameters {
   double rotational_damping_coefficient{2.0};
 
   double kapton_youngs_modulus_pa{2.5e9};
-  double hinge_thickness_m{0.025e-3};
+  double hinge_thickness_m{0.0125e-3};
   double hinge_width_m{2.7e-3};
   double hinge_length_m{0.10e-3};
 
   double max_abs_applied_total_moment_Nm{2.0e-05};
-  double max_abs_total_aerodynamic_force_N{1.0e-02};
+  double max_abs_total_aerodynamic_force_N{1.0e-01};
 };
 
 struct BladeElementFlow {
@@ -55,6 +55,10 @@ struct WingMomentComponents {
   double total_Nm{};
   double applied_total_Nm{};
 };
+
+inline double AngleOfAttackFromFlow(const BladeElementFlow& flow) {
+  return std::atan2(flow.v_normal_mps, flow.v_chord_mps);
+}
 
 inline double Sign(double value) {
   if (value > 0.0) return 1.0;
@@ -124,8 +128,7 @@ double CalcMeanAngleOfAttack(
         flow.v_normal_mps * flow.v_normal_mps;
     if (!std::isfinite(speed_squared) || speed_squared <= 1.0e-16) continue;
 
-    const double alpha_rad =
-        std::atan2(-flow.v_normal_mps, -flow.v_chord_mps);
+    const double alpha_rad = AngleOfAttackFromFlow(flow);
     if (!std::isfinite(alpha_rad)) continue;
 
     const double weight = speed_squared * station.chord_m * dr;
@@ -164,8 +167,7 @@ double CalcAerodynamicPitchMoment(
         flow.v_normal_mps * flow.v_normal_mps;
     if (!std::isfinite(speed_squared) || speed_squared <= 1.0e-16) continue;
 
-    const double alpha_rad =
-        std::atan2(-flow.v_normal_mps, -flow.v_chord_mps);
+    const double alpha_rad = AngleOfAttackFromFlow(flow);
     const double alpha_abs_rad = std::abs(alpha_rad);
     // The paper's moment expression carries the aerodynamic direction in
     // sgn(alpha), so C_N and d_force_N are magnitudes here.
@@ -246,9 +248,8 @@ WingMomentComponents CalcAeromechanicalMoments(
       CalcRotationalDampingMoment(constants, input, params);
   moments.added_mass_Nm = CalcAddedMassMoment(constants, input, params);
   moments.hinge_Nm = CalcHingeRestoringMoment(input, params);
-  moments.total_Nm = moments.aerodynamic_Nm*0 + moments.rotational_damping_Nm +
-                     moments.added_mass_Nm + moments.hinge_Nm*0.25;
-  // moments.total_Nm = moments.hinge_Nm*20 + moments.aerodynamic_Nm;
+  moments.total_Nm = moments.aerodynamic_Nm + moments.rotational_damping_Nm +
+                     moments.added_mass_Nm + moments.hinge_Nm;
   moments.applied_total_Nm = moments.total_Nm;
   if (std::isfinite(params.max_abs_applied_total_moment_Nm)) {
     moments.applied_total_Nm =

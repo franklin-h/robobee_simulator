@@ -72,6 +72,7 @@ struct WingAeroConfig {
   Eigen::Vector3d chord_axis_B;
   Eigen::Vector3d normal_axis_B;
   double moment_sign{1.0};
+  Eigen::Matrix3d X_AB{Eigen::Matrix3d::Identity()};
   Eigen::Vector3d reference_chord_axis_W{Eigen::Vector3d::Zero()};
 };
 
@@ -103,6 +104,16 @@ Eigen::Vector3d CalcAeroChordAxisInBody(
   return (chord_sign *
           (-s * Eigen::Vector3d::UnitX() + c * Eigen::Vector3d::UnitY()))
       .normalized();
+}
+
+Eigen::Matrix3d CalcBodyToAeroComponentMatrix(
+    const Eigen::Vector3d& span_axis_B, const Eigen::Vector3d& chord_axis_B,
+    const Eigen::Vector3d& normal_axis_B) {
+  Eigen::Matrix3d X_AB;
+  X_AB.row(0) = span_axis_B.transpose();
+  X_AB.row(1) = chord_axis_B.transpose();
+  X_AB.row(2) = normal_axis_B.transpose();
+  return X_AB;
 }
 
 double ClampMoment(double moment_Nm,
@@ -145,6 +156,8 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
       const auto& body = plant_.GetBodyByName(wing.body_name);
       const Eigen::Matrix3d R_WB0 =
           body.EvalPoseInWorld(*plant_context_).rotation().matrix();
+      wing.X_AB = CalcBodyToAeroComponentMatrix(
+          wing.span_axis_B, wing.chord_axis_B, wing.normal_axis_B);
       wing.reference_chord_axis_W = (R_WB0 * wing.chord_axis_B).normalized();
     }
     angular_histories_.resize(wings_.size());
@@ -264,6 +277,12 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
         !IsFinite(normal_axis_W)) {
       return;
     }
+    const Eigen::Vector3d omega_h_W =
+        V_WB.rotational() -
+        V_WB.rotational().dot(span_axis_W) * span_axis_W;
+    if (!IsFinite(omega_h_W)) {
+      return;
+    }
 
     const Eigen::Vector3d wind_W = Eigen::Vector3d::Zero();
     const auto& stations = constants.blade_stations;
@@ -274,6 +293,9 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     double total_blade_force_magnitude_N = 0.0;
     double total_lift_N = 0.0;
     double total_drag_N = 0.0;
+    double weighted_alpha_sin = 0.0;
+    double weighted_alpha_cos = 0.0;
+    double total_alpha_weight = 0.0;
 
     for (int i = 0; i < static_cast<int>(stations.size()); ++i) {
       const auto& station = stations[i];
@@ -294,7 +316,7 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
               wing.chord_axis_B;
       const Eigen::Vector3d p_BoP_W = R_WB * p_BoP_B;
       const Eigen::Vector3d v_P_W =
-          V_WB.translational() + V_WB.rotational().cross(p_BoP_W);
+          V_WB.translational() + omega_h_W.cross(p_BoP_W);
       const Eigen::Vector3d v_rel_W = v_P_W - wind_W;
       if (!IsFinite(v_rel_W)) {
         moment_input.station_flows.push_back({});
@@ -311,8 +333,12 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
       }
 
       const double speed_mps = std::sqrt(speed_squared);
-      const double alpha_rad = std::atan2(-v_normal_mps, -v_chord_mps);
+      const double alpha_rad = std::atan2(v_normal_mps, v_chord_mps);
       if (!std::isfinite(alpha_rad)) continue;
+      const double alpha_weight = speed_squared * station.chord_m * dr;
+      weighted_alpha_sin += alpha_weight * std::sin(alpha_rad);
+      weighted_alpha_cos += alpha_weight * std::cos(alpha_rad);
+      total_alpha_weight += alpha_weight;
 
       const double d_cp_hat =
           0.82 / robobee::kAeromechanicalPi * std::abs(alpha_rad) + 0.05;
@@ -330,7 +356,7 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
       const Eigen::Vector3d drag_axis_W =
           -v_rel_in_aero_plane_W / speed_mps;
       const Eigen::Vector3d lift_axis_W =
-          drag_axis_W.cross(span_axis_W).normalized();
+          span_axis_W.cross(drag_axis_W).normalized();
       const double d_lift_N =
           dynamic_pressure_times_area *
           robobee::LiftCoefficient(alpha_rad, params);
@@ -379,21 +405,33 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
 
     moment_input.pitch_angle_psi_rad =
         CalcPitchAngleAboutSpan(wing, span_axis_W, chord_axis_W);
-    moment_input.omega_x_rad_s = omega_B.x();
-    moment_input.omega_y_rad_s = omega_B.y();
-    moment_input.omega_z_rad_s = omega_B.z();
-    moment_input.omega_dot_x_rad_s2 = omega_dot_B.x();
-    moment_input.omega_dot_y_rad_s2 = omega_dot_B.y();
+    const Eigen::Vector3d omega_A = wing.X_AB * omega_B;
+    const Eigen::Vector3d omega_dot_A = wing.X_AB * omega_dot_B;
+    moment_input.omega_x_rad_s = omega_A.x();
+    moment_input.omega_y_rad_s = omega_A.y();
+    moment_input.omega_z_rad_s = omega_A.z();
+    moment_input.omega_dot_x_rad_s2 = omega_dot_A.x();
+    moment_input.omega_dot_y_rad_s2 = omega_dot_A.y();
 
     robobee::WingMomentComponents moments =
         robobee::CalcAeromechanicalMoments(constants, moment_input, params);
+    if (total_alpha_weight > 0.0) {
+      moments.angle_of_attack_alpha_rad =
+          std::atan2(weighted_alpha_sin, weighted_alpha_cos);
+    }
     moments.lift_N = force_scale * total_lift_N;
     moments.drag_N = force_scale * total_drag_N;
     moments.vertical_force_N = total_aero_force_W.z();
-    latest_moments_.at(wing_index) = moments;
-
     const double non_translational_pitch_moment_Nm =
         ClampMoment(moments.total_Nm - moments.aerodynamic_Nm, params);
+    moments.applied_total_Nm =
+        force_scale * moments.aerodynamic_Nm +
+        non_translational_pitch_moment_Nm;
+    if (!std::isfinite(moments.applied_total_Nm)) {
+      moments.applied_total_Nm = 0.0;
+    }
+    latest_moments_.at(wing_index) = moments;
+
     drake::multibody::ExternallyAppliedSpatialForce<double> force;
     force.body_index = body.index();
     force.p_BoBq_B = Eigen::Vector3d::Zero();
@@ -562,12 +600,13 @@ void WriteMomentCsvRow(
 int main() {
   drake::systems::DiagramBuilder<double> builder;
 
-  constexpr double kSliderAmplitude = 0.00020;  // 0.4 mm peak-to-peak.
+  constexpr double kSliderAmplitude = 0.00030;  // 0.6 mm peak-to-peak.
   constexpr double kDriveFrequencyHz = 180;
-  constexpr double kPlantStepsPerDriveCycle = 1000.0;
-  constexpr double kVisualizerSamplesPerDriveCycle = 24.0;
-  constexpr double kMomentLogSamplesPerDriveCycle = 96.0;
-  constexpr double kAngularAccelerationSamplesPerDriveCycle = 24.0;
+  constexpr double kPlantStepsPerDriveCycle = 60.0;
+  constexpr double kVisualizerSamplesPerDriveCycle = kPlantStepsPerDriveCycle;
+  constexpr double kMomentLogSamplesPerDriveCycle = kPlantStepsPerDriveCycle;
+  constexpr double kAngularAccelerationSamplesPerDriveCycle =
+      kPlantStepsPerDriveCycle;
   constexpr double kAngularAccelerationFilterCycles = 0.05;
   constexpr double kPlantTimeStep =
       1.0 / (kDriveFrequencyHz * kPlantStepsPerDriveCycle);
@@ -579,7 +618,7 @@ int main() {
       1.0 / (kDriveFrequencyHz * kAngularAccelerationSamplesPerDriveCycle);
   constexpr double kAngularAccelerationFilterTimeConstant =
       kAngularAccelerationFilterCycles / kDriveFrequencyHz;
-  constexpr double kCommandPeriod = kMomentLogPeriod;
+  constexpr double kCommandPeriod = kPlantTimeStep;
   constexpr double kMomentLogFlushPeriod = 5.0e-2;
   constexpr double kTargetRealtimeRate = 0.02;
   constexpr char kMomentLogPath[] = "/tmp/aeromechanical_moments.csv";
