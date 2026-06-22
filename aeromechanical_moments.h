@@ -10,8 +10,16 @@
 
 namespace robobee {
 
+// Implements the scalar wing-pitch moment model documented in
+// README/aeromechanical_model.tex. The comments below cite the corresponding
+// LaTeX subsections so the code can be checked against the derivation.
 constexpr double kAeromechanicalPi = 3.14159265358979323846;
 
+// Model constants used by the equations in the .tex file:
+// - "Compute Aerodynamic Coefficients" defines rho, C_L,max, C_D,max, C_D,0.
+// - "Compute aerodynamic damping moment" uses C_rd.
+// - "Compute passive hinge restoring moment" uses the Kapton hinge geometry.
+// The max_abs_* values are simulator guards rather than terms from the paper.
 struct AeromechanicalModelParameters {
   double air_density_kg_m3{1.225};
   double cl_max{1.8};
@@ -28,21 +36,37 @@ struct AeromechanicalModelParameters {
   double max_abs_total_aerodynamic_force_N{1.0e-01};
 };
 
+// Local flow at one blade station, resolved in the wing chord-normal plane.
+// This is the code form of README/aeromechanical_model.tex, subsection
+// "Compute Aerodynamic Coefficients", where alpha = atan2(v_normal, v_chord).
 struct BladeElementFlow {
   double v_chord_mps{};
   double v_normal_mps{};
 };
 
+// Inputs to the scalar pitch-moment model. The angular components are expressed
+// in the wing-fixed aerodynamic basis from the .tex "Current Kinematic State"
+// subsection and Appendix "Change of Basis Derivation"
+// (sec:change_of_basis_derivation).
 struct WingMomentInput {
+  // One flow sample per blade station for the alpha, C_N, and aerodynamic
+  // pitch-moment calculations.
   std::vector<BladeElementFlow> station_flows;
+  // Passive pitch angle psi in M_x,hinge = -kappa_H psi.
   double pitch_angle_psi_rad{};
+  // Wing-fixed angular velocity components omega_x, omega_y, omega_z.
   double omega_x_rad_s{};
   double omega_y_rad_s{};
   double omega_z_rad_s{};
+  // Angular acceleration components required by "Compute added mass effect
+  // moment". Only x and y enter the reduced M_x,am expression.
   double omega_dot_x_rad_s2{};
   double omega_dot_y_rad_s2{};
 };
 
+// Output terms mirror the moment decomposition in README/aeromechanical_model.tex
+// subsection "Integration":
+// M_total = M_aero + M_rot + M_added + M_hinge.
 struct WingMomentComponents {
   double angle_of_attack_alpha_rad{};
   double lift_N{};
@@ -56,33 +80,46 @@ struct WingMomentComponents {
   double applied_total_Nm{};
 };
 
+// README/aeromechanical_model.tex, "Compute Aerodynamic Coefficients":
+// alpha = atan2(v_normal, v_chord).
 inline double AngleOfAttackFromFlow(const BladeElementFlow& flow) {
   return std::atan2(flow.v_normal_mps, flow.v_chord_mps);
 }
 
+// Used for the sign convention in "Compute aerodynamic pitch moment about the
+// hinge", where F_N = -sgn(alpha) F_N e_z.
 inline double Sign(double value) {
   if (value > 0.0) return 1.0;
   if (value < 0.0) return -1.0;
   return 0.0;
 }
 
+// README/aeromechanical_model.tex, "Compute Aerodynamic Coefficients":
+// C_L(alpha) = C_L,max sin(2 alpha).
 inline double LiftCoefficient(double alpha_rad,
                               const AeromechanicalModelParameters& params) {
   return params.cl_max * std::sin(2.0 * alpha_rad);
 }
 
+// README/aeromechanical_model.tex, "Compute Aerodynamic Coefficients":
+// C_D(alpha) = (C_D,max + C_D,0)/2 -
+//              (C_D,max - C_D,0) cos(2 alpha)/2.
 inline double DragCoefficient(double alpha_rad,
                               const AeromechanicalModelParameters& params) {
   return 0.5 * (params.cd_max + params.cd_0) -
          0.5 * (params.cd_max - params.cd_0) * std::cos(2.0 * alpha_rad);
 }
 
+// README/aeromechanical_model.tex, "Compute Aerodynamic Coefficients":
+// C_N = C_L cos(alpha) + C_D sin(alpha).
 inline double NormalForceCoefficient(
     double alpha_rad, const AeromechanicalModelParameters& params) {
   return LiftCoefficient(alpha_rad, params) * std::cos(alpha_rad) +
          DragCoefficient(alpha_rad, params) * std::sin(alpha_rad);
 }
 
+// README/aeromechanical_model.tex, "Compute passive hinge restoring moment":
+// kappa_H = E_h t_h^3 w_h / (12 L_h).
 inline double HingeTorsionalStiffness(
     const AeromechanicalModelParameters& params) {
   return params.kapton_youngs_modulus_pa *
@@ -90,6 +127,10 @@ inline double HingeTorsionalStiffness(
          (12.0 * params.hinge_length_m);
 }
 
+// Discrete blade-station width Delta r_i used by the blade-element sums in
+// "Compute blade-element lift and drag" and "Compute aerodynamic pitch moment
+// about the hinge". Interior stations use centered widths; endpoints get half
+// of the neighboring interval.
 template <std::size_t NumStations>
 double StationWidth(const AeromechanicalWingConstants<NumStations>& constants,
                     int index) {
@@ -102,6 +143,10 @@ double StationWidth(const AeromechanicalWingConstants<NumStations>& constants,
   return 0.5 * (stations[index + 1].r_m - stations[index - 1].r_m);
 }
 
+// Computes the representative alpha used for logging. It follows the
+// "Computing alpha" subsubsection, but averages station angles with weights
+// proportional to V_i^2 c_i Delta r_i from eq:differential_lift_drag so the
+// reported value reflects the strips doing most of the aerodynamic work.
 template <std::size_t NumStations>
 double CalcMeanAngleOfAttack(
     const AeromechanicalWingConstants<NumStations>& constants,
@@ -140,6 +185,13 @@ double CalcMeanAngleOfAttack(
   return std::isfinite(alpha_rad) ? alpha_rad : 0.0;
 }
 
+// README/aeromechanical_model.tex, "Compute aerodynamic pitch moment about the
+// hinge": implements the discrete form
+//   M_x,aero ~= -sum_i sgn(alpha_i) y_cp,i
+//                    0.5 rho V_i^2 C_N(alpha_i) c_i Delta r_i.
+// The center-of-pressure relation y_cp = y_r + y_LE - c d_cp_hat and
+// d_cp_hat = 0.82 |alpha| / pi + 0.05 are implemented below. The lift/drag
+// source term comes from eq:differential_lift_drag.
 template <std::size_t NumStations>
 double CalcAerodynamicPitchMoment(
     const AeromechanicalWingConstants<NumStations>& constants,
@@ -180,7 +232,7 @@ double CalcAerodynamicPitchMoment(
     const double y_le_m =
         constants.y_r_hat_by_cbar * constants.mean_chord_cbar_m +
         station.leading_edge_q_m;
-    const double y_cp_m = y_le_m - station.chord_m * d_cp_hat;
+    const double y_cp_m = y_le_m - station.chord_m * d_cp_hat; // center of pressure 
     if (!std::isfinite(alpha_rad) || !std::isfinite(c_n) ||
         !std::isfinite(d_force_N) || !std::isfinite(y_cp_m)) {
       continue;
@@ -192,6 +244,8 @@ double CalcAerodynamicPitchMoment(
   return std::isfinite(moment_Nm) ? moment_Nm : 0.0;
 }
 
+// README/aeromechanical_model.tex, "Compute aerodynamic damping moment":
+// M_x,rd = -0.5 rho omega_x |omega_x| C_rd cbar^4 R Y_hat_rd.
 template <std::size_t NumStations>
 double CalcRotationalDampingMoment(
     const AeromechanicalWingConstants<NumStations>& constants,
@@ -205,6 +259,11 @@ double CalcRotationalDampingMoment(
   return std::isfinite(moment_Nm) ? moment_Nm : 0.0;
 }
 
+// README/aeromechanical_model.tex, "Compute added mass effect moment":
+// Implements the reduced M_x,am expression using the precomputed dimensionless
+// integrals I_hat_xy,am and I_hat_xx,am from aeromechanical_wing_constants.h.
+// The omega components are in the wing-fixed basis from Appendix
+// sec:change_of_basis_derivation.
 template <std::size_t NumStations>
 double CalcAddedMassMoment(
     const AeromechanicalWingConstants<NumStations>& constants,
@@ -226,6 +285,8 @@ double CalcAddedMassMoment(
   return std::isfinite(moment_Nm) ? moment_Nm : 0.0;
 }
 
+// README/aeromechanical_model.tex, "Compute passive hinge restoring moment":
+// M_x,hinge = -kappa_H psi.
 inline double CalcHingeRestoringMoment(
     const WingMomentInput& input,
     const AeromechanicalModelParameters& params) {
@@ -234,6 +295,11 @@ inline double CalcHingeRestoringMoment(
   return std::isfinite(moment_Nm) ? moment_Nm : 0.0;
 }
 
+// Aggregates the implemented terms from README/aeromechanical_model.tex,
+// subsection "Integration":
+//   M_total = M_aero + M_rot + M_added + M_hinge.
+// The full pitch-acceleration integration equation in that subsection is not
+// solved here; the simulator applies this total moment to Drake instead.
 template <std::size_t NumStations>
 WingMomentComponents CalcAeromechanicalMoments(
     const AeromechanicalWingConstants<NumStations>& constants,

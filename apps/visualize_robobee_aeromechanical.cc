@@ -16,6 +16,7 @@
 #include "drake/math/rigid_transform.h"
 #include "drake/math/rotation_matrix.h"
 #include "drake/multibody/parsing/parser.h"
+#include "drake/multibody/plant/coulomb_friction.h"
 #include "drake/multibody/plant/externally_applied_spatial_force.h"
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/multibody/tree/joint_actuator.h"
@@ -29,16 +30,29 @@
 
 namespace {
 
+// This executable builds a Drake diagram for the RoboBee assembly, drives the
+// two slider joints with a sinusoidal stroke command, applies custom
+// aeromechanical wing loads, publishes geometry to Meldis, and writes the
+// per-wing moment breakdown to a CSV file.
 constexpr char kPackageName[] = "robobee_assembly";
 constexpr char kPackagePath[] = "models/robobee_assembly";
 constexpr char kAssemblyUrl[] =
     "package://robobee_assembly/urdf/robobee_assembly.urdf";
 constexpr double kPi = 3.14159265358979323846;
 
-/* 
-TODO: Have a GUI interface with simulation parameters for a section. And also a section (placeholder for now) which will have robobee parameters. 
-*/
+#ifdef ROBOBEE_FREE_FLIGHT
+constexpr bool kFreeFlight = true;
+#else
+constexpr bool kFreeFlight = false;
+#endif
 
+// TODO: Add a GUI for simulation parameters and a placeholder section for
+// RoboBee parameters.
+
+// Small Drake source system that produces the desired state vector expected by
+// the plant's joint PD controllers: [q_slider_1, q_slider_2, v_slider_1,
+// v_slider_2]. Both sliders receive the same sinusoidal command so the linkage
+// motion is driven from the two linear actuators.
 class SliderStrokeSource final : public drake::systems::LeafSystem<double> {
  public:
   SliderStrokeSource(double stroke_amplitude, double drive_frequency_hz)
@@ -65,17 +79,31 @@ class SliderStrokeSource final : public drake::systems::LeafSystem<double> {
   double drive_omega_{};
 };
 
+// Static information needed to interpret one wing body's kinematics in the
+// aerodynamic coordinate system used by aeromechanical_moments.h.
 struct WingAeroConfig {
+  // Body name in the parsed URDF.
   std::string body_name;
+  // Per-wing geometric constants and blade stations.
   const robobee::AeromechanicalWingConstants<400>* constants{};
+  // Unit axes expressed in the Drake body frame B. The aerodynamic frame A uses
+  // x = span, y = chord, z = normal.
   Eigen::Vector3d span_axis_B;
   Eigen::Vector3d chord_axis_B;
   Eigen::Vector3d normal_axis_B;
+  // Sign convention for the scalar pitch moment applied about the span axis.
   double moment_sign{1.0};
+  // Maps angular velocity/acceleration components from body frame B into the
+  // aerodynamic component frame A.
   Eigen::Matrix3d X_AB{Eigen::Matrix3d::Identity()};
+  // Initial world-frame chord direction. This is the zero-pitch reference used
+  // to compute hinge restoring moment during the simulation.
   Eigen::Vector3d reference_chord_axis_W{Eigen::Vector3d::Zero()};
 };
 
+// History needed to estimate angular acceleration from consecutive angular
+// velocity samples. Drake gives angular velocity directly, while the added-mass
+// model also needs angular acceleration.
 struct WingAngularHistory {
   bool initialized{false};
   double time_s{};
@@ -83,11 +111,16 @@ struct WingAngularHistory {
   Eigen::Vector3d omega_dot_B{Eigen::Vector3d::Zero()};
 };
 
+// A blade element force is accumulated at a point fixed in the wing body frame.
+// It is resolved in body axes until the final conversion required by Drake's
+// ExternallyAppliedSpatialForce API.
 struct BladeElementAppliedForce {
   Eigen::Vector3d p_BoBq_B{Eigen::Vector3d::Zero()};
-  Eigen::Vector3d force_W{Eigen::Vector3d::Zero()};
+  Eigen::Vector3d force_B{Eigen::Vector3d::Zero()};
 };
 
+// The blade-station data defines the span axis angle in the body xy-plane.
+// Convert it to a normalized body-frame unit vector.
 Eigen::Vector3d CalcAeroSpanAxisInBody(
     const robobee::AeromechanicalWingConstants<400>& constants) {
   const double c = std::cos(constants.span_axis_angle_rad);
@@ -96,6 +129,8 @@ Eigen::Vector3d CalcAeroSpanAxisInBody(
       .normalized();
 }
 
+// The chord direction is perpendicular to span in the body xy-plane. The left
+// and right wings can use opposite chord signs while sharing the same helper.
 Eigen::Vector3d CalcAeroChordAxisInBody(
     const robobee::AeromechanicalWingConstants<400>& constants) {
   const double c = std::cos(constants.span_axis_angle_rad);
@@ -106,6 +141,8 @@ Eigen::Vector3d CalcAeroChordAxisInBody(
       .normalized();
 }
 
+// Build a component transform: multiplying X_AB by a vector expressed in B
+// returns the scalar components along span, chord, and normal.
 Eigen::Matrix3d CalcBodyToAeroComponentMatrix(
     const Eigen::Vector3d& span_axis_B, const Eigen::Vector3d& chord_axis_B,
     const Eigen::Vector3d& normal_axis_B) {
@@ -116,6 +153,9 @@ Eigen::Matrix3d CalcBodyToAeroComponentMatrix(
   return X_AB;
 }
 
+// Guard the applied scalar pitch moment against invalid values and optional
+// model limits. This prevents a single bad aerodynamic sample from destabilizing
+// the multibody simulation.
 double ClampMoment(double moment_Nm,
                    const robobee::AeromechanicalModelParameters& params) {
   if (!std::isfinite(moment_Nm)) return 0.0;
@@ -127,6 +167,10 @@ double ClampMoment(double moment_Nm,
   return std::min(std::max(moment_Nm, -limit), limit);
 }
 
+// Custom Drake system that reads the MultibodyPlant state and outputs one
+// ExternallyAppliedSpatialForce per wing. It performs a blade-element lift/drag
+// calculation in body-fixed aerodynamic axes and adds the non-translational
+// pitch moments from the aeromechanical model.
 class WingAeromechanics final : public drake::systems::LeafSystem<double> {
  public:
   WingAeromechanics(const drake::multibody::MultibodyPlant<double>& plant,
@@ -152,6 +196,8 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
                                 CalcAeroChordAxisInBody(
                                     robobee::kRightWingAeromechanicalConstants),
                                 Eigen::Vector3d::UnitZ(), 1.0}}) {
+    // Cache the aerodynamic component transform and the initial chord direction
+    // after the plant has loaded its default model configuration.
     for (WingAeroConfig& wing : wings_) {
       const auto& body = plant_.GetBodyByName(wing.body_name);
       const Eigen::Matrix3d R_WB0 =
@@ -179,6 +225,9 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
   static double CalcPitchAngleAboutSpan(
       const WingAeroConfig& wing, const Eigen::Vector3d& span_axis_W,
       const Eigen::Vector3d& chord_axis_W) {
+    // Remove any component along the current span axis, then compare the
+    // projected initial and current chord directions with atan2 for a signed
+    // rotation about span.
     const Eigen::Vector3d reference_chord_W =
         wing.reference_chord_axis_W -
         wing.reference_chord_axis_W.dot(span_axis_W) * span_axis_W;
@@ -196,6 +245,9 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
   Eigen::Vector3d EstimateAngularAccelerationInBody(
       int wing_index, double time_s, const Eigen::Vector3d& omega_B) const {
     WingAngularHistory& history = angular_histories_.at(wing_index);
+    // First sample establishes the previous angular velocity. A zero
+    // acceleration estimate is preferable to differencing against uninitialized
+    // data.
     if (!history.initialized) {
       history.initialized = true;
       history.time_s = time_s;
@@ -213,6 +265,9 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
       return history.omega_dot_B;
     }
 
+    // Use a finite difference followed by a first-order low-pass filter. The
+    // filter reduces numerical noise that would otherwise appear in the
+    // added-mass moment.
     const Eigen::Vector3d raw_omega_dot_B = (omega_B - history.omega_B) / dt;
     if (!IsFinite(raw_omega_dot_B)) {
       return history.omega_dot_B;
@@ -233,6 +288,8 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
       const drake::systems::Context<double>& context,
       std::vector<drake::multibody::ExternallyAppliedSpatialForce<double>>*
           output) const {
+    // Mirror the live plant state into this system's private plant context so
+    // body poses and velocities can be evaluated inside an output callback.
     const Eigen::VectorXd x =
         this->get_input_port(0).Eval(context);
     if (!x.array().isFinite().all()) {
@@ -258,6 +315,8 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     latest_moments_.at(wing_index) = {};
     const robobee::AeromechanicalModelParameters params;
 
+    // Evaluate wing pose and spatial velocity in world frame W. Bad numeric
+    // values are skipped instead of forwarded into the force input port.
     const drake::math::RigidTransformd& X_WB =
         body.EvalPoseInWorld(*plant_context_);
     const auto& V_WB = body.EvalSpatialVelocityInWorld(*plant_context_);
@@ -267,6 +326,9 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     }
 
     const Eigen::Matrix3d R_WB = X_WB.rotation().matrix();
+    const Eigen::Matrix3d R_BW = R_WB.transpose();
+    // Convert only the quantities Drake gives in world coordinates. The
+    // aerodynamic force model below is resolved in body-fixed wing axes.
     const Eigen::Vector3d span_axis_W =
         (R_WB * wing.span_axis_B).normalized();
     const Eigen::Vector3d chord_axis_W =
@@ -286,6 +348,9 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
 
     const Eigen::Vector3d wind_W = Eigen::Vector3d::Zero();
     const auto& stations = constants.blade_stations;
+    // moment_input.station_flows feeds the analytic moment model, while
+    // blade_forces stores the actual distributed translational forces applied to
+    // the Drake plant.
     robobee::WingMomentInput moment_input;
     moment_input.station_flows.reserve(stations.size());
     std::vector<BladeElementAppliedForce> blade_forces;
@@ -297,6 +362,8 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     double weighted_alpha_cos = 0.0;
     double total_alpha_weight = 0.0;
 
+    // Integrate lift and drag over the blade stations. Each station represents
+    // a spanwise strip with width dr and chord length station.chord_m.
     for (int i = 0; i < static_cast<int>(stations.size()); ++i) {
       const auto& station = stations[i];
       const double dr = robobee::StationWidth(constants, i);
@@ -310,6 +377,9 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
       }
 
       const double x_r_m = constants.x_r_hat_by_R * constants.span_R_m;
+      // Evaluate the velocity at the station mid-chord. The hinge-parallel
+      // angular velocity component is removed so the local flow is driven by the
+      // wing pitching/flapping motion relevant to the aerodynamic section.
       const Eigen::Vector3d p_BoP_B =
           (station.r_m + x_r_m) * wing.span_axis_B +
           station.y_hinge_to_mid_chord_hat * constants.mean_chord_cbar_m *
@@ -322,8 +392,13 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
         moment_input.station_flows.push_back({});
         continue;
       }
-      const double v_chord_mps = v_rel_W.dot(chord_axis_W);
-      const double v_normal_mps = v_rel_W.dot(normal_axis_W);
+      const Eigen::Vector3d v_rel_B = R_BW * v_rel_W;
+      if (!IsFinite(v_rel_B)) {
+        moment_input.station_flows.push_back({});
+        continue;
+      }
+      const double v_chord_mps = v_rel_B.dot(wing.chord_axis_B);
+      const double v_normal_mps = v_rel_B.dot(wing.normal_axis_B);
       moment_input.station_flows.push_back({v_chord_mps, v_normal_mps});
 
       const double speed_squared =
@@ -335,6 +410,8 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
       const double speed_mps = std::sqrt(speed_squared);
       const double alpha_rad = std::atan2(v_normal_mps, v_chord_mps);
       if (!std::isfinite(alpha_rad)) continue;
+      // Circular averaging keeps the reported mean angle well behaved near
+      // +/-pi, and weighting by dynamic-pressure area emphasizes active strips.
       const double alpha_weight = speed_squared * station.chord_m * dr;
       weighted_alpha_sin += alpha_weight * std::sin(alpha_rad);
       weighted_alpha_cos += alpha_weight * std::cos(alpha_rad);
@@ -348,36 +425,43 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
       const double y_cp_m = y_le_m - station.chord_m * d_cp_hat;
       if (!std::isfinite(y_cp_m)) continue;
 
+      // Resolve the sectional force into a drag component opposite relative
+      // motion and a lift component perpendicular to drag within the local
+      // chord-normal plane.
       const double dynamic_pressure_times_area =
           0.5 * params.air_density_kg_m3 * speed_squared * station.chord_m *
           dr;
-      const Eigen::Vector3d v_rel_in_aero_plane_W =
-          v_chord_mps * chord_axis_W + v_normal_mps * normal_axis_W;
-      const Eigen::Vector3d drag_axis_W =
-          -v_rel_in_aero_plane_W / speed_mps;
-      const Eigen::Vector3d lift_axis_W =
-          span_axis_W.cross(drag_axis_W).normalized();
+      const Eigen::Vector3d v_rel_in_aero_plane_B =
+          v_chord_mps * wing.chord_axis_B + v_normal_mps * wing.normal_axis_B;
+      const Eigen::Vector3d drag_axis_B =
+          -v_rel_in_aero_plane_B / speed_mps;
+      const Eigen::Vector3d lift_axis_B =
+          wing.span_axis_B.cross(drag_axis_B).normalized();
       const double d_lift_N =
           dynamic_pressure_times_area *
           robobee::LiftCoefficient(alpha_rad, params);
       const double d_drag_N =
           dynamic_pressure_times_area *
           robobee::DragCoefficient(alpha_rad, params);
-      const Eigen::Vector3d blade_force_W =
-          d_lift_N * lift_axis_W + d_drag_N * drag_axis_W;
-      if (!IsFinite(blade_force_W)) continue;
+      const Eigen::Vector3d blade_force_B =
+          d_lift_N * lift_axis_B + d_drag_N * drag_axis_B;
+      if (!IsFinite(blade_force_B)) continue;
 
       BladeElementAppliedForce blade_force;
+      // Apply the strip force at the estimated center of pressure rather than
+      // the mid-chord point used for local velocity sampling.
       blade_force.p_BoBq_B =
           (station.r_m + x_r_m) * wing.span_axis_B +
           y_cp_m * wing.chord_axis_B;
-      blade_force.force_W = blade_force_W;
+      blade_force.force_B = blade_force_B;
       blade_forces.push_back(blade_force);
-      total_blade_force_magnitude_N += blade_force_W.norm();
+      total_blade_force_magnitude_N += blade_force_B.norm();
       total_lift_N += d_lift_N;
       total_drag_N += d_drag_N;
     }
 
+    // Optionally scale all translational aerodynamic strip forces together so
+    // the net applied force respects the model's configured cap.
     double force_scale = 1.0;
     if (std::isfinite(params.max_abs_total_aerodynamic_force_N) &&
         params.max_abs_total_aerodynamic_force_N >= 0.0 &&
@@ -389,8 +473,12 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     }
     Eigen::Vector3d total_aero_force_W = Eigen::Vector3d::Zero();
     Eigen::Vector3d total_aero_moment_W = Eigen::Vector3d::Zero();
+    // Collapse the distributed strip forces into one spatial force at the body
+    // origin. Convert the body-fixed strip forces to world frame only at this
+    // Drake interface boundary.
     for (const BladeElementAppliedForce& blade_force : blade_forces) {
-      const Eigen::Vector3d scaled_force_W = force_scale * blade_force.force_W;
+      const Eigen::Vector3d scaled_force_W =
+          R_WB * (force_scale * blade_force.force_B);
       total_aero_force_W += scaled_force_W;
       total_aero_moment_W +=
           (R_WB * blade_force.p_BoBq_B).cross(scaled_force_W);
@@ -403,6 +491,8 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
       return;
     }
 
+    // The moment helper expects angular quantities in aerodynamic components,
+    // not raw Drake body-frame components.
     moment_input.pitch_angle_psi_rad =
         CalcPitchAngleAboutSpan(wing, span_axis_W, chord_axis_W);
     const Eigen::Vector3d omega_A = wing.X_AB * omega_B;
@@ -422,6 +512,10 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     moments.lift_N = force_scale * total_lift_N;
     moments.drag_N = force_scale * total_drag_N;
     moments.vertical_force_N = total_aero_force_W.z();
+    // The translational aerodynamic pitch moment is already represented by the
+    // distributed strip forces above. Apply only the remaining scalar terms
+    // (rotational damping, added mass, and hinge restoring) as an extra moment
+    // about span to avoid double-counting.
     const double non_translational_pitch_moment_Nm =
         ClampMoment(moments.total_Nm - moments.aerodynamic_Nm, params);
     moments.applied_total_Nm =
@@ -434,6 +528,9 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
 
     drake::multibody::ExternallyAppliedSpatialForce<double> force;
     force.body_index = body.index();
+    // p_BoBq_B = 0 means the spatial force is applied at the wing body origin;
+    // F_Bq_W carries both the moment about that point and the net force, both
+    // expressed in world coordinates as Drake requires.
     force.p_BoBq_B = Eigen::Vector3d::Zero();
     force.F_Bq_W = drake::multibody::SpatialForce<double>(
         total_aero_moment_W +
@@ -455,6 +552,10 @@ void RegisterRoboBeePackage(drake::multibody::Parser* parser) {
   parser->package_map().Add(kPackageName, kPackagePath);
 }
 
+// Load a temporary copy of the model in its default pose so we can recover the
+// fixed transform from a loop-closure helper body to the real link it should
+// coincide with. The production plant then uses that transform as a weld
+// constraint.
 drake::math::RigidTransformd CalcDefaultPoseOfLoopFrameInRealLinkFrame(
     const std::string& loop_body_name, const std::string& real_body_name) {
   drake::multibody::MultibodyPlant<double> plant(0.0);
@@ -471,6 +572,9 @@ drake::math::RigidTransformd CalcDefaultPoseOfLoopFrameInRealLinkFrame(
                                      plant.GetFrameByName(loop_body_name));
 }
 
+// Recover a loop-frame origin and its local y-axis, expressed in body frame B,
+// from the model's default configuration. Two points along this axis are later
+// constrained with ball constraints to emulate an aligned hinge axis.
 void CalcDefaultLoopFramePointAndAxis(
     const std::string& loop_body_name, const std::string& body_name,
     Eigen::Vector3d* p_BL, Eigen::Vector3d* axis_B) {
@@ -491,6 +595,8 @@ void CalcDefaultLoopFramePointAndAxis(
   *axis_B = X_BL.rotation() * Eigen::Vector3d(0.0, 1.0, 0.0);
 }
 
+// Weld the URDF's loop-closure placeholder body to the corresponding physical
+// link. This keeps the duplicated loop body coincident with the modeled link.
 void AddLoopClosureWeldConstraint(
     drake::multibody::MultibodyPlant<double>* plant,
     const std::string& loop_body_name, const std::string& real_body_name) {
@@ -502,6 +608,10 @@ void AddLoopClosureWeldConstraint(
       plant->GetBodyByName(real_body_name), X_RealLoop);
 }
 
+// Add two ball constraints between the hinge body and the real transmission
+// link. A single ball constraint matches one point; the second offset point also
+// aligns the hinge axis and removes the relative twist that would otherwise
+// remain.
 void AddLoopClosureBallConstraints(
     drake::multibody::MultibodyPlant<double>* plant,
     const std::string& loop_body_name, const std::string& hinge_body_name,
@@ -525,6 +635,8 @@ void AddLoopClosureBallConstraints(
                            p_RL + kAxisPointOffset * axis_R.normalized());
 }
 
+// Draw a small RGB frame on a body in Meldis so the wing body axes can be
+// checked visually while tuning aerodynamic axes and signs.
 void AddBodyFrameTriadVisual(drake::multibody::MultibodyPlant<double>* plant,
                              const std::string& body_name,
                              const std::string& name_prefix) {
@@ -559,6 +671,28 @@ void AddBodyFrameTriadVisual(drake::multibody::MultibodyPlant<double>* plant,
            Eigen::Vector4d(0.0, 0.2, 1.0, 1.0));
 }
 
+// Optional free-flight floor. It is compiled in only when ROBOBEE_FREE_FLIGHT
+// is defined, otherwise the root is welded to world in main().
+[[maybe_unused]] void AddWorldFloor(
+    drake::multibody::MultibodyPlant<double>* plant) {
+  constexpr double kFloorThickness = 1.0e-3;
+  constexpr double kFloorSize = 0.20;
+  const auto& world = plant->world_body();
+
+  plant->RegisterCollisionGeometry(
+      world, drake::math::RigidTransformd::Identity(),
+      drake::geometry::HalfSpace(), "floor_collision",
+      drake::multibody::CoulombFriction<double>(1.0, 1.0));
+  plant->RegisterVisualGeometry(
+      world,
+      drake::math::RigidTransformd(
+          Eigen::Vector3d(0.0, 0.0, -0.5 * kFloorThickness)),
+      drake::geometry::Box(kFloorSize, kFloorSize, kFloorThickness),
+      "floor_visual", Eigen::Vector4d(0.55, 0.58, 0.62, 0.35));
+}
+
+// CSV utilities for the moment log. The order matches the left/right entries in
+// WingAeromechanics::wings_.
 void WriteMomentCsvHeader(std::ostream* output) {
   *output
       << "time_s,"
@@ -600,6 +734,9 @@ void WriteMomentCsvRow(
 int main() {
   drake::systems::DiagramBuilder<double> builder;
 
+  // Simulation timing is expressed in samples per wingbeat cycle so the plant,
+  // visualizer, moment logger, and finite-difference acceleration estimator stay
+  // synchronized as drive frequency changes.
   constexpr double kSliderAmplitude = 0.00030;  // 0.6 mm peak-to-peak.
   constexpr double kDriveFrequencyHz = 180;
   constexpr double kPlantStepsPerDriveCycle = 60.0;
@@ -623,6 +760,8 @@ int main() {
   constexpr double kTargetRealtimeRate = 0.02;
   constexpr char kMomentLogPath[] = "/tmp/aeromechanical_moments.csv";
 
+  // A discrete MultibodyPlant is used because the assembly has constraints and
+  // the wing loads are applied at a high update rate.
   auto [plant, scene_graph] =
       drake::multibody::AddMultibodyPlantSceneGraph(&builder, kPlantTimeStep);
   plant.set_discrete_contact_approximation(
@@ -638,9 +777,18 @@ int main() {
   const drake::multibody::ModelInstanceIndex model_instance =
       model_instances.front();
 
-  plant.WeldFrames(plant.world_frame(), plant.GetFrameByName("root"));
+  // Free-flight builds leave the root body floating above a floor; the default
+  // visualization build welds the root to world so the linkage motion is easier
+  // to inspect.
+  if constexpr (kFreeFlight) {
+    AddWorldFloor(&plant);
+  } else {
+    plant.WeldFrames(plant.world_frame(), plant.GetFrameByName("root"));
+  }
 
-  // more rigid constraints to ensure 
+  // Close the transmission loops with Drake constraints. The weld constraints
+  // keep loop-closure placeholder bodies attached to their real links, and the
+  // paired ball constraints align the hinge points and axes.
   AddLoopClosureWeldConstraint(&plant,
                                "transmission_link_2__1__loop_closure",
                                "transmission_link_2");
@@ -657,10 +805,14 @@ int main() {
                                 "transmission_right_link_2");
 
   // constexpr double kSliderEffortLimitN = 1.0e-1;
-  constexpr double kSliderEffortLimitN = 1.0; 
+  // The high effort limit makes the slider source behave like a prescribed
+  // stroke while still using Drake's finite-gain actuator path.
+  constexpr double kSliderEffortLimitN = 100.0;
   constexpr double kSliderKp = 800.0;
   constexpr double kSliderKd = 5.0e-3;
 
+  // Add PD-controlled actuators to the two slider joints. The desired state
+  // input is provided after Finalize by SliderStrokeSource.
   const auto& right_slider_actuator = plant.AddJointActuator(
       "right_slider_drive", plant.GetJointByName("slider_1"),
       kSliderEffortLimitN);
@@ -677,8 +829,14 @@ int main() {
   AddBodyFrameTriadVisual(&plant, "wing_membrane_1",
                           "right_wing_membrane_frame");
 
+  // After Finalize the plant topology is fixed. The diagram can still connect
+  // systems to the plant's existing input ports.
   plant.Finalize();
 
+  // Diagram wiring:
+  //   slider source -> plant desired joint state
+  //   plant state   -> wing aeromechanics
+  //   wing forces   -> plant applied spatial force input
   auto* slider_source =
       builder.AddSystem<SliderStrokeSource>(kSliderAmplitude, kDriveFrequencyHz);
   builder.Connect(slider_source->get_output_port(),
@@ -692,6 +850,8 @@ int main() {
   builder.Connect(wing_aero->get_output_port(0),
                   plant.get_applied_spatial_force_input_port());
 
+  // Publish geometry on LCM so Meldis can display the assembly and the wing
+  // frame triads while the simulation is running.
   drake::lcm::DrakeLcm lcm;
   drake::geometry::DrakeVisualizerParams visualizer_params;
   visualizer_params.publish_period = kVisualizerPublishPeriod;
@@ -701,6 +861,14 @@ int main() {
   auto diagram = builder.Build();
   drake::systems::Simulator<double> simulator(*diagram);
   simulator.set_target_realtime_rate(kTargetRealtimeRate);
+  if constexpr (kFreeFlight) {
+    // Start slightly above the z=0 floor to avoid initial penetration.
+    auto& root_context = simulator.get_mutable_context();
+    auto& plant_context = plant.GetMyMutableContextFromRoot(&root_context);
+    plant.SetFreeBodyPose(
+        &plant_context, plant.GetBodyByName("root"),
+        drake::math::RigidTransformd(Eigen::Vector3d(0.0, 0.0, 1.0e-2)));
+  }
   simulator.Initialize();
 
   std::cout << "RoboBee constrained linkage model is being simulated and "
@@ -723,13 +891,19 @@ int main() {
             << "  angular acceleration filter time constant: "
             << kAngularAccelerationFilterTimeConstant << " s ("
             << kAngularAccelerationFilterCycles << " cycles)\n"
-            << "  target realtime rate: " << kTargetRealtimeRate << "\n\n"
+            << "  target realtime rate: " << kTargetRealtimeRate << "\n"
+            << "  free flight: " << (kFreeFlight ? "yes" : "no") << "\n\n"
             << "The slider joints are driven by finite-gain joint actuators "
                "tracking a sinusoidal desired position and velocity; "
                "the transmission loops are closed with MultibodyPlant weld "
-               "constraints, not per-frame IK.\n"
+               "constraints, not per-frame IK. "
+            << (kFreeFlight
+                    ? "The root body is floating and a z=0 floor is enabled.\n"
+                    : "The root body is welded to world.\n")
             << "Press Ctrl-C here to stop publishing.\n";
 
+  // Send the scene description once before time stepping so Meldis can load
+  // geometry even if it starts listening after this process begins.
   drake::geometry::DrakeVisualizerd::DispatchLoadMessage(scene_graph, &lcm);
 
   std::ofstream moment_log(kMomentLogPath);
@@ -741,6 +915,8 @@ int main() {
   double next_time = 0.0;
   double next_moment_log_time = 0.0;
   double next_moment_log_flush_time = kMomentLogFlushPeriod;
+  // Manual stepping gives this app explicit control over log cadence and flush
+  // cadence. The simulator is otherwise advanced one plant step at a time.
   while (true) {
     next_time += kCommandPeriod;
     simulator.AdvanceTo(next_time);

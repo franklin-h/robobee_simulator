@@ -163,7 +163,9 @@ def deriv(y: np.ndarray, t: np.ndarray) -> np.ndarray:
 # Aerodynamics
 # ----------------------------
 
-def aerodynamic_coefficients(alpha: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def aerodynamic_coefficients(
+    alpha: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     cl = CL_MAX * np.sin(2.0 * alpha)
     cd = 0.5 * (CD_MAX + CD_0) - 0.5 * (CD_MAX - CD_0) * np.cos(2.0 * alpha)
     cn = np.cos(alpha) * cl + np.sin(alpha) * cd
@@ -229,6 +231,15 @@ def calculate_lift(constants: dict, kin: dict) -> dict:
     r_from_hinge = r_m + x_r
 
     lift_added_mass = np.zeros_like(t)
+
+    moment_aero_hinge = np.zeros_like(t)
+    moment_added_mass_hinge = np.zeros_like(t)
+
+    # Moment arm from hinge to section mid-chord / approximate center of pressure.
+    # This is signed. If your C++ model has a more exact center-of-pressure offset,
+    # replace this with that exact pitch-axis moment arm.
+    moment_arm_hinge = y_h
+
     for i in range(t.size):
         # Wdot0 = r * (-omega_y_dot + omega_x * omega_z)
         wdot0 = r_from_hinge * (-omega_y_dot[i] + omega_x[i] * omega_z[i])
@@ -239,6 +250,27 @@ def calculate_lift(constants: dict, kin: dict) -> dict:
 
         lift_added_mass[i] = np.sum(z0 * dr)
 
+        # Added-mass hinge moment from section normal force.
+        moment_added_mass_hinge[i] = np.sum(moment_arm_hinge * z0 * dr)
+
+        # Translational aero hinge moment.
+        #
+        # Distributed normal force per unit span:
+        # dF/dr = 0.5 rho omega_h^2 C_N c(r) r^2
+        #
+        # This recovers a distributed force/moment instead of using the
+        # nondimensional F_hat collapse, because F_hat only gives total force.
+        q_section = (
+            0.5
+            * RHO_AIR
+            * omega_h[i]**2
+            * cn[i]
+            * chord_m
+            * r_from_hinge**2
+        )
+
+        moment_aero_hinge[i] = np.sum(moment_arm_hinge * q_section * dr)
+
     # Optional rigid-wing inertial reaction. Figure 8 includes this,
     # but the uploaded constants do not provide wing mass.
     lift_inertial = np.zeros_like(t)
@@ -248,6 +280,7 @@ def calculate_lift(constants: dict, kin: dict) -> dict:
         pass
 
     lift_total = lift_aero + lift_added_mass + lift_inertial
+    moment_total_hinge = moment_aero_hinge + moment_added_mass_hinge
 
     return {
         "t": t,
@@ -262,6 +295,9 @@ def calculate_lift(constants: dict, kin: dict) -> dict:
         "lift_total_mg": lift_total / G * 1e6,
         "lift_aero_mg": lift_aero / G * 1e6,
         "lift_added_mass_mg": lift_added_mass / G * 1e6,
+        "moment_aero_hinge_Nm": moment_aero_hinge,
+        "moment_added_mass_hinge_Nm": moment_added_mass_hinge,
+        "moment_total_hinge_Nm": moment_total_hinge,
     }
 
 
@@ -296,9 +332,13 @@ def main() -> None:
     print(f"Wingbeat frequency: {F_WINGBEAT_HZ:.1f} Hz")
     print(f"Mean calculated lift: {np.mean(out['lift_total_mg']):.2f} mg")
     print(f"Peak calculated lift: {np.max(out['lift_total_mg']):.2f} mg")
+    print(
+        f"Peak absolute hinge moment: "
+        f"{np.max(np.abs(out['moment_total_hinge_Nm'])):.3e} N m"
+    )
 
-    fig, axes = plt.subplots(2, 1, sharex=True, figsize=(8, 7.0))
-    lift_axis, aero_force_axis = axes
+    fig, axes = plt.subplots(3, 1, sharex=True, figsize=(8, 9.5))
+    lift_axis, aero_force_axis, hinge_moment_axis = axes
 
     measured = maybe_load_measured_lift()
     if measured is not None:
@@ -310,14 +350,37 @@ def main() -> None:
     lift_axis.plot(t_ms, out["lift_added_mass_mg"], ":", label="Added-mass term")
     lift_axis.set_ylabel("Lift (mg)")
     lift_axis.set_title(
-        f"Figure-8-style lift calculation, f = {F_WINGBEAT_HZ:.0f} Hz")
+        f"Figure-8-style lift calculation, f = {F_WINGBEAT_HZ:.0f} Hz"
+    )
     lift_axis.grid(True, alpha=0.3)
     lift_axis.legend()
 
-    aero_force_axis.plot(t_ms, out["lift_aero_N"], color="tab:blue")
-    aero_force_axis.set_xlabel("Time (ms)")
+    aero_force_axis.plot(t_ms, out["lift_aero_N"])
     aero_force_axis.set_ylabel("lift_aero_N")
     aero_force_axis.grid(True, alpha=0.3)
+
+    hinge_moment_axis.plot(
+        t_ms,
+        out["moment_total_hinge_Nm"],
+        label="Total hinge moment",
+    )
+    hinge_moment_axis.plot(
+        t_ms,
+        out["moment_aero_hinge_Nm"],
+        "--",
+        label="Aero hinge moment",
+    )
+    hinge_moment_axis.plot(
+        t_ms,
+        out["moment_added_mass_hinge_Nm"],
+        ":",
+        label="Added-mass hinge moment",
+    )
+
+    hinge_moment_axis.set_xlabel("Time (ms)")
+    hinge_moment_axis.set_ylabel("Moment at hinge (N m)")
+    hinge_moment_axis.grid(True, alpha=0.3)
+    hinge_moment_axis.legend()
 
     plt.tight_layout()
     plt.show()

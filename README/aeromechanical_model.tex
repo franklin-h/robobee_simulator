@@ -159,7 +159,7 @@ Here, \(y_{cp}(r')\) is the distance from the leading edge to the center of pres
 \begin{equation}
     y_{cp} = y_r + y_{LE}(r') - c(r')\hat{d}_{cp}. 
 \end{equation}
-\(y_{LE}\) is basically the distance from the leading edge to the rotation axis, while \(\hat{d}_{cp}\) is the dimensionless distance from the leading edge to the center of pressure, which is given by Dickson et al. (2006): 
+\(y_{LE}\) is basically the distance from the leading edge to the rotation axis, while \(\hat{d}_{cp}\) is the dimensionless distance (think: fraction) from the leading edge to the center of pressure, which is given by Dickson et al. (2006): 
 \begin{equation}
     \hat{d}_{cp} = \frac{0.82}{\pi} |\alpha| + 0.05. 
 \end{equation}
@@ -198,8 +198,25 @@ the non-dimensional location of the effective moment arm of the rotational dampi
 Set \(C_{\mathrm{rd}} = 2.0\) as the rotational damping moment coefficient. Again, \(\hat{y}_r\) is the dimensionless distance from the rotation axis to the root of the wing, while \(\hat{y}_{LE}\) is the dimensionless distance from the leading edge (outline of the wing planiform) to the rotation axis.
 
 \subsection{Compute added mass effect moment}
-The air inertia resisting wing acceleration, i.e. aerodynamic forces and moments that depend on the body's acceleration, adds another term to the total moment. The reduced expression is 
+The air inertia resisting wing acceleration, i.e. aerodynamic forces and moments that depend on the body's acceleration, adds another term to the total moment. Whitney and Wood start from the two-dimensional added-mass force and moment on a thin section. After dropping cross-terms that duplicate other quasi-steady blade-element terms, the reduced section equations are
+\begin{align}
+Z_0 &= -\lambda_z \dot{W}_0 - \lambda_{z\omega}\dot{\omega}_x, \\
+Y_0 &= 0, \\
+M_0 &= -\lambda_{z\omega}\dot{W}_0 - \lambda_{\omega}\dot{\omega}_x,
+\end{align}
+where \(Z_0\) is the added-mass normal force per unit span, \(M_0\) is the added-mass pitch moment per unit span, and
+\begin{align}
+\lambda_z &= \pi \rho a^2, \\
+\lambda_{z\omega} &= -\pi \rho a^2 y_h, \\
+\lambda_{\omega} &= \pi \rho a^2 y_h^2 + \frac{1}{8}\pi\rho a^4.
+\end{align}
+Here \(a=c(r')/2\) is the local semi-chord, and \(y_h\) is the signed offset from the torsional axis to the mid-chord of the local blade-element strip.
 
+Using Whitney and Wood's kinematics, the local normal acceleration of the hinge line is
+\begin{equation}
+\dot{W}_0(r') = - (r' + x_r)\left(\dot{\omega}_y - \omega_x\omega_z\right),
+\end{equation}
+where \((r' + x_r)\) is the distance from the stroke-axis shoulder to the blade element. Radial integration of the reduced section moment gives
 \begin{equation}
 M_{x,am}
 =
@@ -212,11 +229,11 @@ M_{x,am}
 \right)
 -
 \left(
-\frac{\pi}{4}\rho \bar{c}^{4} R \hat{I}_{xx,am}. 
+\frac{\pi}{4}\rho \bar{c}^{4} R \hat{I}_{xx,am}
 \right)
-\dot{\omega}_x
+\dot{\omega}_x .
 \end{equation}
-Here, \(\hat{I}_{xy,\mathrm{am}}\) is the added mass analogue of \(I_{xx}\), and is a constant found by the integration here 
+Here, \(\hat{I}_{xy,\mathrm{am}}\) and \(\hat{I}_{xx,\mathrm{am}}\) are added-mass geometry integrals analogous to inertial products, and are constants found by
 \begin{align}
 \hat{I}_{xy,am}
 &= \int_{0}^{1}
@@ -229,6 +246,49 @@ Here, \(\hat{I}_{xy,\mathrm{am}}\) is the added mass analogue of \(I_{xx}\), and
 \right)
 \, d\hat{r}.
 \end{align}
+
+\subsubsection{Applying added mass as a blade-element normal force}
+For a simulator that applies forces directly to the wing, the translational part of the added-mass effect can be applied strip-by-strip instead of only as a pre-integrated pitch moment. For blade element \(i\), with radial width \(\Delta r_i\), local chord \(c_i\), semi-chord \(a_i=c_i/2\), and signed mid-chord offset \(y_{h,i}\), compute
+\begin{align}
+\lambda_{z,i} &= \pi\rho a_i^2, \\
+\lambda_{z\omega,i} &= -\pi\rho a_i^2 y_{h,i}, \\
+\dot{W}_{0,i} &= -(r'_i+x_r)\left(\dot{\omega}_y-\omega_x\omega_z\right), \\
+Z_{0,i} &= -\lambda_{z,i}\dot{W}_{0,i} - \lambda_{z\omega,i}\dot{\omega}_x .
+\end{align}
+The normal added-mass force on that strip is then
+\begin{equation}
+\Delta \mathbf{F}_{am,i} = Z_{0,i}\Delta r_i\,\mathbf{e}_z,
+\label{eq:blade_added_mass_force}
+\end{equation}
+with the sign of \(Z_{0,i}\) carrying the direction along the local wing-fixed normal \(\mathbf{e}_z\). Depending on the simulator's force convention, this may need to be negated when converting from ``force of the air on the wing'' to ``reaction force of the wing on the body.''
+
+The natural application point for this strip force is the local mid-chord location used by the added-mass section model,
+\begin{equation}
+\mathbf{p}_{am,i}
+=
+(r'_i+x_r)\mathbf{e}_x + y_{h,i}\mathbf{e}_y,
+\label{eq:blade_added_mass_application_point}
+\end{equation}
+measured from the shoulder/hinge-frame origin. Applying Eq. \ref{eq:blade_added_mass_force} at Eq. \ref{eq:blade_added_mass_application_point} gives a pitch-axis moment contribution
+\begin{equation}
+\Delta M^{(F)}_{x,am,i}
+=
+ y_{h,i} Z_{0,i}\Delta r_i.
+\end{equation}
+This captures the moment induced by the translational added-mass normal force. To reproduce the full Whitney--Wood added-mass pitch moment, also include the local pure rotational added-mass couple
+\begin{equation}
+\Delta M^{(\omega)}_{x,am,i}
+= -\lambda_{\omega,i}\dot{\omega}_x\Delta r_i,
+\end{equation}
+where
+\begin{equation}
+\lambda_{\omega,i}
+=
+\pi\rho a_i^2 y_{h,i}^2
++
+\frac{1}{8}\pi\rho a_i^4.
+\end{equation}
+Thus, if using point forces only, Eq. \ref{eq:blade_added_mass_force} is the translational/normal added-mass load to apply to the strip. If matching the analytical rotational dynamics exactly, apply both the strip force and the additional strip torque/couple \(\Delta M^{(\omega)}_{x,am,i}\).
 
 \subsection{Integration} 
 \begin{equation}
