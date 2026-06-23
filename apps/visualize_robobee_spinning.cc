@@ -20,6 +20,8 @@
 #include "drake/multibody/plant/externally_applied_spatial_force.h"
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/multibody/tree/joint_actuator.h"
+#include "drake/multibody/tree/prismatic_joint.h"
+#include "drake/multibody/tree/revolute_joint.h"
 #include "drake/multibody/tree/rigid_body.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/framework/basic_vector.h"
@@ -30,8 +32,8 @@
 
 namespace {
 
-// This executable builds a Drake diagram for the RoboBee assembly, drives the
-// two slider joints with a sinusoidal stroke command, applies custom
+// This executable builds a Drake diagram for the RoboBee assembly, spins a
+// gripped root about world +x with the slider joints locked, applies custom
 // aeromechanical wing loads, publishes geometry to Meldis, and writes the
 // per-wing moment breakdown to a CSV file.
 constexpr char kPackageName[] = "robobee_assembly";
@@ -40,43 +42,36 @@ constexpr char kAssemblyUrl[] =
     "package://robobee_assembly/urdf/robobee_assembly.urdf";
 constexpr double kPi = 3.14159265358979323846;
 
-#ifdef ROBOBEE_FREE_FLIGHT
-constexpr bool kFreeFlight = true;
-#else
-constexpr bool kFreeFlight = false;
-#endif
-
 // TODO: Add a GUI for simulation parameters and a placeholder section for
 // RoboBee parameters.
 
 // Small Drake source system that produces the desired state vector expected by
-// the plant's joint PD controllers: [q_slider_1, q_slider_2, v_slider_1,
-// v_slider_2]. Both sliders receive the same sinusoidal command so the linkage
-// motion is driven from the two linear actuators.
-class SliderStrokeSource final : public drake::systems::LeafSystem<double> {
+// the root gripper's joint PD controller: [q_root_x, v_root_x]. The slider
+// joints are not actuated in this app; they are locked at zero translation
+// before simulator initialization.
+class RootGripRotationSource final
+    : public drake::systems::LeafSystem<double> {
  public:
-  SliderStrokeSource(double stroke_amplitude, double drive_frequency_hz)
-      : stroke_amplitude_(stroke_amplitude),
-        drive_omega_(2.0 * kPi * drive_frequency_hz) {
-    this->DeclareVectorOutputPort("slider_desired_state", 4,
-                                  &SliderStrokeSource::CalcDesiredState);
+  explicit RootGripRotationSource(double root_rotation_rate_rad_s)
+      : root_rotation_rate_rad_s_(root_rotation_rate_rad_s) {
+    this->DeclareVectorOutputPort("root_desired_state", 2,
+                                  &RootGripRotationSource::CalcDesiredState);
   }
 
  private:
   void CalcDesiredState(const drake::systems::Context<double>& context,
                         drake::systems::BasicVector<double>* output) const {
     const double t = context.get_time();
-    const double q = stroke_amplitude_ * std::sin(drive_omega_ * t);
-    const double v =
-        stroke_amplitude_ * drive_omega_ * std::cos(drive_omega_ * t);
 
-    // Actuators are added below in this order: slider_1, then slider_2.
+    // Constant-speed commanded rotation of the gripped root about +x.
+    const double q_root_x = root_rotation_rate_rad_s_ * t;
+    const double v_root_x = root_rotation_rate_rad_s_;
+
     Eigen::VectorBlock<Eigen::VectorXd> y = output->get_mutable_value();
-    y << q, q, v, v;
+    y << q_root_x, v_root_x;
   }
 
-  double stroke_amplitude_{};
-  double drive_omega_{};
+  double root_rotation_rate_rad_s_{};
 };
 
 // Static information needed to interpret one wing body's kinematics in the
@@ -208,7 +203,6 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     }
     angular_histories_.resize(wings_.size());
     latest_moments_.resize(wings_.size());
-    latest_pitch_angles_psi_rad_.resize(wings_.size(), 0.0);
     this->DeclareVectorInputPort("plant_state", plant.num_multibody_states());
     this->DeclareAbstractOutputPort("spatial_forces",
                                     &WingAeromechanics::CalcSpatialForces);
@@ -216,10 +210,6 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
 
   const std::vector<robobee::WingMomentComponents>& latest_moments() const {
     return latest_moments_;
-  }
-
-  const std::vector<double>& latest_pitch_angles_psi_rad() const {
-    return latest_pitch_angles_psi_rad_;
   }
 
  private:
@@ -318,7 +308,6 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     const auto& constants = *wing.constants;
     const auto& body = plant_.GetBodyByName(wing.body_name);
     latest_moments_.at(wing_index) = {};
-    latest_pitch_angles_psi_rad_.at(wing_index) = 0.0;
     const robobee::AeromechanicalModelParameters params;
 
     // Evaluate wing pose and spatial velocity in world frame W. Bad numeric
@@ -368,10 +357,8 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     // the Drake plant.
     robobee::WingMomentInput moment_input;
     moment_input.station_flows.reserve(stations.size());
-    const double pitch_angle_psi_rad =
+    moment_input.pitch_angle_psi_rad =
         CalcPitchAngleAboutSpan(wing, span_axis_W, chord_axis_W);
-    moment_input.pitch_angle_psi_rad = pitch_angle_psi_rad;
-    latest_pitch_angles_psi_rad_.at(wing_index) = pitch_angle_psi_rad;
     moment_input.omega_x_rad_s = omega_A.x();
     moment_input.omega_y_rad_s = omega_A.y();
     moment_input.omega_z_rad_s = omega_A.z();
@@ -554,6 +541,7 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     moments.applied_total_Nm =
         force_scale * moments.aerodynamic_Nm + moments.added_mass_Nm +
         non_translational_pitch_moment_Nm;
+        // the added_mass_Nm might be causng some jitter 
     if (!std::isfinite(moments.applied_total_Nm)) {
       moments.applied_total_Nm = 0.0;
     }
@@ -579,7 +567,6 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
   std::vector<WingAeroConfig> wings_;
   mutable std::vector<WingAngularHistory> angular_histories_;
   mutable std::vector<robobee::WingMomentComponents> latest_moments_;
-  mutable std::vector<double> latest_pitch_angles_psi_rad_;
 };
 
 void RegisterRoboBeePackage(drake::multibody::Parser* parser) {
@@ -730,11 +717,9 @@ void AddBodyFrameTriadVisual(drake::multibody::MultibodyPlant<double>* plant,
 void WriteMomentCsvHeader(std::ostream* output) {
   *output
       << "time_s,"
-      << "left_psi_rad,"
       << "left_alpha_rad,left_lift_N,left_drag_N,left_force_z_N,"
          "left_aero_Nm,left_rot_Nm,"
          "left_added_Nm,left_hinge_Nm,left_total_Nm,left_applied_Nm,"
-      << "right_psi_rad,"
       << "right_alpha_rad,right_lift_N,right_drag_N,right_force_z_N,"
          "right_aero_Nm,"
          "right_rot_Nm,right_added_Nm,right_hinge_Nm,right_total_Nm,"
@@ -743,27 +728,20 @@ void WriteMomentCsvHeader(std::ostream* output) {
 
 void WriteMomentCsvRow(
     std::ostream* output, double time_s,
-    const std::vector<robobee::WingMomentComponents>& moments,
-    const std::vector<double>& pitch_angles_psi_rad) {
+    const std::vector<robobee::WingMomentComponents>& moments) {
   const robobee::WingMomentComponents zero;
   const robobee::WingMomentComponents& left =
       moments.size() > 0 ? moments[0] : zero;
   const robobee::WingMomentComponents& right =
       moments.size() > 1 ? moments[1] : zero;
-  const double left_psi_rad =
-      pitch_angles_psi_rad.size() > 0 ? pitch_angles_psi_rad[0] : 0.0;
-  const double right_psi_rad =
-      pitch_angles_psi_rad.size() > 1 ? pitch_angles_psi_rad[1] : 0.0;
 
   *output << std::setprecision(17) << time_s << ','
-          << left_psi_rad << ','
           << left.angle_of_attack_alpha_rad << ','
           << left.lift_N << ',' << left.drag_N << ','
           << left.vertical_force_N << ','
           << left.aerodynamic_Nm << ',' << left.rotational_damping_Nm << ','
           << left.added_mass_Nm << ',' << left.hinge_Nm << ','
           << left.total_Nm << ',' << left.applied_total_Nm << ','
-          << right_psi_rad << ','
           << right.angle_of_attack_alpha_rad << ','
           << right.lift_N << ',' << right.drag_N << ','
           << right.vertical_force_N << ','
@@ -780,10 +758,14 @@ int main() {
   // Simulation timing is expressed in samples per wingbeat cycle so the plant,
   // visualizer, moment logger, and finite-difference acceleration estimator stay
   // synchronized as drive frequency changes.
-  constexpr double kSliderAmplitude = 0.00030;  // 0.6 mm peak-to-peak.
   constexpr double kDriveFrequencyHz = 180;
+  // Gripped-root rotation: root is constrained to one revolute DOF about
+  // world +x and commanded to spin at this rate. Set to 0.0 to hold the root
+  // angle fixed while still using the gripper joint.
+  constexpr double kRootGripRotationRateRadPerSec = 10 * kPi;
   constexpr double kPlantStepsPerDriveCycle = 60.0;
-  constexpr double kVisualizerSamplesPerDriveCycle = kPlantStepsPerDriveCycle*2;
+  constexpr double kVisualizerSamplesPerDriveCycle =
+      kPlantStepsPerDriveCycle * 2;
   constexpr double kMomentLogSamplesPerDriveCycle = kPlantStepsPerDriveCycle;
   constexpr double kAngularAccelerationSamplesPerDriveCycle =
       kPlantStepsPerDriveCycle;
@@ -800,7 +782,7 @@ int main() {
       kAngularAccelerationFilterCycles / kDriveFrequencyHz;
   constexpr double kCommandPeriod = kPlantTimeStep;
   constexpr double kMomentLogFlushPeriod = 5.0e-2;
-  constexpr double kTargetRealtimeRate = 0.02;
+  constexpr double kTargetRealtimeRate = 0.08;
   constexpr char kMomentLogPath[] = "/tmp/aeromechanical_moments.csv";
 
   // A discrete MultibodyPlant is used because the assembly has constraints and
@@ -820,14 +802,17 @@ int main() {
   const drake::multibody::ModelInstanceIndex model_instance =
       model_instances.front();
 
-  // Free-flight builds leave the root body floating above a floor; the default
-  // visualization build welds the root to world so the linkage motion is easier
-  // to inspect.
-  if constexpr (kFreeFlight) {
-    AddWorldFloor(&plant);
-  } else {
-    plant.WeldFrames(plant.world_frame(), plant.GetFrameByName("root"));
-  }
+  // Grip the root body with a one-DOF revolute fixture instead of welding it to
+  // world. Because X_PF and X_BM are identity transforms, the joint axis is the
+  // world-frame +x axis passing through the root frame origin in the model's
+  // default pose. This lets the fixture hold all root translations and the y/z
+  // rotations while allowing only rotation about +x.
+  const auto& root_grip_x_joint =
+      plant.AddJoint<drake::multibody::RevoluteJoint>(
+          "root_grip_x_rotation", plant.world_body(),
+          drake::math::RigidTransformd::Identity(),
+          plant.GetBodyByName("root"),
+          drake::math::RigidTransformd::Identity(), Eigen::Vector3d::UnitX());
 
   // Close the transmission loops with Drake constraints. The weld constraints
   // keep loop-closure placeholder bodies attached to their real links, and the
@@ -847,26 +832,19 @@ int main() {
                                 "transmission_right_link_hinge",
                                 "transmission_right_link_2");
 
-  // constexpr double kSliderEffortLimitN = 1.0e-1;
-  // The high effort limit makes the slider source behave like a prescribed
-  // stroke while still using Drake's finite-gain actuator path.
-  constexpr double kSliderEffortLimitN = 100.0;
-  constexpr double kSliderKp = 800.0;
-  constexpr double kSliderKd = 5.0e-3;
+  constexpr double kFixedSliderTranslation = 0.0;
+  constexpr double kRootGripEffortLimitNm = 1.0;
+  constexpr double kRootGripKp = 5.0;
+  constexpr double kRootGripKd = 0.02;
 
-  // Add PD-controlled actuators to the two slider joints. The desired state
-  // input is provided after Finalize by SliderStrokeSource.
-  const auto& right_slider_actuator = plant.AddJointActuator(
-      "right_slider_drive", plant.GetJointByName("slider_1"),
-      kSliderEffortLimitN);
-  plant.get_mutable_joint_actuator(right_slider_actuator.index())
-      .set_controller_gains({kSliderKp, kSliderKd});
-
-  const auto& left_slider_actuator = plant.AddJointActuator(
-      "left_slider_drive", plant.GetJointByName("slider_2"),
-      kSliderEffortLimitN);
-  plant.get_mutable_joint_actuator(left_slider_actuator.index())
-      .set_controller_gains({kSliderKp, kSliderKd});
+  // Add a PD-controlled actuator only to the gripper revolute joint. The
+  // sliders are locked below in the plant context instead of being powered by
+  // the oscillator/PD-controller path.
+  const auto& root_grip_actuator = plant.AddJointActuator(
+      "root_grip_x_rotation_drive", root_grip_x_joint,
+      kRootGripEffortLimitNm);
+  plant.get_mutable_joint_actuator(root_grip_actuator.index())
+      .set_controller_gains({kRootGripKp, kRootGripKd});
 
   AddBodyFrameTriadVisual(&plant, "wing_membrane", "left_wing_membrane_frame");
   AddBodyFrameTriadVisual(&plant, "wing_membrane_1",
@@ -877,12 +855,13 @@ int main() {
   plant.Finalize();
 
   // Diagram wiring:
-  //   slider source -> plant desired joint state
-  //   plant state   -> wing aeromechanics
-  //   wing forces   -> plant applied spatial force input
-  auto* slider_source =
-      builder.AddSystem<SliderStrokeSource>(kSliderAmplitude, kDriveFrequencyHz);
-  builder.Connect(slider_source->get_output_port(),
+  //   root source  -> plant desired joint state
+  //   plant state  -> wing aeromechanics
+  //   wing forces  -> plant applied spatial force input
+  auto* root_source =
+      builder.AddSystem<RootGripRotationSource>(
+          kRootGripRotationRateRadPerSec);
+  builder.Connect(root_source->get_output_port(),
                   plant.get_desired_state_input_port(model_instance));
 
   auto* wing_aero = builder.AddSystem<WingAeromechanics>(
@@ -904,14 +883,19 @@ int main() {
   auto diagram = builder.Build();
   drake::systems::Simulator<double> simulator(*diagram);
   simulator.set_target_realtime_rate(kTargetRealtimeRate);
-  if constexpr (kFreeFlight) {
-    // Start slightly above the z=0 floor to avoid initial penetration.
-    auto& root_context = simulator.get_mutable_context();
-    auto& plant_context = plant.GetMyMutableContextFromRoot(&root_context);
-    plant.SetFreeBodyPose(
-        &plant_context, plant.GetBodyByName("root"),
-        drake::math::RigidTransformd(Eigen::Vector3d(0.0, 0.0, 1.0e-2)));
-  }
+  auto& root_context = simulator.get_mutable_context();
+  auto& plant_context =
+      diagram->GetMutableSubsystemContext(plant, &root_context);
+  const auto& right_slider =
+      plant.GetJointByName<drake::multibody::PrismaticJoint>("slider_1");
+  const auto& left_slider =
+      plant.GetJointByName<drake::multibody::PrismaticJoint>("slider_2");
+  right_slider.set_translation(&plant_context, kFixedSliderTranslation);
+  right_slider.set_translation_rate(&plant_context, 0.0);
+  right_slider.Lock(&plant_context);
+  left_slider.set_translation(&plant_context, kFixedSliderTranslation);
+  left_slider.set_translation_rate(&plant_context, 0.0);
+  left_slider.Lock(&plant_context);
   simulator.Initialize();
 
   std::cout << "RoboBee constrained linkage model is being simulated and "
@@ -935,14 +919,16 @@ int main() {
             << kAngularAccelerationFilterTimeConstant << " s ("
             << kAngularAccelerationFilterCycles << " cycles)\n"
             << "  target realtime rate: " << kTargetRealtimeRate << "\n"
-            << "  free flight: " << (kFreeFlight ? "yes" : "no") << "\n\n"
-            << "The slider joints are driven by finite-gain joint actuators "
-               "tracking a sinusoidal desired position and velocity; "
+            << "  root +x grip rotation rate: "
+            << kRootGripRotationRateRadPerSec << " rad/s\n\n"
+            << "The root is gripped by a world-to-root revolute joint about "
+               "world +x and driven by a finite-gain joint actuator. "
+            << "The slider joints are locked at "
+            << kFixedSliderTranslation
+            << " m and are not connected to the powered oscillator; "
                "the transmission loops are closed with MultibodyPlant weld "
-               "constraints, not per-frame IK. "
-            << (kFreeFlight
-                    ? "The root body is floating and a z=0 floor is enabled.\n"
-                    : "The root body is welded to world.\n")
+               "constraints, not per-frame IK. The root body is no longer "
+               "welded to world; the gripper joint permits only +x rotation.\n"
             << "Press Ctrl-C here to stop publishing.\n";
 
   // Send the scene description once before time stepping so Meldis can load
@@ -964,8 +950,7 @@ int main() {
     next_time += kCommandPeriod;
     simulator.AdvanceTo(next_time);
     if (next_time + 0.5 * kCommandPeriod >= next_moment_log_time) {
-      WriteMomentCsvRow(&moment_log, next_time, wing_aero->latest_moments(),
-                        wing_aero->latest_pitch_angles_psi_rad());
+      WriteMomentCsvRow(&moment_log, next_time, wing_aero->latest_moments());
       next_moment_log_time += kMomentLogPeriod;
     }
     if (next_time + 0.5 * kCommandPeriod >= next_moment_log_flush_time) {

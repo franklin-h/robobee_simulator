@@ -288,7 +288,7 @@ where
 +
 \frac{1}{8}\pi\rho a_i^4.
 \end{equation}
-Thus, if using point forces only, Eq. \ref{eq:blade_added_mass_force} is the translational/normal added-mass load to apply to the strip. If matching the analytical rotational dynamics exactly, apply both the strip force and the additional strip torque/couple \(\Delta M^{(\omega)}_{x,am,i}\).
+Thus, if using point forces only, Eq. \ref{eq:blade_added_mass_force} is the translational/normal added-mass load to apply to the strip. If matching the analytical rotational dynamics exactly, apply both the strip force and the additional strip torque/couple \(\Delta M^{(\omega)}_{x,am,i}\). Do not also add the pre-integrated \(M_{x,am}\) term as a scalar pitch moment when the strip force is active, or the force-induced moment will be double counted.
 
 \subsection{Integration} 
 \begin{equation}
@@ -309,13 +309,12 @@ Thus, if using point forces only, Eq. \ref{eq:blade_added_mass_force} is the tra
         I_{xx}
     }, 
 \end{equation}
-where \(\ddot{\phi}\) is the stroke angular acceleration, which we can compute from the current stroke angle and velocity/actuator input. See Appendix \ref{sec:moment_of_inertia} for derivation of \(I_{xx}\) and \(I_{xy}\). In particular, assume \(\phi(t)\) (taken at transmission link 1) is commanded from the control algorithms (typically a sin wave with \(\omega = 170 \mathrm{Hz}\), i.e at resonance of transmission mechanism). This should be parametrized in the code. Then total moment is just 
+where \(\ddot{\phi}\) is the stroke angular acceleration, which we can compute from the current stroke angle and velocity/actuator input. See Appendix \ref{sec:moment_of_inertia} for derivation of \(I_{xx}\) and \(I_{xy}\). In particular, assume \(\phi(t)\) (taken at transmission link 1) is commanded from the control algorithms (typically a sin wave with \(\omega = 170 \mathrm{Hz}\), i.e at resonance of transmission mechanism). This should be parametrized in the code. If added mass is applied as blade-element normal forces, the remaining scalar total moment is
 \begin{equation}
     M_{\mathrm{total}}
     =
     M_{\mathrm{aero}}
     + M_{\mathrm{rot}}
-    + M_{\mathrm{added}}
     + M_{\mathrm{hinge}}
 \end{equation}. 
  

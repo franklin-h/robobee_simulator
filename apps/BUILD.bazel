@@ -121,3 +121,26 @@ cc_binary(
         "@drake//systems/framework:vector",
     ],
 )
+
+cc_binary(
+    name = "visualize_robobee_spinning",
+    srcs = ["visualize_robobee_spinning.cc"],
+    data = [
+        "//models/robobee_assembly:files",
+    ],
+    deps = [
+        "//:aeromechanical_moments",
+        "@drake//geometry:drake_visualizer",
+        "@drake//geometry:shape_specification",
+        "@drake//lcm:drake_lcm",
+        "@drake//math:geometric_transform",
+        "@drake//multibody/parsing:parsing",
+        "@drake//multibody/plant:externally_applied_spatial_force",
+        "@drake//multibody/plant:plant",
+        "@drake//multibody/tree:tree",
+        "@drake//systems/analysis:simulator",
+        "@drake//systems/framework:diagram_builder",
+        "@drake//systems/framework:leaf_system",
+        "@drake//systems/framework:vector",
+    ],
+)

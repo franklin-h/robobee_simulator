@@ -134,6 +134,7 @@ def main():
     path = pathlib.Path(args.csv_path)
     plt.ion()
     fig, axes = plt.subplots(4, 1, sharex=True, figsize=(11, 10))
+
     channels = [
         ("aero_Nm", "aero"),
         ("rot_Nm", "rot"),
@@ -142,6 +143,7 @@ def main():
         ("total_Nm", "total"),
         ("applied_Nm", "applied"),
     ]
+
     y_ranges = [None for _ in axes]
     last_t_max = None
 
@@ -161,10 +163,12 @@ def main():
       if not times:
           time.sleep(args.period)
           continue
+
       t_max = times[-1]
       if last_t_max is not None and t_max < last_t_max:
           y_ranges = [None for _ in axes]
       last_t_max = t_max
+
       t_min = t_max - args.window
       rows_window = [
           row for row in rows
@@ -178,6 +182,7 @@ def main():
       vertical_force_axis.axhspan(
           vertical_force_values[0], vertical_force_values[1],
           color="tab:green", alpha=0.12, label="200-300 mgf")
+
       has_vertical_force = False
       for wing in ["left", "right"]:
           x_values, values = xy_series(rows_window, f"{wing}_force_z_N")
@@ -186,6 +191,7 @@ def main():
               vertical_force_values.extend(values)
               vertical_force_axis.plot(
                   x_values, values, label=f"{wing} force z")
+
       x_values, total_force_z = summed_xy_series(
           rows_window, ["left_force_z_N", "right_force_z_N"])
       if total_force_z:
@@ -194,9 +200,11 @@ def main():
           vertical_force_axis.plot(
               x_values, total_force_z, color="black", linewidth=1.6,
               label="total force z")
+
       y_ranges[0] = expand_range(y_ranges[0], vertical_force_values)
       if y_ranges[0] is not None:
           vertical_force_axis.set_ylim(*padded_limits(y_ranges[0]))
+
       vertical_force_axis.set_ylabel("world z force [N]")
       vertical_force_axis.grid(True, alpha=0.3)
       if has_vertical_force:
@@ -209,23 +217,51 @@ def main():
               ha="center", va="center",
           )
 
-      for axis_index, (axis, wing) in enumerate(
-              zip(axes[1:3], ["left", "right"]), start=1):
-          axis.clear()
-          moment_values = []
-          for suffix, label in channels:
-              key = f"{wing}_{suffix}"
-              x_values, y_values = xy_series(rows_window, key)
-              if y_values:
-                  moment_values.extend(y_values)
-                  axis.plot(x_values, y_values, label=label)
-          y_ranges[axis_index] = expand_range(
-              y_ranges[axis_index], moment_values)
-          if y_ranges[axis_index] is not None:
-              axis.set_ylim(*padded_limits(y_ranges[axis_index]))
-          axis.set_ylabel(f"{wing} moment [N*m]")
-          axis.grid(True, alpha=0.3)
-          axis.legend(loc="upper right", ncol=3, fontsize="small")
+      left_moment_axis = axes[1]
+      left_moment_axis.clear()
+      left_moment_values = []
+      for suffix, label in channels:
+          key = f"left_{suffix}"
+          x_values, y_values = xy_series(rows_window, key)
+          if y_values:
+              left_moment_values.extend(y_values)
+              left_moment_axis.plot(x_values, y_values, label=label)
+
+      y_ranges[1] = expand_range(y_ranges[1], left_moment_values)
+      if y_ranges[1] is not None:
+          left_moment_axis.set_ylim(*padded_limits(y_ranges[1]))
+
+      left_moment_axis.set_ylabel("left moment [N*m]")
+      left_moment_axis.grid(True, alpha=0.3)
+      left_moment_axis.legend(loc="upper right", ncol=3, fontsize="small")
+
+      psi_axis = axes[2]
+      psi_axis.clear()
+      psi_values = []
+      has_psi = False
+
+      for wing in ["left", "right"]:
+          key = f"{wing}_psi_rad"
+          x_values, values = xy_series(rows_window, key)
+          if values:
+              has_psi = True
+              psi_values.extend(values)
+              psi_axis.plot(x_values, values, label=f"{wing} psi")
+
+      y_ranges[2] = expand_range(y_ranges[2], psi_values)
+      if y_ranges[2] is not None:
+          psi_axis.set_ylim(*padded_limits(y_ranges[2]))
+
+      psi_axis.set_ylabel("wing pitch psi [rad]")
+      psi_axis.grid(True, alpha=0.3)
+      if has_psi:
+          psi_axis.legend(loc="upper right", ncol=2, fontsize="small")
+      else:
+          psi_axis.text(
+              0.5, 0.5, "left_psi_rad/right_psi_rad not logged",
+              transform=psi_axis.transAxes,
+              ha="center", va="center",
+          )
 
       force_z_axis = axes[3]
       force_z_axis.clear()
@@ -238,9 +274,11 @@ def main():
               has_force_z = True
               force_z_values.extend(force_z)
               force_z_axis.plot(x_values, force_z, label=f"{wing} force z")
+
       y_ranges[3] = expand_range(y_ranges[3], force_z_values)
       if y_ranges[3] is not None:
           force_z_axis.set_ylim(*padded_limits(y_ranges[3]))
+
       force_z_axis.set_ylabel("world z force [N]")
       force_z_axis.grid(True, alpha=0.3)
       if has_force_z:
@@ -254,7 +292,7 @@ def main():
 
       axes[-1].set_xlabel("simulation time [s]")
       axes[-1].set_xlim(t_min, t_max)
-      fig.suptitle(f"Aeromechanical force_z_N and moments from {path}")
+      fig.suptitle(f"Aeromechanical force_z_N, left moments, and wing pitch from {path}")
       fig.tight_layout()
       plt.pause(0.001)
       time.sleep(args.period)

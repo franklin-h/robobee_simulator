@@ -28,7 +28,7 @@ struct AeromechanicalModelParameters {
   double rotational_damping_coefficient{2.0};
 
   double kapton_youngs_modulus_pa{2.5e9};
-  double hinge_thickness_m{0.0125e-3};
+  double hinge_thickness_m{0.015e-3};
   double hinge_width_m{2.7e-3};
   double hinge_length_m{0.10e-3};
 
@@ -64,9 +64,9 @@ struct WingMomentInput {
   double omega_dot_y_rad_s2{};
 };
 
-// Output terms mirror the moment decomposition in README/aeromechanical_model.tex
-// subsection "Integration":
-// M_total = M_aero + M_rot + M_added + M_hinge.
+// Output terms mirror the moment decomposition in README/aeromechanical_model.tex.
+// The simulator applies added mass as blade-element normal forces, so
+// M_total = M_aero + M_rot + M_hinge for the scalar pitch-moment path.
 struct WingMomentComponents {
   double angle_of_attack_alpha_rad{};
   double lift_N{};
@@ -295,9 +295,9 @@ inline double CalcHingeRestoringMoment(
   return std::isfinite(moment_Nm) ? moment_Nm : 0.0;
 }
 
-// Aggregates the implemented terms from README/aeromechanical_model.tex,
-// subsection "Integration":
-//   M_total = M_aero + M_rot + M_added + M_hinge.
+// Aggregates the scalar pitch-moment terms from README/aeromechanical_model.tex.
+// Added mass is still computed for diagnostics, but it is applied separately as
+// blade-element normal forces in the simulator and is not summed into total_Nm.
 // The full pitch-acceleration integration equation in that subsection is not
 // solved here; the simulator applies this total moment to Drake instead.
 template <std::size_t NumStations>
@@ -315,7 +315,7 @@ WingMomentComponents CalcAeromechanicalMoments(
   moments.added_mass_Nm = CalcAddedMassMoment(constants, input, params);
   moments.hinge_Nm = CalcHingeRestoringMoment(input, params);
   moments.total_Nm = moments.aerodynamic_Nm + moments.rotational_damping_Nm +
-                     moments.added_mass_Nm + moments.hinge_Nm;
+                     moments.hinge_Nm;
   moments.applied_total_Nm = moments.total_Nm;
   if (std::isfinite(params.max_abs_applied_total_moment_Nm)) {
     moments.applied_total_Nm =
