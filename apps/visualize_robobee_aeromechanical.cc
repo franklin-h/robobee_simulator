@@ -538,6 +538,14 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
 
     robobee::WingMomentComponents moments =
         robobee::CalcAeromechanicalMoments(constants, moment_input, params);
+
+    // Save the analytic moment components before overwriting any fields for
+    // logging. These are the terms contained in moments.total_Nm and therefore
+    // the terms that must be removed from the scalar residual when their
+    // effects are already represented by distributed strip forces.
+    const double analytic_aerodynamic_Nm = moments.aerodynamic_Nm;
+    const double analytic_added_mass_Nm = moments.added_mass_Nm;
+
     if (total_alpha_weight > 0.0) {
       moments.angle_of_attack_alpha_rad =
           std::atan2(weighted_alpha_sin, weighted_alpha_cos);
@@ -545,15 +553,23 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     moments.lift_N = force_scale * total_lift_N;
     moments.drag_N = force_scale * total_drag_N;
     moments.vertical_force_N = total_blade_force_W.z();
+
+    // Log the added-mass pitch moment that is actually produced by the
+    // distributed added-mass strip forces. Do not use this overwritten value to
+    // subtract from moments.total_Nm; use analytic_added_mass_Nm above instead.
     moments.added_mass_Nm = force_scale * total_added_mass_pitch_moment_Nm;
+
     // The translational aerodynamic and added-mass pitch moments are already
-    // represented by distributed strip forces above. Apply only rotational
-    // damping and hinge restoring as extra scalar moments about span.
-    const double non_translational_pitch_moment_Nm =
-        ClampMoment(moments.total_Nm - moments.aerodynamic_Nm - moments.added_mass_Nm, params);
+    // represented by distributed strip forces above. Apply only the remaining
+    // scalar pitch moments, such as rotational damping and hinge restoring,
+    // about the span axis.
+    const double non_translational_pitch_moment_Nm = ClampMoment(
+        moments.rotational_damping_Nm + moments.hinge_Nm, params);
+
+    // Log the span-axis moment that is actually sent to Drake.
     moments.applied_total_Nm =
-        force_scale * moments.aerodynamic_Nm + moments.added_mass_Nm +
-        non_translational_pitch_moment_Nm;
+        total_blade_moment_W.dot(span_axis_W) +
+        wing.moment_sign * non_translational_pitch_moment_Nm;
     if (!std::isfinite(moments.applied_total_Nm)) {
       moments.applied_total_Nm = 0.0;
     }
@@ -782,7 +798,7 @@ int main() {
   // synchronized as drive frequency changes.
   constexpr double kSliderAmplitude = 0.00030;  // 0.6 mm peak-to-peak.
   constexpr double kDriveFrequencyHz = 180;
-  constexpr double kPlantStepsPerDriveCycle = 60.0;
+  constexpr double kPlantStepsPerDriveCycle = 100.0;
   constexpr double kVisualizerSamplesPerDriveCycle = kPlantStepsPerDriveCycle*2;
   constexpr double kMomentLogSamplesPerDriveCycle = kPlantStepsPerDriveCycle;
   constexpr double kAngularAccelerationSamplesPerDriveCycle =
