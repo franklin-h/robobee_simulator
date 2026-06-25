@@ -54,6 +54,191 @@ And after a change of basis (see Appendix \ref{sec:change_of_basis_derivation}),
 \end{align}
 again because \(\theta = 0\) in our simplified planar case. 
 
+
+\subsubsection{Blade Velocity}
+The Drake/CAD/URDF wing body frame \(B\) is not necessarily aligned with the aerodynamic span/chord axes used by the blade-element model. Let \(\theta_s = \texttt{span\_axis\_angle\_rad}\) be the fixed angle between the body-frame \(x\)-axis and the aerodynamic span axis. Then, expressed in the wing body frame,
+\begin{align}
+    \hat{\mathbf{s}}_B
+        &= \cos\theta_s\,\hat{\mathbf{x}}_B
+        + \sin\theta_s\,\hat{\mathbf{y}}_B, \\
+    \hat{\mathbf{c}}_B
+        &= \sigma_c
+        \left(
+            -\sin\theta_s\,\hat{\mathbf{x}}_B
+            + \cos\theta_s\,\hat{\mathbf{y}}_B
+        \right), \\
+    \hat{\mathbf{n}}_B
+        &= \hat{\mathbf{s}}_B \times \hat{\mathbf{c}}_B,
+\end{align}
+where \(\sigma_c = \operatorname{sign}(\texttt{chord\_axis\_sign})\). The body-to-aerodynamic-component projection matrix is
+\begin{equation}
+    X_{AB}
+    =
+    \begin{bmatrix}
+        \hat{\mathbf{s}}_B^T\\
+        \hat{\mathbf{c}}_B^T\\
+        \hat{\mathbf{n}}_B^T
+    \end{bmatrix}.
+\end{equation}
+Thus, for any vector \(\mathbf{v}^B\) expressed in the wing body frame,
+\begin{equation}
+    \mathbf{v}^A
+    =
+    X_{AB}\mathbf{v}^B
+    =
+    \begin{bmatrix}
+        \mathbf{v}^B\cdot\hat{\mathbf{s}}_B\\
+        \mathbf{v}^B\cdot\hat{\mathbf{c}}_B\\
+        \mathbf{v}^B\cdot\hat{\mathbf{n}}_B
+    \end{bmatrix}.
+\end{equation}
+The world rotation \(R_{WB}\) is still the physical pose of the wing body frame. The span-axis angle only changes the aerodynamic basis vectors inside that body frame, so aerodynamic vectors are mapped to the world frame by first expressing them in body coordinates:
+\begin{equation}
+    \mathbf{v}^W = R_{WB}\mathbf{v}^B.
+\end{equation}
+For example,
+\begin{equation}
+    \hat{\mathbf{s}}_W = R_{WB}\hat{\mathbf{s}}_B,
+    \qquad
+    \hat{\mathbf{c}}_W = R_{WB}\hat{\mathbf{c}}_B,
+    \qquad
+    \hat{\mathbf{n}}_W = R_{WB}\hat{\mathbf{n}}_B.
+\end{equation}
+Equivalently, if \(R_{BA}\) has the aerodynamic basis vectors as columns, then
+\begin{align}
+    R_{BA}
+        &=
+        \begin{bmatrix}
+            \hat{\mathbf{s}}_B &
+            \hat{\mathbf{c}}_B &
+            \hat{\mathbf{n}}_B
+        \end{bmatrix}, \\
+    X_{AB} &= R_{BA}^{T}, \\
+    R_{WA} &= R_{WB}X_{AB}^{T}.
+\end{align}
+
+For wing strip \(i\), define the blade point \(P_i\) in the wing body frame as
+\begin{equation}
+    \mathbf{p}_{B_oP_i}^{B}
+    =
+    (r_i + x_r)\hat{\mathbf{s}}_B
+    + y_{h,i}\bar{c}\hat{\mathbf{c}}_B.
+\end{equation}
+The corresponding world-frame offset and blade-point velocity are
+\begin{align}
+    \mathbf{p}_{B_oP_i}^{W}
+        &= R_{WB}\mathbf{p}_{B_oP_i}^{B}, \\
+    \mathbf{v}_{P_i}^{W}
+        &= \mathbf{v}_{B_o}^{W}
+        + \boldsymbol{\omega}_{h}^{W}
+        \times \mathbf{p}_{B_oP_i}^{W}.
+\end{align}
+As above, \(\boldsymbol{\omega}_{h}^{W}\) is the angular velocity with the span-axis component removed:
+\begin{equation}
+    \boldsymbol{\omega}_{h}^{W}
+    =
+    \boldsymbol{\omega}_{B}^{W}
+    -
+    \left(
+        \boldsymbol{\omega}_{B}^{W}
+        \cdot
+        \hat{\mathbf{s}}_W
+    \right)
+    \hat{\mathbf{s}}_W.
+\end{equation}
+The relative air velocity is then transformed back into the wing body frame:
+\begin{align}
+    \mathbf{v}_{\mathrm{rel},i}^{W}
+        &= \mathbf{v}_{P_i}^{W}
+        - \mathbf{v}_{\mathrm{wind}}^{W}, \\
+    \mathbf{v}_{\mathrm{rel},i}^{B}
+        &= R_{BW}\mathbf{v}_{\mathrm{rel},i}^{W}.
+\end{align}
+Projecting onto the aerodynamic chord-normal plane gives
+\begin{align}
+    u_i &= \mathbf{v}_{\mathrm{rel},i}^{B}\cdot\hat{\mathbf{c}}_B, \\
+    w_i &= \mathbf{v}_{\mathrm{rel},i}^{B}\cdot\hat{\mathbf{n}}_B, \\
+    V_i^2 &= u_i^2 + w_i^2, \\
+    \alpha_i &= \operatorname{atan2}(w_i,u_i).
+\end{align}
+
+Using the quasi-steady coefficient model,
+\begin{align}
+    C_L(\alpha_i)
+        &= C_{L,\max}\sin(2\alpha_i), \\
+    C_D(\alpha_i)
+        &=
+        \frac{C_{D,\max}+C_{D,0}}{2}
+        -
+        \frac{C_{D,\max}-C_{D,0}}{2}
+        \cos(2\alpha_i),
+\end{align}
+so the strip lift and drag magnitudes are
+\begin{align}
+    \D L_i
+        &= \frac{1}{2}\rho V_i^2 c_i \Delta r_i C_L(\alpha_i), \\
+    \D D_i
+        &= \frac{1}{2}\rho V_i^2 c_i \Delta r_i C_D(\alpha_i).
+\end{align}
+The drag direction is opposite the local chord-normal relative velocity, and the lift direction is perpendicular to both the span axis and the drag direction:
+\begin{align}
+    \hat{\mathbf{d}}_i^B
+        &=
+        -
+        \frac{
+            u_i\hat{\mathbf{c}}_B
+            +
+            w_i\hat{\mathbf{n}}_B
+        }{
+            \sqrt{u_i^2+w_i^2}
+        }, \\
+    \hat{\mathbf{l}}_i^B
+        &=
+        \frac{
+            \hat{\mathbf{s}}_B
+            \times
+            \hat{\mathbf{d}}_i^B
+        }{
+            \left\|
+                \hat{\mathbf{s}}_B
+                \times
+                \hat{\mathbf{d}}_i^B
+            \right\|
+        }.
+\end{align}
+Therefore, the aerodynamic force on strip \(i\), expressed in the wing body frame, is
+\begin{equation}
+    \mathbf{F}_{i,\mathrm{aero}}^{B}
+    =
+    \D L_i\hat{\mathbf{l}}_i^B
+    +
+    \D D_i\hat{\mathbf{d}}_i^B.
+\end{equation}
+
+The force application point is the center of pressure. First compute
+\begin{align}
+    \hat{d}_{cp,i}
+        &= \frac{0.82}{\pi}|\alpha_i| + 0.05, \\
+    y_{le,i}
+        &= \hat{y}_r\bar{c} + q_{le,i}, \\
+    y_{cp,i}
+        &= y_{le,i} - c_i\hat{d}_{cp,i}.
+\end{align}
+Then the point where the strip force is applied is
+\begin{equation}
+    \mathbf{p}_{B_oQ_i}^{B}
+    =
+    (r_i+x_r)\hat{\mathbf{s}}_B
+    +
+    y_{cp,i}\hat{\mathbf{c}}_B.
+\end{equation}
+Finally, the strip force is mapped to world coordinates before summing over blade elements:
+\begin{align}
+    \mathbf{F}_{i,\mathrm{aero}}^{W}
+        &= R_{WB}\mathbf{F}_{i,\mathrm{aero}}^{B}, \\
+    \mathbf{F}_{\mathrm{blade}}^{W}
+        &= \sum_i \mathbf{F}_{i,\mathrm{aero}}^{W}.
+\end{align}
 \subsection{Compute Aerodynamic Coefficients} 
 \subsubsection{Computing \(\alpha\)} 
 \begin{equation}
@@ -123,7 +308,7 @@ Then, the total lift is the integral over the wing span:
 \begin{align}
     F_L &= \int_0^R \D F_L \\ 
     &= \frac{1}{2} \rho \omega_h^2 C_L(\alpha)
-    \underbrace{\int_0^R (r + x_r)^2 c(r') \D r}_{R^3\bar{c}\hat{F}}, 
+    \underbrace{\int_0^R (r + x_r)^2 c(r') \D r}_{\hat{F}}, 
 \end{align}
 where \(\hat{F}\) is the dimensionless wing-shape factor. 
 \begin{wrapfigure}{h!}{0.42\textwidth}

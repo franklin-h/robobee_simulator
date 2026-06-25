@@ -20,6 +20,7 @@
 #include "drake/multibody/plant/externally_applied_spatial_force.h"
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/multibody/tree/joint_actuator.h"
+#include "drake/multibody/tree/prismatic_joint.h"
 #include "drake/multibody/tree/rigid_body.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/framework/basic_vector.h"
@@ -788,6 +789,27 @@ void WriteMomentCsvRow(
           << right.total_Nm << ',' << right.applied_total_Nm << '\n';
 }
 
+double CalcSliderDesiredPosition(double time_s, double stroke_amplitude,
+                                 double drive_frequency_hz) {
+  return stroke_amplitude * std::sin(2.0 * kPi * drive_frequency_hz * time_s);
+}
+
+void WriteSliderCsvHeader(std::ostream* output) {
+  *output << "time_s,right_actual_m,left_actual_m,"
+             "right_desired_m,left_desired_m,"
+             "right_error_m,left_error_m\n";
+}
+
+void WriteSliderCsvRow(std::ostream* output, double time_s,
+                       double right_actual_m, double left_actual_m,
+                       double desired_m) {
+  *output << std::setprecision(17) << time_s << ','
+          << right_actual_m << ',' << left_actual_m << ','
+          << desired_m << ',' << desired_m << ','
+          << right_actual_m - desired_m << ','
+          << left_actual_m - desired_m << '\n';
+}
+
 }  // namespace
 
 int main() {
@@ -816,8 +838,11 @@ int main() {
       kAngularAccelerationFilterCycles / kDriveFrequencyHz;
   constexpr double kCommandPeriod = kPlantTimeStep;
   constexpr double kMomentLogFlushPeriod = 5.0e-2;
+  constexpr double kSliderLogPeriod = kMomentLogPeriod;
+  constexpr double kSliderLogFlushPeriod = kMomentLogFlushPeriod;
   constexpr double kTargetRealtimeRate = 0.02;
   constexpr char kMomentLogPath[] = "/tmp/aeromechanical_moments.csv";
+  constexpr char kSliderLogPath[] = "/tmp/slider_positions.csv";
 
   // A discrete MultibodyPlant is used because the assembly has constraints and
   // the wing loads are applied at a high update rate.
@@ -866,8 +891,8 @@ int main() {
   // constexpr double kSliderEffortLimitN = 1.0e-1;
   // The high effort limit makes the slider source behave like a prescribed
   // stroke while still using Drake's finite-gain actuator path.
-  constexpr double kSliderEffortLimitN = 100.0;
-  constexpr double kSliderKp = 800.0;
+  constexpr double kSliderEffortLimitN = 100000.0;
+  constexpr double kSliderKp = 1000.0;
   constexpr double kSliderKd = 5.0e-3;
 
   // Add PD-controlled actuators to the two slider joints. The desired state
@@ -928,6 +953,10 @@ int main() {
         &plant_context, plant.GetBodyByName("root"),
         drake::math::RigidTransformd(Eigen::Vector3d(0.0, 0.0, 1.0e-2)));
   }
+  const auto& right_slider =
+      plant.GetJointByName<drake::multibody::PrismaticJoint>("slider_1");
+  const auto& left_slider =
+      plant.GetJointByName<drake::multibody::PrismaticJoint>("slider_2");
   simulator.Initialize();
 
   std::cout << "RoboBee constrained linkage model is being simulated and "
@@ -936,6 +965,10 @@ int main() {
             << "  bazel run @drake//tools:meldis -- --open-window\n\n"
             << "Aeromechanical moments are being logged to:\n"
             << "  " << kMomentLogPath << "\n\n"
+            << "Slider actual/desired positions are being logged to:\n"
+            << "  " << kSliderLogPath << "\n"
+            << "Plot them with:\n"
+            << "  python3 tools/plot_slider_positions.py\n\n"
             << "Timing:\n"
             << "  drive frequency: " << kDriveFrequencyHz << " Hz\n"
             << "  plant timestep: " << kPlantTimeStep << " s ("
@@ -971,9 +1004,17 @@ int main() {
   }
   WriteMomentCsvHeader(&moment_log);
 
+  std::ofstream slider_log(kSliderLogPath);
+  if (!slider_log) {
+    throw std::runtime_error("Could not open slider position CSV log.");
+  }
+  WriteSliderCsvHeader(&slider_log);
+
   double next_time = 0.0;
   double next_moment_log_time = 0.0;
   double next_moment_log_flush_time = kMomentLogFlushPeriod;
+  double next_slider_log_time = 0.0;
+  double next_slider_log_flush_time = kSliderLogFlushPeriod;
   // Manual stepping gives this app explicit control over log cadence and flush
   // cadence. The simulator is otherwise advanced one plant step at a time.
   while (true) {
@@ -984,9 +1025,24 @@ int main() {
                         wing_aero->latest_pitch_angles_psi_rad());
       next_moment_log_time += kMomentLogPeriod;
     }
+    if (next_time + 0.5 * kCommandPeriod >= next_slider_log_time) {
+      const auto& root_context = simulator.get_context();
+      const auto& plant_context = plant.GetMyContextFromRoot(root_context);
+      const double desired_slider_position = CalcSliderDesiredPosition(
+          next_time, kSliderAmplitude, kDriveFrequencyHz);
+      WriteSliderCsvRow(&slider_log, next_time,
+                        right_slider.get_translation(plant_context),
+                        left_slider.get_translation(plant_context),
+                        desired_slider_position);
+      next_slider_log_time += kSliderLogPeriod;
+    }
     if (next_time + 0.5 * kCommandPeriod >= next_moment_log_flush_time) {
       moment_log.flush();
       next_moment_log_flush_time += kMomentLogFlushPeriod;
+    }
+    if (next_time + 0.5 * kCommandPeriod >= next_slider_log_flush_time) {
+      slider_log.flush();
+      next_slider_log_flush_time += kSliderLogFlushPeriod;
     }
   }
 

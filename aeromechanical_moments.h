@@ -28,11 +28,11 @@ struct AeromechanicalModelParameters {
   double rotational_damping_coefficient{2.0};
 
   double kapton_youngs_modulus_pa{2.5e9};
-  double hinge_thickness_m{10.0e-6};
+  double hinge_thickness_m{11.0e-6};
   double hinge_width_m{2.7e-3};
   double hinge_length_m{0.10e-3};
 
-  double max_abs_applied_total_moment_Nm{2.0e-05};
+  double max_abs_applied_total_moment_Nm{2.0e-01};
   double max_abs_total_aerodynamic_force_N{1.0e-01};
 };
 

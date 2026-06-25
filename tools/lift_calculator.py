@@ -35,7 +35,7 @@ HEADER_PATH = Path("aeromechanical_wing_constants.h")
 KINEMATICS_CSV = Path("measured_kinematics.csv")
 MEASURED_LIFT_CSV = Path("measured_lift.csv")
 
-F_WINGBEAT_HZ = 180.0
+F_WINGBEAT_HZ = 170.0
 N_CYCLES = 2
 N_SAMPLES = 2000
 
