@@ -491,11 +491,12 @@
         <parent link="part_1_1" />
         <child link="sketch_1__1_" />
     </joint>
-    <joint name="revolute_1" type="continuous">
+    <joint name="revolute_1" type="revolute">
         <origin xyz="0.00301999 -0.000805097 0.0001175" rpy="1.79153e-10 2.24404e-17 2.26168e-16" />
         <axis xyz="1 0 0" />
         <parent link="hinge_right_base" />
         <child link="hinge_right_wing" />
+        <limit effort="1" velocity="1" lower="-1.57079632679" upper="1.57079632679" />
     </joint>
     <joint name="revolute_1_1" type="revolute">
         <origin xyz="-0.000284345 -0.000514764 2.75e-05" rpy="3.47914e-17 4.2275e-16 0.147079" />
@@ -504,25 +505,26 @@
         <child link="wing_cf_1" />
         <limit effort="1" velocity="1" lower="0" upper="0" />
     </joint>
-    <joint name="revolute_1_2" type="continuous">
+    <joint name="revolute_1_2" type="revolute">
         <origin xyz="0.00301999 -0.000805 -0.000105" rpy="-4.16026e-16 1.11022e-16 6.0408e-17" />
         <axis xyz="1 0 0" />
         <parent link="hinge_left_base" />
         <child link="hinge_left_wing" />
+        <limit effort="1" velocity="1" lower="-1.57079632679" upper="1.57079632679" />
     </joint>
     <joint name="revolute_1_3" type="revolute">
         <origin xyz="-0.00171622 -0.00098 0.0005265" rpy="-1.83873e-16 -5.36779e-13 2.71791e-17" />
         <axis xyz="-0 1 -0" />
         <parent link="transmission_base" />
         <child link="transmission_hinge" />
-        <limit effort="1" velocity="1" lower="-0.523599" upper="0.523599" />
+        <limit effort="1" velocity="1" lower="-0.7853981633974483" upper="0.7853981633974483" />
     </joint>
     <joint name="revolute_1_4" type="revolute">
         <origin xyz="-2.84212e-05 -0.000570095 0.000255887" rpy="-4.87542e-22 -1.51459e-12 2.58466e-26" />
         <axis xyz="-0 1 -0" />
         <parent link="transmission_right_link_base" />
         <child link="transmission_right_link_hinge" />
-        <limit effort="1" velocity="1" lower="-0.523599" upper="0.523599" />
+        <limit effort="1" velocity="1" lower="-0.7853981633974483" upper="0.7853981633974483" />
     </joint>
     <joint name="revolute_2" type="revolute">
         <origin xyz="-0.00103581 -0.000520981 -7.6896e-06" rpy="4.59944e-18 -2.81431e-17 0.147079" />

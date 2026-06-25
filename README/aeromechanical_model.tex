@@ -54,6 +54,191 @@ And after a change of basis (see Appendix \ref{sec:change_of_basis_derivation}),
 \end{align}
 again because \(\theta = 0\) in our simplified planar case. 
 
+
+\subsubsection{Blade Velocity}
+The Drake/CAD/URDF wing body frame \(B\) is not necessarily aligned with the aerodynamic span/chord axes used by the blade-element model. Let \(\theta_s = \texttt{span\_axis\_angle\_rad}\) be the fixed angle between the body-frame \(x\)-axis and the aerodynamic span axis. Then, expressed in the wing body frame,
+\begin{align}
+    \hat{\mathbf{s}}_B
+        &= \cos\theta_s\,\hat{\mathbf{x}}_B
+        + \sin\theta_s\,\hat{\mathbf{y}}_B, \\
+    \hat{\mathbf{c}}_B
+        &= \sigma_c
+        \left(
+            -\sin\theta_s\,\hat{\mathbf{x}}_B
+            + \cos\theta_s\,\hat{\mathbf{y}}_B
+        \right), \\
+    \hat{\mathbf{n}}_B
+        &= \hat{\mathbf{s}}_B \times \hat{\mathbf{c}}_B,
+\end{align}
+where \(\sigma_c = \operatorname{sign}(\texttt{chord\_axis\_sign})\). The body-to-aerodynamic-component projection matrix is
+\begin{equation}
+    X_{AB}
+    =
+    \begin{bmatrix}
+        \hat{\mathbf{s}}_B^T\\
+        \hat{\mathbf{c}}_B^T\\
+        \hat{\mathbf{n}}_B^T
+    \end{bmatrix}.
+\end{equation}
+Thus, for any vector \(\mathbf{v}^B\) expressed in the wing body frame,
+\begin{equation}
+    \mathbf{v}^A
+    =
+    X_{AB}\mathbf{v}^B
+    =
+    \begin{bmatrix}
+        \mathbf{v}^B\cdot\hat{\mathbf{s}}_B\\
+        \mathbf{v}^B\cdot\hat{\mathbf{c}}_B\\
+        \mathbf{v}^B\cdot\hat{\mathbf{n}}_B
+    \end{bmatrix}.
+\end{equation}
+The world rotation \(R_{WB}\) is still the physical pose of the wing body frame. The span-axis angle only changes the aerodynamic basis vectors inside that body frame, so aerodynamic vectors are mapped to the world frame by first expressing them in body coordinates:
+\begin{equation}
+    \mathbf{v}^W = R_{WB}\mathbf{v}^B.
+\end{equation}
+For example,
+\begin{equation}
+    \hat{\mathbf{s}}_W = R_{WB}\hat{\mathbf{s}}_B,
+    \qquad
+    \hat{\mathbf{c}}_W = R_{WB}\hat{\mathbf{c}}_B,
+    \qquad
+    \hat{\mathbf{n}}_W = R_{WB}\hat{\mathbf{n}}_B.
+\end{equation}
+Equivalently, if \(R_{BA}\) has the aerodynamic basis vectors as columns, then
+\begin{align}
+    R_{BA}
+        &=
+        \begin{bmatrix}
+            \hat{\mathbf{s}}_B &
+            \hat{\mathbf{c}}_B &
+            \hat{\mathbf{n}}_B
+        \end{bmatrix}, \\
+    X_{AB} &= R_{BA}^{T}, \\
+    R_{WA} &= R_{WB}X_{AB}^{T}.
+\end{align}
+
+For wing strip \(i\), define the blade point \(P_i\) in the wing body frame as
+\begin{equation}
+    \mathbf{p}_{B_oP_i}^{B}
+    =
+    (r_i + x_r)\hat{\mathbf{s}}_B
+    + y_{h,i}\bar{c}\hat{\mathbf{c}}_B.
+\end{equation}
+The corresponding world-frame offset and blade-point velocity are
+\begin{align}
+    \mathbf{p}_{B_oP_i}^{W}
+        &= R_{WB}\mathbf{p}_{B_oP_i}^{B}, \\
+    \mathbf{v}_{P_i}^{W}
+        &= \mathbf{v}_{B_o}^{W}
+        + \boldsymbol{\omega}_{h}^{W}
+        \times \mathbf{p}_{B_oP_i}^{W}.
+\end{align}
+As above, \(\boldsymbol{\omega}_{h}^{W}\) is the angular velocity with the span-axis component removed:
+\begin{equation}
+    \boldsymbol{\omega}_{h}^{W}
+    =
+    \boldsymbol{\omega}_{B}^{W}
+    -
+    \left(
+        \boldsymbol{\omega}_{B}^{W}
+        \cdot
+        \hat{\mathbf{s}}_W
+    \right)
+    \hat{\mathbf{s}}_W.
+\end{equation}
+The relative air velocity is then transformed back into the wing body frame:
+\begin{align}
+    \mathbf{v}_{\mathrm{rel},i}^{W}
+        &= \mathbf{v}_{P_i}^{W}
+        - \mathbf{v}_{\mathrm{wind}}^{W}, \\
+    \mathbf{v}_{\mathrm{rel},i}^{B}
+        &= R_{BW}\mathbf{v}_{\mathrm{rel},i}^{W}.
+\end{align}
+Projecting onto the aerodynamic chord-normal plane gives
+\begin{align}
+    u_i &= \mathbf{v}_{\mathrm{rel},i}^{B}\cdot\hat{\mathbf{c}}_B, \\
+    w_i &= \mathbf{v}_{\mathrm{rel},i}^{B}\cdot\hat{\mathbf{n}}_B, \\
+    V_i^2 &= u_i^2 + w_i^2, \\
+    \alpha_i &= \operatorname{atan2}(w_i,u_i).
+\end{align}
+
+Using the quasi-steady coefficient model,
+\begin{align}
+    C_L(\alpha_i)
+        &= C_{L,\max}\sin(2\alpha_i), \\
+    C_D(\alpha_i)
+        &=
+        \frac{C_{D,\max}+C_{D,0}}{2}
+        -
+        \frac{C_{D,\max}-C_{D,0}}{2}
+        \cos(2\alpha_i),
+\end{align}
+so the strip lift and drag magnitudes are
+\begin{align}
+    \D L_i
+        &= \frac{1}{2}\rho V_i^2 c_i \Delta r_i C_L(\alpha_i), \\
+    \D D_i
+        &= \frac{1}{2}\rho V_i^2 c_i \Delta r_i C_D(\alpha_i).
+\end{align}
+The drag direction is opposite the local chord-normal relative velocity, and the lift direction is perpendicular to both the span axis and the drag direction:
+\begin{align}
+    \hat{\mathbf{d}}_i^B
+        &=
+        -
+        \frac{
+            u_i\hat{\mathbf{c}}_B
+            +
+            w_i\hat{\mathbf{n}}_B
+        }{
+            \sqrt{u_i^2+w_i^2}
+        }, \\
+    \hat{\mathbf{l}}_i^B
+        &=
+        \frac{
+            \hat{\mathbf{s}}_B
+            \times
+            \hat{\mathbf{d}}_i^B
+        }{
+            \left\|
+                \hat{\mathbf{s}}_B
+                \times
+                \hat{\mathbf{d}}_i^B
+            \right\|
+        }.
+\end{align}
+Therefore, the aerodynamic force on strip \(i\), expressed in the wing body frame, is
+\begin{equation}
+    \mathbf{F}_{i,\mathrm{aero}}^{B}
+    =
+    \D L_i\hat{\mathbf{l}}_i^B
+    +
+    \D D_i\hat{\mathbf{d}}_i^B.
+\end{equation}
+
+The force application point is the center of pressure. First compute
+\begin{align}
+    \hat{d}_{cp,i}
+        &= \frac{0.82}{\pi}|\alpha_i| + 0.05, \\
+    y_{le,i}
+        &= \hat{y}_r\bar{c} + q_{le,i}, \\
+    y_{cp,i}
+        &= y_{le,i} - c_i\hat{d}_{cp,i}.
+\end{align}
+Then the point where the strip force is applied is
+\begin{equation}
+    \mathbf{p}_{B_oQ_i}^{B}
+    =
+    (r_i+x_r)\hat{\mathbf{s}}_B
+    +
+    y_{cp,i}\hat{\mathbf{c}}_B.
+\end{equation}
+Finally, the strip force is mapped to world coordinates before summing over blade elements:
+\begin{align}
+    \mathbf{F}_{i,\mathrm{aero}}^{W}
+        &= R_{WB}\mathbf{F}_{i,\mathrm{aero}}^{B}, \\
+    \mathbf{F}_{\mathrm{blade}}^{W}
+        &= \sum_i \mathbf{F}_{i,\mathrm{aero}}^{W}.
+\end{align}
 \subsection{Compute Aerodynamic Coefficients} 
 \subsubsection{Computing \(\alpha\)} 
 \begin{equation}
@@ -77,11 +262,14 @@ R_{W}^{wing}\mathbf{v}_{rel}^{W}
 \begin{equation}
     \alpha = \operatorname{atan2}
 \left(
--v_{normal},
--v_{chord}
+v_{normal},
+v_{chord}
 \right)
 \end{equation}
-Another quick note: 
+But for wing velocity \textbf{through} air, then 
+\begin{equation}
+    \alpha = \mathrm{atan2} (v_{\mathrm{normal}}, v_{\mathrm{chord}})
+\end{equation} Another quick note: 
 \begin{equation}
     O' = O + (x_r, y_r).
 \end{equation}
@@ -120,7 +308,7 @@ Then, the total lift is the integral over the wing span:
 \begin{align}
     F_L &= \int_0^R \D F_L \\ 
     &= \frac{1}{2} \rho \omega_h^2 C_L(\alpha)
-    \underbrace{\int_0^R (r + x_r)^2 c(r') \D r}_{R^3\bar{c}\hat{F}}, 
+    \underbrace{\int_0^R (r + x_r)^2 c(r') \D r}_{\hat{F}}, 
 \end{align}
 where \(\hat{F}\) is the dimensionless wing-shape factor. 
 \begin{wrapfigure}{h!}{0.42\textwidth}
@@ -156,7 +344,7 @@ Here, \(y_{cp}(r')\) is the distance from the leading edge to the center of pres
 \begin{equation}
     y_{cp} = y_r + y_{LE}(r') - c(r')\hat{d}_{cp}. 
 \end{equation}
-\(y_{LE}\) is basically the distance from the leading edge to the rotation axis, while \(\hat{d}_{cp}\) is the dimensionless distance from the leading edge to the center of pressure, which is given by Dickson et al. (2006): 
+\(y_{LE}\) is basically the distance from the leading edge to the rotation axis, while \(\hat{d}_{cp}\) is the dimensionless distance (think: fraction) from the leading edge to the center of pressure, which is given by Dickson et al. (2006): 
 \begin{equation}
     \hat{d}_{cp} = \frac{0.82}{\pi} |\alpha| + 0.05. 
 \end{equation}
@@ -167,7 +355,7 @@ The torsial stiffness is given by
 \begin{equation}
     \kappa_H = \frac{E_h t_h^3 w_h}{12 L_h}, 
 \end{equation}
-where \(t_h = 0.025\,\mathrm{mm}\), \(w_h = 2.7\,\mathrm{mm}\), and \(L_h = 0.10\,\mathrm{m}\) are the thickness, width, and length of the central layer. For Kapton, \(E_h = 2.5\,\mathrm{GPa}\).
+where \(t_h = 0.0125\,\mathrm{mm}\), \(w_h = 2.7\,\mathrm{mm}\), and \(L_h = 0.10\,\mathrm{mm}\) are the thickness, width, and length of the central layer. For Kapton, \(E_h = 2.5\,\mathrm{GPa}\).
 \subsection{Compute aerodynamic damping moment} 
 \begin{equation}
     M_{x, \mathrm{rd}} = -\frac{1}{2} \rho \omega_x |\omega_x| C_{rd} \bar{c}^{4} R \hat{Y}_{rd}. 
@@ -195,8 +383,25 @@ the non-dimensional location of the effective moment arm of the rotational dampi
 Set \(C_{\mathrm{rd}} = 2.0\) as the rotational damping moment coefficient. Again, \(\hat{y}_r\) is the dimensionless distance from the rotation axis to the root of the wing, while \(\hat{y}_{LE}\) is the dimensionless distance from the leading edge (outline of the wing planiform) to the rotation axis.
 
 \subsection{Compute added mass effect moment}
-The air inertia resisting wing acceleration, i.e. aerodynamic forces and moments that depend on the body's acceleration, adds another term to the total moment. The reduced expression is 
+The air inertia resisting wing acceleration, i.e. aerodynamic forces and moments that depend on the body's acceleration, adds another term to the total moment. Whitney and Wood start from the two-dimensional added-mass force and moment on a thin section. After dropping cross-terms that duplicate other quasi-steady blade-element terms, the reduced section equations are
+\begin{align}
+Z_0 &= -\lambda_z \dot{W}_0 - \lambda_{z\omega}\dot{\omega}_x, \\
+Y_0 &= 0, \\
+M_0 &= -\lambda_{z\omega}\dot{W}_0 - \lambda_{\omega}\dot{\omega}_x,
+\end{align}
+where \(Z_0\) is the added-mass normal force per unit span, \(M_0\) is the added-mass pitch moment per unit span, and
+\begin{align}
+\lambda_z &= \pi \rho a^2, \\
+\lambda_{z\omega} &= -\pi \rho a^2 y_h, \\
+\lambda_{\omega} &= \pi \rho a^2 y_h^2 + \frac{1}{8}\pi\rho a^4.
+\end{align}
+Here \(a=c(r')/2\) is the local semi-chord, and \(y_h\) is the signed offset from the torsional axis to the mid-chord of the local blade-element strip.
 
+Using Whitney and Wood's kinematics, the local normal acceleration of the hinge line is
+\begin{equation}
+\dot{W}_0(r') = - (r' + x_r)\left(\dot{\omega}_y - \omega_x\omega_z\right),
+\end{equation}
+where \((r' + x_r)\) is the distance from the stroke-axis shoulder to the blade element. Radial integration of the reduced section moment gives
 \begin{equation}
 M_{x,am}
 =
@@ -209,11 +414,11 @@ M_{x,am}
 \right)
 -
 \left(
-\frac{\pi}{4}\rho \bar{c}^{4} R \hat{I}_{xx,am}. 
+\frac{\pi}{4}\rho \bar{c}^{4} R \hat{I}_{xx,am}
 \right)
-\dot{\omega}_x
+\dot{\omega}_x .
 \end{equation}
-Here, \(\hat{I}_{xy,\mathrm{am}}\) is the added mass analogue of \(I_{xx}\), and is a constant found by the integration here 
+Here, \(\hat{I}_{xy,\mathrm{am}}\) and \(\hat{I}_{xx,\mathrm{am}}\) are added-mass geometry integrals analogous to inertial products, and are constants found by
 \begin{align}
 \hat{I}_{xy,am}
 &= \int_{0}^{1}
@@ -226,6 +431,49 @@ Here, \(\hat{I}_{xy,\mathrm{am}}\) is the added mass analogue of \(I_{xx}\), and
 \right)
 \, d\hat{r}.
 \end{align}
+
+\subsubsection{Applying added mass as a blade-element normal force}
+For a simulator that applies forces directly to the wing, the translational part of the added-mass effect can be applied strip-by-strip instead of only as a pre-integrated pitch moment. For blade element \(i\), with radial width \(\Delta r_i\), local chord \(c_i\), semi-chord \(a_i=c_i/2\), and signed mid-chord offset \(y_{h,i}\), compute
+\begin{align}
+\lambda_{z,i} &= \pi\rho a_i^2, \\
+\lambda_{z\omega,i} &= -\pi\rho a_i^2 y_{h,i}, \\
+\dot{W}_{0,i} &= -(r'_i+x_r)\left(\dot{\omega}_y-\omega_x\omega_z\right), \\
+Z_{0,i} &= -\lambda_{z,i}\dot{W}_{0,i} - \lambda_{z\omega,i}\dot{\omega}_x .
+\end{align}
+The normal added-mass force on that strip is then
+\begin{equation}
+\Delta \mathbf{F}_{am,i} = Z_{0,i}\Delta r_i\,\mathbf{e}_z,
+\label{eq:blade_added_mass_force}
+\end{equation}
+with the sign of \(Z_{0,i}\) carrying the direction along the local wing-fixed normal \(\mathbf{e}_z\). Depending on the simulator's force convention, this may need to be negated when converting from ``force of the air on the wing'' to ``reaction force of the wing on the body.''
+
+The natural application point for this strip force is the local mid-chord location used by the added-mass section model,
+\begin{equation}
+\mathbf{p}_{am,i}
+=
+(r'_i+x_r)\mathbf{e}_x + y_{h,i}\mathbf{e}_y,
+\label{eq:blade_added_mass_application_point}
+\end{equation}
+measured from the shoulder/hinge-frame origin. Applying Eq. \ref{eq:blade_added_mass_force} at Eq. \ref{eq:blade_added_mass_application_point} gives a pitch-axis moment contribution
+\begin{equation}
+\Delta M^{(F)}_{x,am,i}
+=
+ y_{h,i} Z_{0,i}\Delta r_i.
+\end{equation}
+This captures the moment induced by the translational added-mass normal force. To reproduce the full Whitney--Wood added-mass pitch moment, also include the local pure rotational added-mass couple
+\begin{equation}
+\Delta M^{(\omega)}_{x,am,i}
+= -\lambda_{\omega,i}\dot{\omega}_x\Delta r_i,
+\end{equation}
+where
+\begin{equation}
+\lambda_{\omega,i}
+=
+\pi\rho a_i^2 y_{h,i}^2
++
+\frac{1}{8}\pi\rho a_i^4.
+\end{equation}
+Thus, if using point forces only, Eq. \ref{eq:blade_added_mass_force} is the translational/normal added-mass load to apply to the strip. If matching the analytical rotational dynamics exactly, apply both the strip force and the additional strip torque/couple \(\Delta M^{(\omega)}_{x,am,i}\). Do not also add the pre-integrated \(M_{x,am}\) term as a scalar pitch moment when the strip force is active, or the force-induced moment will be double counted.
 
 \subsection{Integration} 
 \begin{equation}
@@ -246,13 +494,12 @@ Here, \(\hat{I}_{xy,\mathrm{am}}\) is the added mass analogue of \(I_{xx}\), and
         I_{xx}
     }, 
 \end{equation}
-where \(\ddot{\phi}\) is the stroke angular acceleration, which we can compute from the current stroke angle and velocity/actuator input. See Appendix \ref{sec:moment_of_inertia} for derivation of \(I_{xx}\) and \(I_{xy}\). In particular, assume \(\phi(t)\) (taken at transmission link 1) is commanded from the control algorithms (typically a sin wave with \(\omega = 170 \mathrm{Hz}\), i.e at resonance of transmission mechanism). This should be parametrized in the code. Then total moment is just 
+where \(\ddot{\phi}\) is the stroke angular acceleration, which we can compute from the current stroke angle and velocity/actuator input. See Appendix \ref{sec:moment_of_inertia} for derivation of \(I_{xx}\) and \(I_{xy}\). In particular, assume \(\phi(t)\) (taken at transmission link 1) is commanded from the control algorithms (typically a sin wave with \(\omega = 170 \mathrm{Hz}\), i.e at resonance of transmission mechanism). This should be parametrized in the code. If added mass is applied as blade-element normal forces, the remaining scalar total moment is
 \begin{equation}
     M_{\mathrm{total}}
     =
     M_{\mathrm{aero}}
     + M_{\mathrm{rot}}
-    + M_{\mathrm{added}}
     + M_{\mathrm{hinge}}
 \end{equation}
 But since aero forces originate as translational forces applied to the center of pressure, we can't just apply them purely as moments. 
