@@ -818,7 +818,7 @@ int main() {
   // Simulation timing is expressed in samples per wingbeat cycle so the plant,
   // visualizer, moment logger, and finite-difference acceleration estimator stay
   // synchronized as drive frequency changes.
-  constexpr double kSliderAmplitude = 0.00030;  // 0.6 mm peak-to-peak.
+  constexpr double kSliderAmplitude = 0.00025;  // 0.6 mm peak-to-peak (might be too big, from Kevin Ma 2012, IROS)
   constexpr double kDriveFrequencyHz = 180;
   constexpr double kPlantStepsPerDriveCycle = 100.0;
   constexpr double kVisualizerSamplesPerDriveCycle = kPlantStepsPerDriveCycle*2;

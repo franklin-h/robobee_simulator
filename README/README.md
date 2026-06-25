@@ -238,3 +238,8 @@ Verified:
 
 ## To simulate the actuator in drake... 
 We need to model it as a simple PD servo slider actuator. 
+
+## Why the hinge gets stuck at the limits: 
+
++/- 30 deg too small. now +/- 45. that is responsible for 
+
