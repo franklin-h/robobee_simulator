@@ -481,6 +481,8 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
       // Resolve the sectional force into a drag component opposite relative
       // motion and a lift component perpendicular to drag within the local
       // chord-normal plane.
+
+      // Basis for Eq. 48/49 in aeromechanical_model.tex
       const double dynamic_pressure_times_area =
           0.5 * params.air_density_kg_m3 * speed_squared * station.chord_m *
           dr;
