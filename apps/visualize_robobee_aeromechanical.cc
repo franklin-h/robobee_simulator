@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -15,6 +16,7 @@
 #include "drake/lcm/drake_lcm.h"
 #include "drake/math/rigid_transform.h"
 #include "drake/math/rotation_matrix.h"
+#include "drake/math/roll_pitch_yaw.h"
 #include "drake/multibody/parsing/parser.h"
 #include "drake/multibody/plant/coulomb_friction.h"
 #include "drake/multibody/plant/externally_applied_spatial_force.h"
@@ -25,9 +27,13 @@
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/framework/basic_vector.h"
 #include "drake/systems/framework/diagram_builder.h"
+#include "drake/systems/framework/fixed_input_port_value.h"
 #include "drake/systems/framework/leaf_system.h"
 
 #include "aeromechanical_moments.h"
+#ifdef ROBOBEE_SIMULINK_SERVER
+#include "apps/robobee_simulink_tcp.h"
+#endif
 
 namespace {
 
@@ -50,33 +56,125 @@ constexpr bool kFreeFlight = false;
 // TODO: Add a GUI for simulation parameters and a placeholder section for
 // RoboBee parameters.
 
+constexpr double kMinStrokeGainMetersPerVolt = 1.3e-6;
+constexpr double kMaxStrokeGainMetersPerVolt = 1.7e-6;
+
+struct SimulationConfig {
+  double drive_voltage_v{0.00025 / 1.5e-6};
+  double stroke_gain_m_per_v{1.5e-6};
+  int server_port{4242};
+};
+
+double CalcStrokeAmplitudeFromVoltage(double drive_voltage_v,
+                                      double stroke_gain_m_per_v) {
+  if (!std::isfinite(drive_voltage_v) || drive_voltage_v < 0.0) {
+    throw std::runtime_error("Drive voltage must be finite and non-negative.");
+  }
+  if (!std::isfinite(stroke_gain_m_per_v) ||
+      stroke_gain_m_per_v < kMinStrokeGainMetersPerVolt ||
+      stroke_gain_m_per_v > kMaxStrokeGainMetersPerVolt) {
+    throw std::runtime_error(
+        "Stroke gain must be finite and in the range [1.3, 1.7] um/V.");
+  }
+  return stroke_gain_m_per_v * drive_voltage_v;
+}
+
+double ParseDoubleFlag(const std::string& arg, const std::string& flag_name) {
+  const std::string prefix = "--" + flag_name + "=";
+  if (arg.rfind(prefix, 0) != 0) {
+    throw std::runtime_error("Internal parser error for flag " + flag_name);
+  }
+  try {
+    std::size_t parsed_chars = 0;
+    const double value = std::stod(arg.substr(prefix.size()), &parsed_chars);
+    if (parsed_chars != arg.size() - prefix.size()) {
+      throw std::runtime_error("");
+    }
+    return value;
+  } catch (const std::exception&) {
+    throw std::runtime_error("Could not parse --" + flag_name +
+                             " as a double.");
+  }
+}
+
+SimulationConfig ParseSimulationConfig(int argc, char** argv) {
+  SimulationConfig config;
+  for (int i = 1; i < argc; ++i) {
+    const std::string arg(argv[i]);
+    if (arg.rfind("--drive_voltage=", 0) == 0) {
+      config.drive_voltage_v = ParseDoubleFlag(arg, "drive_voltage");
+    } else if (arg.rfind("--stroke_gain_um_per_v=", 0) == 0) {
+      config.stroke_gain_m_per_v =
+          1.0e-6 * ParseDoubleFlag(arg, "stroke_gain_um_per_v");
+    } else if (arg.rfind("--server_port=", 0) == 0) {
+      const double port = ParseDoubleFlag(arg, "server_port");
+      if (port < 1 || port > 65535 || std::floor(port) != port) {
+        throw std::runtime_error("--server_port must be an integer in [1, 65535].");
+      }
+      config.server_port = static_cast<int>(port);
+    } else if (arg == "--help") {
+      std::cout
+          << "Usage: visualize_robobee_aeromechanical "
+             "[--drive_voltage=V] [--stroke_gain_um_per_v=K] "
+             "[--server_port=PORT]\n"
+          << "  drive_voltage: actuator voltage amplitude in volts\n"
+          << "  stroke_gain_um_per_v: stroke gain K in um/V, range [1.3, 1.7]\n"
+          << "  server_port: TCP port used by robobee_simulink_server\n";
+      std::exit(0);
+    } else {
+      throw std::runtime_error("Unknown argument: " + arg);
+    }
+  }
+  CalcStrokeAmplitudeFromVoltage(config.drive_voltage_v,
+                                 config.stroke_gain_m_per_v);
+  return config;
+}
+
 // Small Drake source system that produces the desired state vector expected by
 // the plant's joint PD controllers: [q_slider_1, q_slider_2, v_slider_1,
-// v_slider_2]. Both sliders receive the same sinusoidal command so the linkage
-// motion is driven from the two linear actuators.
-class SliderStrokeSource final : public drake::systems::LeafSystem<double> {
+// v_slider_2]. It accepts [right_voltage, left_voltage] and maps voltage to
+// slider stroke amplitude with stroke = K * V.
+class VoltageStrokeSource final : public drake::systems::LeafSystem<double> {
  public:
-  SliderStrokeSource(double stroke_amplitude, double drive_frequency_hz)
-      : stroke_amplitude_(stroke_amplitude),
+  VoltageStrokeSource(double stroke_gain_m_per_v, double drive_frequency_hz)
+      : stroke_gain_m_per_v_(stroke_gain_m_per_v),
         drive_omega_(2.0 * kPi * drive_frequency_hz) {
+    voltage_input_port_ =
+        this->DeclareVectorInputPort("voltage_command", 2).get_index();
     this->DeclareVectorOutputPort("slider_desired_state", 4,
-                                  &SliderStrokeSource::CalcDesiredState);
+                                  &VoltageStrokeSource::CalcDesiredState);
+  }
+
+  const drake::systems::InputPort<double>& voltage_input_port() const {
+    return this->get_input_port(voltage_input_port_);
   }
 
  private:
   void CalcDesiredState(const drake::systems::Context<double>& context,
                         drake::systems::BasicVector<double>* output) const {
     const double t = context.get_time();
-    const double q = stroke_amplitude_ * std::sin(drive_omega_ * t);
-    const double v =
-        stroke_amplitude_ * drive_omega_ * std::cos(drive_omega_ * t);
+    const Eigen::VectorXd& voltage_command =
+        this->EvalVectorInput(context, voltage_input_port_)->get_value();
+    const double right_voltage_v = voltage_command[0];
+    const double left_voltage_v = voltage_command[1];
+    const double right_stroke_amplitude =
+        CalcStrokeAmplitudeFromVoltage(right_voltage_v, stroke_gain_m_per_v_);
+    const double left_stroke_amplitude =
+        CalcStrokeAmplitudeFromVoltage(left_voltage_v, stroke_gain_m_per_v_);
+    const double sin_drive = std::sin(drive_omega_ * t);
+    const double cos_drive = std::cos(drive_omega_ * t);
+    const double q_right = right_stroke_amplitude * sin_drive;
+    const double q_left = left_stroke_amplitude * sin_drive;
+    const double v_right = right_stroke_amplitude * drive_omega_ * cos_drive;
+    const double v_left = left_stroke_amplitude * drive_omega_ * cos_drive;
 
     // Actuators are added below in this order: slider_1, then slider_2.
     Eigen::VectorBlock<Eigen::VectorXd> y = output->get_mutable_value();
-    y << q, q, v, v;
+    y << q_right, q_left, v_right, v_left;
   }
 
-  double stroke_amplitude_{};
+  drake::systems::InputPortIndex voltage_input_port_{};
+  double stroke_gain_m_per_v_{};
   double drive_omega_{};
 };
 
@@ -542,13 +640,6 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     robobee::WingMomentComponents moments =
         robobee::CalcAeromechanicalMoments(constants, moment_input, params);
 
-    // Save the analytic moment components before overwriting any fields for
-    // logging. These are the terms contained in moments.total_Nm and therefore
-    // the terms that must be removed from the scalar residual when their
-    // effects are already represented by distributed strip forces.
-    const double analytic_aerodynamic_Nm = moments.aerodynamic_Nm;
-    const double analytic_added_mass_Nm = moments.added_mass_Nm;
-
     if (total_alpha_weight > 0.0) {
       moments.angle_of_attack_alpha_rad =
           std::atan2(weighted_alpha_sin, weighted_alpha_cos);
@@ -558,8 +649,7 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     moments.vertical_force_N = total_blade_force_W.z();
 
     // Log the added-mass pitch moment that is actually produced by the
-    // distributed added-mass strip forces. Do not use this overwritten value to
-    // subtract from moments.total_Nm; use analytic_added_mass_Nm above instead.
+    // distributed added-mass strip forces.
     moments.added_mass_Nm = force_scale * total_added_mass_pitch_moment_Nm;
 
     // The translational aerodynamic and added-mass pitch moments are already
@@ -799,28 +889,223 @@ double CalcSliderDesiredPosition(double time_s, double stroke_amplitude,
 void WriteSliderCsvHeader(std::ostream* output) {
   *output << "time_s,right_actual_m,left_actual_m,"
              "right_desired_m,left_desired_m,"
-             "right_error_m,left_error_m\n";
+             "right_error_m,left_error_m,"
+             "drive_voltage_v,stroke_gain_m_per_v\n";
 }
 
 void WriteSliderCsvRow(std::ostream* output, double time_s,
                        double right_actual_m, double left_actual_m,
-                       double desired_m) {
+                       double desired_m, double drive_voltage_v,
+                       double stroke_gain_m_per_v) {
   *output << std::setprecision(17) << time_s << ','
           << right_actual_m << ',' << left_actual_m << ','
           << desired_m << ',' << desired_m << ','
           << right_actual_m - desired_m << ','
-          << left_actual_m - desired_m << '\n';
+          << left_actual_m - desired_m << ','
+          << drive_voltage_v << ',' << stroke_gain_m_per_v << '\n';
 }
+
+struct RobotPose {
+  Eigen::Vector3d p_WR{Eigen::Vector3d::Zero()};
+  Eigen::Vector3d roll_pitch_yaw_rad{Eigen::Vector3d::Zero()};
+};
+
+RobotPose CalcRobotPose(
+    const drake::multibody::MultibodyPlant<double>& plant,
+    const drake::systems::Context<double>& plant_context) {
+  const drake::math::RigidTransformd X_WR =
+      plant.GetBodyByName("root").EvalPoseInWorld(plant_context);
+  RobotPose pose;
+  pose.p_WR = X_WR.translation();
+  pose.roll_pitch_yaw_rad = X_WR.rotation().ToRollPitchYaw().vector();
+  return pose;
+}
+
+void WritePoseCsvHeader(std::ostream* output) {
+  *output << "time_s,x_m,y_m,z_m,roll_rad,pitch_rad,yaw_rad\n";
+}
+
+void WritePoseCsvRow(std::ostream* output, double time_s,
+                     const RobotPose& pose) {
+  *output << std::setprecision(17) << time_s << ','
+          << pose.p_WR.x() << ',' << pose.p_WR.y() << ',' << pose.p_WR.z()
+          << ',' << pose.roll_pitch_yaw_rad.x() << ','
+          << pose.roll_pitch_yaw_rad.y() << ','
+          << pose.roll_pitch_yaw_rad.z() << '\n';
+}
+
+#ifdef ROBOBEE_SIMULINK_SERVER
+
+namespace tcp = ::robobee::simulink;
+
+class RobobeeSimulationServer final {
+ public:
+  explicit RobobeeSimulationServer(const SimulationConfig& config)
+      : config_stroke_gain_m_per_v_(config.stroke_gain_m_per_v) {
+    constexpr double kDriveFrequencyHz = 180;
+    constexpr double kPlantStepsPerDriveCycle = 100.0;
+    constexpr double kAngularAccelerationSamplesPerDriveCycle =
+        kPlantStepsPerDriveCycle;
+    constexpr double kAngularAccelerationFilterCycles = 0.05;
+    constexpr double kPlantTimeStep =
+        1.0 / (kDriveFrequencyHz * kPlantStepsPerDriveCycle);
+    constexpr double kAngularAccelerationSamplePeriod =
+        1.0 / (kDriveFrequencyHz * kAngularAccelerationSamplesPerDriveCycle);
+    constexpr double kAngularAccelerationFilterTimeConstant =
+        kAngularAccelerationFilterCycles / kDriveFrequencyHz;
+
+    auto [plant, scene_graph] =
+        drake::multibody::AddMultibodyPlantSceneGraph(&builder_,
+                                                      kPlantTimeStep);
+    (void)scene_graph;
+    plant_ = &plant;
+    plant_->set_discrete_contact_approximation(
+        drake::multibody::DiscreteContactApproximation::kSap);
+
+    drake::multibody::Parser parser(plant_);
+    RegisterRoboBeePackage(&parser);
+    const std::vector<drake::multibody::ModelInstanceIndex> model_instances =
+        parser.AddModelsFromUrl(kAssemblyUrl);
+    if (model_instances.size() != 1) {
+      throw std::runtime_error("Expected exactly one RoboBee model instance.");
+    }
+    const drake::multibody::ModelInstanceIndex model_instance =
+        model_instances.front();
+
+    if constexpr (kFreeFlight) {
+      AddWorldFloor(plant_);
+    } else {
+      plant_->WeldFrames(plant_->world_frame(), plant_->GetFrameByName("root"));
+    }
+
+    AddLoopClosureWeldConstraint(plant_,
+                                 "transmission_link_2__1__loop_closure",
+                                 "transmission_link_2");
+    AddLoopClosureWeldConstraint(plant_,
+                                 "transmission_right_link_2__1__loop_closure",
+                                 "transmission_right_link_2");
+    AddLoopClosureBallConstraints(plant_,
+                                  "transmission_link_2__1__loop_closure",
+                                  "transmission_hinge",
+                                  "transmission_link_2");
+    AddLoopClosureBallConstraints(plant_,
+                                  "transmission_right_link_2__1__loop_closure",
+                                  "transmission_right_link_hinge",
+                                  "transmission_right_link_2");
+
+    constexpr double kSliderEffortLimitN = 100000.0;
+    constexpr double kSliderKp = 1000.0;
+    constexpr double kSliderKd = 5.0e-3;
+
+    const auto& right_slider_actuator = plant_->AddJointActuator(
+        "right_slider_drive", plant_->GetJointByName("slider_1"),
+        kSliderEffortLimitN);
+    plant_->get_mutable_joint_actuator(right_slider_actuator.index())
+        .set_controller_gains({kSliderKp, kSliderKd});
+
+    const auto& left_slider_actuator = plant_->AddJointActuator(
+        "left_slider_drive", plant_->GetJointByName("slider_2"),
+        kSliderEffortLimitN);
+    plant_->get_mutable_joint_actuator(left_slider_actuator.index())
+        .set_controller_gains({kSliderKp, kSliderKd});
+
+    plant_->Finalize();
+
+    slider_source_ = builder_.AddSystem<VoltageStrokeSource>(
+        config.stroke_gain_m_per_v, kDriveFrequencyHz);
+    builder_.Connect(slider_source_->get_output_port(),
+                     plant_->get_desired_state_input_port(model_instance));
+
+    auto* wing_aero = builder_.AddSystem<WingAeromechanics>(
+        *plant_, kAngularAccelerationSamplePeriod,
+        kAngularAccelerationFilterTimeConstant);
+    builder_.Connect(plant_->get_state_output_port(),
+                     wing_aero->get_input_port(0));
+    builder_.Connect(wing_aero->get_output_port(0),
+                     plant_->get_applied_spatial_force_input_port());
+
+    diagram_ = builder_.Build();
+    simulator_ = std::make_unique<drake::systems::Simulator<double>>(*diagram_);
+    simulator_->set_target_realtime_rate(0.0);
+    InitializeVoltageCommand(config.drive_voltage_v, config.drive_voltage_v);
+    if constexpr (kFreeFlight) {
+      auto& root_context = simulator_->get_mutable_context();
+      auto& plant_context = plant_->GetMyMutableContextFromRoot(&root_context);
+      plant_->SetFreeBodyPose(
+          &plant_context, plant_->GetBodyByName("root"),
+          drake::math::RigidTransformd(Eigen::Vector3d(0.0, 0.0, 1.0e-2)));
+    }
+    simulator_->Initialize();
+  }
+
+  tcp::StepResponse Step(const tcp::StepRequest& request) {
+    if (!std::isfinite(request.dt_s) || request.dt_s <= 0.0) {
+      throw std::runtime_error("Step request dt_s must be finite and positive.");
+    }
+    FixVoltageCommand(request.right_voltage_v, request.left_voltage_v);
+    time_s_ += request.dt_s;
+    simulator_->AdvanceTo(time_s_);
+
+    const auto& root_context = simulator_->get_context();
+    const auto& plant_context = plant_->GetMyContextFromRoot(root_context);
+    const RobotPose pose = CalcRobotPose(*plant_, plant_context);
+
+    tcp::StepResponse response;
+    response.time_s = time_s_;
+    response.x_m = pose.p_WR.x();
+    response.y_m = pose.p_WR.y();
+    response.z_m = pose.p_WR.z();
+    response.roll_rad = pose.roll_pitch_yaw_rad.x();
+    response.pitch_rad = pose.roll_pitch_yaw_rad.y();
+    response.yaw_rad = pose.roll_pitch_yaw_rad.z();
+    return response;
+  }
+
+ private:
+  void FixVoltageCommand(double right_voltage_v, double left_voltage_v) {
+    CalcStrokeAmplitudeFromVoltage(right_voltage_v, config_stroke_gain_m_per_v_);
+    CalcStrokeAmplitudeFromVoltage(left_voltage_v, config_stroke_gain_m_per_v_);
+    voltage_input_value_->GetMutableVectorData<double>()->get_mutable_value()
+        << right_voltage_v, left_voltage_v;
+  }
+
+  void InitializeVoltageCommand(double right_voltage_v, double left_voltage_v) {
+    CalcStrokeAmplitudeFromVoltage(right_voltage_v, config_stroke_gain_m_per_v_);
+    CalcStrokeAmplitudeFromVoltage(left_voltage_v, config_stroke_gain_m_per_v_);
+    auto& root_context = simulator_->get_mutable_context();
+    auto& source_context =
+        slider_source_->GetMyMutableContextFromRoot(&root_context);
+    Eigen::Vector2d voltage_command;
+    voltage_command << right_voltage_v, left_voltage_v;
+    voltage_input_value_ = &slider_source_->voltage_input_port().FixValue(
+        &source_context, voltage_command);
+  }
+
+  drake::systems::DiagramBuilder<double> builder_;
+  drake::multibody::MultibodyPlant<double>* plant_{};
+  VoltageStrokeSource* slider_source_{};
+  drake::systems::FixedInputPortValue* voltage_input_value_{};
+  std::unique_ptr<drake::systems::Diagram<double>> diagram_;
+  std::unique_ptr<drake::systems::Simulator<double>> simulator_;
+  double config_stroke_gain_m_per_v_{1.5e-6};
+  double time_s_{0.0};
+};
+
+#endif  // ROBOBEE_SIMULINK_SERVER
 
 }  // namespace
 
-int main() {
+#ifndef ROBOBEE_SIMULINK_SERVER
+int main(int argc, char** argv) {
+  const SimulationConfig config = ParseSimulationConfig(argc, argv);
+  const double kSliderAmplitude = CalcStrokeAmplitudeFromVoltage(
+      config.drive_voltage_v, config.stroke_gain_m_per_v);
+
   drake::systems::DiagramBuilder<double> builder;
 
   // Simulation timing is expressed in samples per wingbeat cycle so the plant,
   // visualizer, moment logger, and finite-difference acceleration estimator stay
   // synchronized as drive frequency changes.
-  constexpr double kSliderAmplitude = 0.00025;  // 0.6 mm peak-to-peak (might be too big, from Kevin Ma 2012, IROS)
   constexpr double kDriveFrequencyHz = 180;
   constexpr double kPlantStepsPerDriveCycle = 100.0;
   constexpr double kVisualizerSamplesPerDriveCycle = kPlantStepsPerDriveCycle*2;
@@ -842,9 +1127,12 @@ int main() {
   constexpr double kMomentLogFlushPeriod = 5.0e-2;
   constexpr double kSliderLogPeriod = kMomentLogPeriod;
   constexpr double kSliderLogFlushPeriod = kMomentLogFlushPeriod;
+  constexpr double kPoseLogPeriod = kMomentLogPeriod;
+  constexpr double kPoseLogFlushPeriod = kMomentLogFlushPeriod;
   constexpr double kTargetRealtimeRate = 0.02;
   constexpr char kMomentLogPath[] = "/tmp/aeromechanical_moments.csv";
   constexpr char kSliderLogPath[] = "/tmp/slider_positions.csv";
+  constexpr char kPoseLogPath[] = "/tmp/robobee_pose.csv";
 
   // A discrete MultibodyPlant is used because the assembly has constraints and
   // the wing loads are applied at a high update rate.
@@ -898,7 +1186,7 @@ int main() {
   constexpr double kSliderKd = 5.0e-3;
 
   // Add PD-controlled actuators to the two slider joints. The desired state
-  // input is provided after Finalize by SliderStrokeSource.
+  // input is provided after Finalize by VoltageStrokeSource.
   const auto& right_slider_actuator = plant.AddJointActuator(
       "right_slider_drive", plant.GetJointByName("slider_1"),
       kSliderEffortLimitN);
@@ -923,8 +1211,8 @@ int main() {
   //   slider source -> plant desired joint state
   //   plant state   -> wing aeromechanics
   //   wing forces   -> plant applied spatial force input
-  auto* slider_source =
-      builder.AddSystem<SliderStrokeSource>(kSliderAmplitude, kDriveFrequencyHz);
+  auto* slider_source = builder.AddSystem<VoltageStrokeSource>(
+      config.stroke_gain_m_per_v, kDriveFrequencyHz);
   builder.Connect(slider_source->get_output_port(),
                   plant.get_desired_state_input_port(model_instance));
 
@@ -947,6 +1235,15 @@ int main() {
   auto diagram = builder.Build();
   drake::systems::Simulator<double> simulator(*diagram);
   simulator.set_target_realtime_rate(kTargetRealtimeRate);
+  {
+    auto& root_context = simulator.get_mutable_context();
+    auto& source_context =
+        slider_source->GetMyMutableContextFromRoot(&root_context);
+    Eigen::Vector2d voltage_command;
+    voltage_command << config.drive_voltage_v, config.drive_voltage_v;
+    slider_source->voltage_input_port().FixValue(&source_context,
+                                                 voltage_command);
+  }
   if constexpr (kFreeFlight) {
     // Start slightly above the z=0 floor to avoid initial penetration.
     auto& root_context = simulator.get_mutable_context();
@@ -971,6 +1268,14 @@ int main() {
             << "  " << kSliderLogPath << "\n"
             << "Plot them with:\n"
             << "  python3 tools/plot_slider_positions.py\n\n"
+            << "Robot pose for Simulink-style feedback is being logged to:\n"
+            << "  " << kPoseLogPath << "\n\n"
+            << "Voltage command:\n"
+            << "  drive voltage amplitude: " << config.drive_voltage_v
+            << " V\n"
+            << "  stroke gain K: " << config.stroke_gain_m_per_v * 1.0e6
+            << " um/V\n"
+            << "  stroke amplitude: " << kSliderAmplitude << " m\n\n"
             << "Timing:\n"
             << "  drive frequency: " << kDriveFrequencyHz << " Hz\n"
             << "  plant timestep: " << kPlantTimeStep << " s ("
@@ -1012,11 +1317,19 @@ int main() {
   }
   WriteSliderCsvHeader(&slider_log);
 
+  std::ofstream pose_log(kPoseLogPath);
+  if (!pose_log) {
+    throw std::runtime_error("Could not open RoboBee pose CSV log.");
+  }
+  WritePoseCsvHeader(&pose_log);
+
   double next_time = 0.0;
   double next_moment_log_time = 0.0;
   double next_moment_log_flush_time = kMomentLogFlushPeriod;
   double next_slider_log_time = 0.0;
   double next_slider_log_flush_time = kSliderLogFlushPeriod;
+  double next_pose_log_time = 0.0;
+  double next_pose_log_flush_time = kPoseLogFlushPeriod;
   // Manual stepping gives this app explicit control over log cadence and flush
   // cadence. The simulator is otherwise advanced one plant step at a time.
   while (true) {
@@ -1035,8 +1348,16 @@ int main() {
       WriteSliderCsvRow(&slider_log, next_time,
                         right_slider.get_translation(plant_context),
                         left_slider.get_translation(plant_context),
-                        desired_slider_position);
+                        desired_slider_position, config.drive_voltage_v,
+                        config.stroke_gain_m_per_v);
       next_slider_log_time += kSliderLogPeriod;
+    }
+    if (next_time + 0.5 * kCommandPeriod >= next_pose_log_time) {
+      const auto& root_context = simulator.get_context();
+      const auto& plant_context = plant.GetMyContextFromRoot(root_context);
+      WritePoseCsvRow(&pose_log, next_time,
+                      CalcRobotPose(plant, plant_context));
+      next_pose_log_time += kPoseLogPeriod;
     }
     if (next_time + 0.5 * kCommandPeriod >= next_moment_log_flush_time) {
       moment_log.flush();
@@ -1046,7 +1367,44 @@ int main() {
       slider_log.flush();
       next_slider_log_flush_time += kSliderLogFlushPeriod;
     }
+    if (next_time + 0.5 * kCommandPeriod >= next_pose_log_flush_time) {
+      pose_log.flush();
+      next_pose_log_flush_time += kPoseLogFlushPeriod;
+    }
   }
 
   return 0;
 }
+#else
+int main(int argc, char** argv) {
+  const SimulationConfig config = ParseSimulationConfig(argc, argv);
+  tcp::FileDescriptor listen_fd = tcp::ListenOnLocalhost(config.server_port);
+
+  std::cout << "RoboBee Simulink server is listening on 127.0.0.1:"
+            << config.server_port << ".\n"
+            << "Protocol: request = [dt_s, left_voltage_v, right_voltage_v], "
+               "response = [time_s, x_m, y_m, z_m, roll_rad, pitch_rad, "
+               "yaw_rad], all binary double values.\n"
+            << "Waiting for Simulink client...\n";
+
+  while (true) {
+    tcp::FileDescriptor client_fd = tcp::AcceptClient(listen_fd.get());
+    std::cout << "Simulink client connected; initializing Drake simulation.\n";
+    try {
+      RobobeeSimulationServer simulator(config);
+      while (true) {
+        tcp::StepRequest request;
+        if (!tcp::RecvExact(client_fd.get(), &request, sizeof(request))) {
+          break;
+        }
+        const tcp::StepResponse response = simulator.Step(request);
+        tcp::SendExact(client_fd.get(), &response, sizeof(response));
+      }
+      std::cout << "Simulink client disconnected; waiting for a new client.\n";
+    } catch (const std::exception& e) {
+      std::cerr << "Client session ended with error: " << e.what() << "\n"
+                << "Waiting for a new client.\n";
+    }
+  }
+}
+#endif
