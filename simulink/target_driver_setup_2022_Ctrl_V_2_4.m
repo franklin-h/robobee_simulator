@@ -1,4 +1,5 @@
-io %% Geometric Adaptive control
+c% io %% Geometric Adaptive control
+%% Geometric Adaptive Control
 
 
 clear all;
@@ -6,26 +7,26 @@ close all;
 
 sampling_f = 10000;			% controller sampling rate
 sampling_time = 1/sampling_f;
-start_delay = 2.0;		%+2.0	% start after xx s
-ramp_delay =0.1;
+start_delay = 0.0;		%+2.0	% start after xx s
+ramp_delay = 0.1;
 
 adaptive_delay = 0.1;
 start_delay_control = start_delay + ramp_delay;
 start_delay_adaptive = start_delay + ramp_delay+adaptive_delay;
 
 %% Driving signal setup and experiment setup
-f = 155; %170; %165
+f = 180; %170; %165
 f_int = f;					% initial frequency
 f_fin = f;					% final frequency
-T = 0.5;			% total time in seconds
+T = 1;			% total time in seconds
 
 landing_flag=0; % 0 : No landing, 1: landing on
 
-control_flag=1; %2 % 1: Openloop, 2: closed loop
+control_flag=2; %2 % 1: Openloop, 2: closed loop
 adaptive_flag=0;					% 0: no-adaptive 1: adaptive
 adaptive_lateral_flag=0;	% 0:  -adaptive 1: adaptive
 
-max_drv_bias =300;
+max_drv_bias = 300;
 
 save_flag = 1; %1;
 % save_file_name = '20210920_13_with_adaptive_trajectory_landing_1s_circle_costant_y_heading_h_gain_';
@@ -42,6 +43,12 @@ save_flag = 1; %1;
 % save_file_name = 'OL_20221213_60';
 % save_file_name = '20221019_DeadBee_falling_121mg_21_rigid';
 save_file_name = '20221217_PBee_OL_1';
+
+mdl = 'updated_target_driver_2026_withVariants';
+set_param(mdl, 'SolverType', 'Fixed-step');
+set_param(mdl, 'Solver', 'FixedStepDiscrete');
+set_param(mdl, 'FixedStep', 'dt_s');
+set_param(mdl, 'StopTime', 'running_time');
 %% Vehicle parameters
 g=9.8; % gravity
 m = 101e-6; %101e-6%90e-6;%86e-6; %86*1e-6%86*1e-6; % vehicle weight
@@ -139,6 +146,8 @@ wing_to_voltage = load('Bee_Trajectory_Input_Linear_fitting.mat'); % Identified 
 
 
 % Correction based on the lift coefficient mismatch
+% don't forget to install curve fitting tool box if you get loading
+% variable error 
 C_R_over_C_L = 1.0; 
 wing_to_voltage.fit_R_total.p1 = C_R_over_C_L*wing_to_voltage.fit_R_total.p1;
 wing_to_voltage.fit_R_total.p2 = C_R_over_C_L*wing_to_voltage.fit_R_total.p2;
@@ -163,8 +172,8 @@ drv_pch = drv_pitch_left;
 
 
 % CHRISTIAN OPENLOOP Control
-drv_amp = 160;
-drv_roll = -2;
+drv_amp = 300;
+drv_roll = 0;
 drv_pitch_left = 0;
 drv_pitch_right = 0;
 % max_drv_bias =300;
@@ -320,6 +329,14 @@ adaptive_gain = [gamma_adaptive, adaptive_roll_limit, adaptive_pitch_limit, adap
 
 %% setup code 
 % Default openloop
+dt_s = 1e-3; 
+host = "127.0.0.1";
+port = 4242;
+% Plant = 1 for vicon, 2 for Drake
+Plant = 2; 
+if Plant == 1 
+    start_delay = 2.0; % ensure start_delay exists if real experiment
+end 
 
 closedloop_flag=0;
 

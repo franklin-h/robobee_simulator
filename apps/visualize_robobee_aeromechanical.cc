@@ -79,6 +79,29 @@ double CalcStrokeAmplitudeFromVoltage(double drive_voltage_v,
   return stroke_gain_m_per_v * drive_voltage_v;
 }
 
+double CalcSignedStrokeAmplitudeFromDriveVoltage(double drive_voltage_v,
+                                                 double bias_voltage_v,
+                                                 double stroke_gain_m_per_v) {
+  if (!std::isfinite(drive_voltage_v)) {
+    throw std::runtime_error("Drive voltage command must be finite.");
+  }
+  if (!std::isfinite(bias_voltage_v) || bias_voltage_v < 0.0) {
+    throw std::runtime_error(
+        "Bias voltage command must be finite and non-negative.");
+  }
+  if (std::abs(drive_voltage_v) > 1.5 * bias_voltage_v) {
+    throw std::runtime_error(
+        "Drive voltage magnitude must not exceed bias voltage.");
+  }
+  if (!std::isfinite(stroke_gain_m_per_v) ||
+      stroke_gain_m_per_v < kMinStrokeGainMetersPerVolt ||
+      stroke_gain_m_per_v > kMaxStrokeGainMetersPerVolt) {
+    throw std::runtime_error(
+        "Stroke gain must be finite and in the range [1.3, 1.7] um/V.");
+  }
+  return stroke_gain_m_per_v * drive_voltage_v;
+}
+
 double ParseDoubleFlag(const std::string& arg, const std::string& flag_name) {
   const std::string prefix = "--" + flag_name + "=";
   if (arg.rfind(prefix, 0) != 0) {
@@ -117,7 +140,7 @@ SimulationConfig ParseSimulationConfig(int argc, char** argv) {
           << "Usage: visualize_robobee_aeromechanical "
              "[--drive_voltage=V] [--stroke_gain_um_per_v=K] "
              "[--server_port=PORT]\n"
-          << "  drive_voltage: actuator voltage amplitude in volts\n"
+          << "  drive_voltage: initial actuator drive amplitude in volts\n"
           << "  stroke_gain_um_per_v: stroke gain K in um/V, range [1.3, 1.7]\n"
           << "  server_port: TCP port used by robobee_simulink_server\n";
       std::exit(0);
@@ -132,15 +155,16 @@ SimulationConfig ParseSimulationConfig(int argc, char** argv) {
 
 // Small Drake source system that produces the desired state vector expected by
 // the plant's joint PD controllers: [q_slider_1, q_slider_2, v_slider_1,
-// v_slider_2]. It accepts [right_voltage, left_voltage] and maps voltage to
-// slider stroke amplitude with stroke = K * V.
+// v_slider_2]. It accepts [right_drive_voltage, left_drive_voltage,
+// bias_voltage]. The per-wing commands are signed drive amplitudes; the bias is
+// a nonnegative common-mode safety voltage and does not directly create stroke.
 class VoltageStrokeSource final : public drake::systems::LeafSystem<double> {
  public:
   VoltageStrokeSource(double stroke_gain_m_per_v, double drive_frequency_hz)
       : stroke_gain_m_per_v_(stroke_gain_m_per_v),
         drive_omega_(2.0 * kPi * drive_frequency_hz) {
     voltage_input_port_ =
-        this->DeclareVectorInputPort("voltage_command", 2).get_index();
+        this->DeclareVectorInputPort("voltage_command", 3).get_index();
     this->DeclareVectorOutputPort("slider_desired_state", 4,
                                   &VoltageStrokeSource::CalcDesiredState);
   }
@@ -157,10 +181,13 @@ class VoltageStrokeSource final : public drake::systems::LeafSystem<double> {
         this->EvalVectorInput(context, voltage_input_port_)->get_value();
     const double right_voltage_v = voltage_command[0];
     const double left_voltage_v = voltage_command[1];
+    const double bias_voltage_v = voltage_command[2];
     const double right_stroke_amplitude =
-        CalcStrokeAmplitudeFromVoltage(right_voltage_v, stroke_gain_m_per_v_);
+        CalcSignedStrokeAmplitudeFromDriveVoltage(
+            right_voltage_v, bias_voltage_v, stroke_gain_m_per_v_);
     const double left_stroke_amplitude =
-        CalcStrokeAmplitudeFromVoltage(left_voltage_v, stroke_gain_m_per_v_);
+        CalcSignedStrokeAmplitudeFromDriveVoltage(
+            left_voltage_v, bias_voltage_v, stroke_gain_m_per_v_);
     const double sin_drive = std::sin(drive_omega_ * t);
     const double cos_drive = std::cos(drive_omega_ * t);
     const double q_right = right_stroke_amplitude * sin_drive;
@@ -953,12 +980,13 @@ class RobobeeSimulationServer final {
         1.0 / (kDriveFrequencyHz * kAngularAccelerationSamplesPerDriveCycle);
     constexpr double kAngularAccelerationFilterTimeConstant =
         kAngularAccelerationFilterCycles / kDriveFrequencyHz;
+    constexpr double kVisualizerPublishPeriod = 1.0 / 120.0*5;
 
     auto [plant, scene_graph] =
         drake::multibody::AddMultibodyPlantSceneGraph(&builder_,
                                                       kPlantTimeStep);
-    (void)scene_graph;
     plant_ = &plant;
+    scene_graph_ = &scene_graph;
     plant_->set_discrete_contact_approximation(
         drake::multibody::DiscreteContactApproximation::kSap);
 
@@ -1024,10 +1052,16 @@ class RobobeeSimulationServer final {
     builder_.Connect(wing_aero->get_output_port(0),
                      plant_->get_applied_spatial_force_input_port());
 
+    drake::geometry::DrakeVisualizerParams visualizer_params;
+    visualizer_params.publish_period = kVisualizerPublishPeriod;
+    drake::geometry::DrakeVisualizerd::AddToBuilder(
+        &builder_, scene_graph, &lcm_, visualizer_params);
+
     diagram_ = builder_.Build();
     simulator_ = std::make_unique<drake::systems::Simulator<double>>(*diagram_);
     simulator_->set_target_realtime_rate(0.0);
-    InitializeVoltageCommand(config.drive_voltage_v, config.drive_voltage_v);
+    InitializeVoltageCommand(config.drive_voltage_v, config.drive_voltage_v,
+                             config.drive_voltage_v);
     if constexpr (kFreeFlight) {
       auto& root_context = simulator_->get_mutable_context();
       auto& plant_context = plant_->GetMyMutableContextFromRoot(&root_context);
@@ -1036,13 +1070,25 @@ class RobobeeSimulationServer final {
           drake::math::RigidTransformd(Eigen::Vector3d(0.0, 0.0, 1.0e-2)));
     }
     simulator_->Initialize();
+    drake::geometry::DrakeVisualizerd::DispatchLoadMessage(*scene_graph_,
+                                                           &lcm_);
   }
 
   tcp::StepResponse Step(const tcp::StepRequest& request) {
     if (!std::isfinite(request.dt_s) || request.dt_s <= 0.0) {
       throw std::runtime_error("Step request dt_s must be finite and positive.");
     }
-    FixVoltageCommand(request.right_voltage_v, request.left_voltage_v);
+    const double right_actuator_voltage_v =
+        kVoltageAmplifierGain * request.right_voltage_v;
+    const double left_actuator_voltage_v =
+        kVoltageAmplifierGain * request.left_voltage_v;
+    const double bias_actuator_voltage_v =
+        kVoltageAmplifierGain * request.bias_voltage_v;
+    LogReceivedVoltageCommand(request, right_actuator_voltage_v,
+                              left_actuator_voltage_v,
+                              bias_actuator_voltage_v);
+    FixVoltageCommand(right_actuator_voltage_v, left_actuator_voltage_v,
+                      bias_actuator_voltage_v);
     time_s_ += request.dt_s;
     simulator_->AdvanceTo(time_s_);
 
@@ -1062,33 +1108,77 @@ class RobobeeSimulationServer final {
   }
 
  private:
-  void FixVoltageCommand(double right_voltage_v, double left_voltage_v) {
-    CalcStrokeAmplitudeFromVoltage(right_voltage_v, config_stroke_gain_m_per_v_);
-    CalcStrokeAmplitudeFromVoltage(left_voltage_v, config_stroke_gain_m_per_v_);
-    voltage_input_value_->GetMutableVectorData<double>()->get_mutable_value()
-        << right_voltage_v, left_voltage_v;
+  static constexpr double kVoltageAmplifierGain = 100.0;
+  static constexpr int kVoltageLogPeriodSteps = 1000;
+
+  void LogReceivedVoltageCommand(const tcp::StepRequest& request,
+                                 double right_actuator_voltage_v,
+                                 double left_actuator_voltage_v,
+                                 double bias_actuator_voltage_v) {
+    ++voltage_log_count_;
+    const double max_abs_drive_preamp_v =
+        std::max(std::abs(request.left_voltage_v),
+                 std::abs(request.right_voltage_v));
+    const double max_abs_drive_actuator_v =
+        std::max(std::abs(left_actuator_voltage_v),
+                 std::abs(right_actuator_voltage_v));
+    const bool violates_bias_limit =
+        !std::isfinite(bias_actuator_voltage_v) ||
+        bias_actuator_voltage_v < 0.0 ||
+        max_abs_drive_actuator_v > bias_actuator_voltage_v;
+    if (voltage_log_count_ <= 10 ||
+        voltage_log_count_ % kVoltageLogPeriodSteps == 0 ||
+        violates_bias_limit) {
+      std::cout << std::setprecision(6)
+                << "Voltage command step " << voltage_log_count_
+                << " at t=" << time_s_
+                << " s: preamp |drive|max=" << max_abs_drive_preamp_v
+                << " V, preamp bias=" << request.bias_voltage_v
+                << " V; actuator |drive|max=" << max_abs_drive_actuator_v
+                << " V, actuator bias=" << bias_actuator_voltage_v << " V";
+      if (violates_bias_limit) {
+        std::cout << "  [violates |drive| <= bias]";
+      }
+      std::cout << "\n";
+    }
   }
 
-  void InitializeVoltageCommand(double right_voltage_v, double left_voltage_v) {
-    CalcStrokeAmplitudeFromVoltage(right_voltage_v, config_stroke_gain_m_per_v_);
-    CalcStrokeAmplitudeFromVoltage(left_voltage_v, config_stroke_gain_m_per_v_);
+  void FixVoltageCommand(double right_voltage_v, double left_voltage_v,
+                         double bias_voltage_v) {
+    CalcSignedStrokeAmplitudeFromDriveVoltage(
+        right_voltage_v, bias_voltage_v, config_stroke_gain_m_per_v_);
+    CalcSignedStrokeAmplitudeFromDriveVoltage(
+        left_voltage_v, bias_voltage_v, config_stroke_gain_m_per_v_);
+    voltage_input_value_->GetMutableVectorData<double>()->get_mutable_value()
+        << right_voltage_v, left_voltage_v, bias_voltage_v;
+  }
+
+  void InitializeVoltageCommand(double right_voltage_v, double left_voltage_v,
+                                double bias_voltage_v) {
+    CalcSignedStrokeAmplitudeFromDriveVoltage(
+        right_voltage_v, bias_voltage_v, config_stroke_gain_m_per_v_);
+    CalcSignedStrokeAmplitudeFromDriveVoltage(
+        left_voltage_v, bias_voltage_v, config_stroke_gain_m_per_v_);
     auto& root_context = simulator_->get_mutable_context();
     auto& source_context =
         slider_source_->GetMyMutableContextFromRoot(&root_context);
-    Eigen::Vector2d voltage_command;
-    voltage_command << right_voltage_v, left_voltage_v;
+    Eigen::Vector3d voltage_command;
+    voltage_command << right_voltage_v, left_voltage_v, bias_voltage_v;
     voltage_input_value_ = &slider_source_->voltage_input_port().FixValue(
         &source_context, voltage_command);
   }
 
   drake::systems::DiagramBuilder<double> builder_;
   drake::multibody::MultibodyPlant<double>* plant_{};
+  drake::geometry::SceneGraph<double>* scene_graph_{};
+  drake::lcm::DrakeLcm lcm_;
   VoltageStrokeSource* slider_source_{};
   drake::systems::FixedInputPortValue* voltage_input_value_{};
   std::unique_ptr<drake::systems::Diagram<double>> diagram_;
   std::unique_ptr<drake::systems::Simulator<double>> simulator_;
   double config_stroke_gain_m_per_v_{1.5e-6};
   double time_s_{0.0};
+  int voltage_log_count_{0};
 };
 
 #endif  // ROBOBEE_SIMULINK_SERVER
@@ -1239,8 +1329,9 @@ int main(int argc, char** argv) {
     auto& root_context = simulator.get_mutable_context();
     auto& source_context =
         slider_source->GetMyMutableContextFromRoot(&root_context);
-    Eigen::Vector2d voltage_command;
-    voltage_command << config.drive_voltage_v, config.drive_voltage_v;
+    Eigen::Vector3d voltage_command;
+    voltage_command << config.drive_voltage_v, config.drive_voltage_v,
+        config.drive_voltage_v;
     slider_source->voltage_input_port().FixValue(&source_context,
                                                  voltage_command);
   }
@@ -1382,9 +1473,12 @@ int main(int argc, char** argv) {
 
   std::cout << "RoboBee Simulink server is listening on 127.0.0.1:"
             << config.server_port << ".\n"
-            << "Protocol: request = [dt_s, left_voltage_v, right_voltage_v], "
+            << "Protocol: request = [dt_s, left_voltage_v, right_voltage_v, "
+               "bias_voltage_v], "
                "response = [time_s, x_m, y_m, z_m, roll_rad, pitch_rad, "
                "yaw_rad], all binary double values.\n"
+            << "Voltage request fields are pre-amplifier commands; the server "
+               "applies a 100x voltage amplifier gain before driving Drake.\n"
             << "Waiting for Simulink client...\n";
 
   while (true) {

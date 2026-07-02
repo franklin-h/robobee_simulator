@@ -115,7 +115,7 @@
     </link>
     <link name="part_1_3">
         <inertial>
-            <mass value="1.70668e-06" />
+            <mass value="6.170668e-05" />
             <origin xyz="2.98056e-18 2.45931e-05 0" rpy="0 -0 0" />
             <inertia ixx="1.38361e-12" ixy="0" ixz="0" iyy="7.17549e-13" iyz="0" izz="2.09294e-12" />
         </inertial>

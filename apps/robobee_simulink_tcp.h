@@ -4,10 +4,14 @@ namespace robobee::simulink {
 
 struct StepRequest {
   // All fields are little-endian IEEE doubles, as sent by MATLAB on macOS.
-  // left_voltage_v and right_voltage_v are actuator voltage amplitudes.
+  // Voltage fields are pre-amplifier commands. The Drake server applies its
+  // configured voltage amplifier gain before using them as actuator voltages.
+  // left_voltage_v and right_voltage_v are per-wing drive commands. The
+  // bias_voltage_v field is a common-mode actuator bias command.
   double dt_s{};
   double left_voltage_v{};
   double right_voltage_v{};
+  double bias_voltage_v{};
 };
 
 struct StepResponse {
