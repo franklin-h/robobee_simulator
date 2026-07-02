@@ -44,6 +44,7 @@ class FileDescriptor final {
 };
 
 void SetTcpNoDelay(int fd);
+void SetReceiveTimeout(int fd, double timeout_s);
 FileDescriptor ListenOnLocalhost(int port);
 FileDescriptor AcceptClient(int listen_fd);
 bool RecvExact(int fd, void* data, int byte_count);

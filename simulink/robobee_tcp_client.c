@@ -13,6 +13,8 @@
 #include <unistd.h>
 
 enum { kDefaultPort = 4242 };
+enum { kConnectRetryAttempts = 200 };
+enum { kConnectRetrySleepUs = 50000 };
 
 static int g_socket_fd = -1;
 static char g_host[64] = "127.0.0.1";
@@ -20,6 +22,7 @@ static int g_port = kDefaultPort;
 
 static void robobee_tcp_close(void) {
   if (g_socket_fd >= 0) {
+    shutdown(g_socket_fd, SHUT_RDWR);
     close(g_socket_fd);
     g_socket_fd = -1;
   }
@@ -70,33 +73,38 @@ static int robobee_tcp_connect(void) {
     return ROBOBEE_TCP_OK;
   }
 
-  const int fd = socket(AF_INET, SOCK_STREAM, 0);
-  if (fd < 0) {
-    return ROBOBEE_TCP_ERR_SOCKET;
-  }
-
-  int enabled = 1;
-  (void)setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &enabled, sizeof(enabled));
-#ifdef SO_NOSIGPIPE
-  (void)setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &enabled, sizeof(enabled));
-#endif
-
   struct sockaddr_in addr;
   memset(&addr, 0, sizeof(addr));
   addr.sin_family = AF_INET;
   addr.sin_port = htons((uint16_t)g_port);
   if (inet_pton(AF_INET, g_host, &addr.sin_addr) != 1) {
-    close(fd);
     return ROBOBEE_TCP_ERR_BAD_ARG;
   }
 
-  if (connect(fd, (const struct sockaddr*)&addr, sizeof(addr)) != 0) {
+  for (int attempt = 0; attempt < kConnectRetryAttempts; ++attempt) {
+    const int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) {
+      return ROBOBEE_TCP_ERR_SOCKET;
+    }
+
+    int enabled = 1;
+    (void)setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &enabled, sizeof(enabled));
+#ifdef SO_NOSIGPIPE
+    (void)setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &enabled, sizeof(enabled));
+#endif
+
+    if (connect(fd, (const struct sockaddr*)&addr, sizeof(addr)) == 0) {
+      g_socket_fd = fd;
+      return ROBOBEE_TCP_OK;
+    }
+
     close(fd);
-    return ROBOBEE_TCP_ERR_CONNECT;
+    if (attempt + 1 < kConnectRetryAttempts) {
+      usleep(kConnectRetrySleepUs);
+    }
   }
 
-  g_socket_fd = fd;
-  return ROBOBEE_TCP_OK;
+  return ROBOBEE_TCP_ERR_CONNECT;
 }
 
 void robobee_tcp_set_endpoint_c(const char* host, int port) {

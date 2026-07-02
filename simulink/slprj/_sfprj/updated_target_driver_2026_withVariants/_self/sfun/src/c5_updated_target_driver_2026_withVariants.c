@@ -127,7 +127,7 @@ static void
   covrtEmlInitFcn(chartInstance->c5_covrtInstance, "", 4U, 0U, 1U, 0U, 0U, 0U,
                   0U, 0U, 0U, 0U, 0U, 0U);
   covrtEmlFcnInitFcn(chartInstance->c5_covrtInstance, 4U, 0U, 0U,
-                     "c5_updated_target_driver_2026_withVariants", 0, -1, 363);
+                     "c5_updated_target_driver_2026_withVariants", 0, -1, 362);
   covrtEmlInitFcn(chartInstance->c5_covrtInstance,
                   "/Users/franklinho/robobee_simulator/simulink/robobee_tcp_step_codegen.m",
                   14U, 0U, 1U, 0U, 2U, 0U, 0U, 0U, 0U, 0U, 0U, 0U);
@@ -163,6 +163,12 @@ static void disable_c5_updated_target_driver_2026_withVariants
 static void sf_gateway_c5_updated_target_driver_2026_withVariants
   (SFc5_updated_target_driver_2026_withVariantsInstanceStruct *chartInstance)
 {
+  emlrtStack c5_st = { NULL,           /* site */
+    NULL,                              /* tls */
+    NULL                               /* prev */
+  };
+
+  const mxArray *c5_b_y = NULL;
   real_T c5_pose[7];
   real_T c5_b_alpha_rad;
   real_T c5_b_beta_rad;
@@ -173,14 +179,15 @@ static void sf_gateway_c5_updated_target_driver_2026_withVariants
   real_T c5_b_right_voltage_v;
   real_T c5_b_time;
   real_T c5_b_x;
-  real_T c5_b_y;
   real_T c5_b_z;
   real_T c5_c_bias_voltage_v;
   real_T c5_c_dt_s;
   real_T c5_c_left_voltage_v;
   real_T c5_c_right_voltage_v;
+  real_T c5_c_y;
   int32_T c5_i;
   int32_T c5_status;
+  c5_st.tls = chartInstance->c5_fEmlrtCtx;
   covrtSigUpdateFcn(chartInstance->c5_covrtInstance, 3U,
                     *chartInstance->c5_bias_voltage_v);
   covrtSigUpdateFcn(chartInstance->c5_covrtInstance, 2U,
@@ -215,15 +222,19 @@ static void sf_gateway_c5_updated_target_driver_2026_withVariants
   }
 
   c5_b_time = c5_pose[0];
+  sf_mex_printf("%s =\\n", "time");
+  c5_b_y = NULL;
+  sf_mex_assign(&c5_b_y, sf_mex_create("y", &c5_b_time, 0, 0U, 0, 0U, 0), false);
+  sf_mex_call(&c5_st, NULL, "disp", 0U, 1U, 14, c5_b_y);
   c5_b_x = c5_pose[1];
-  c5_b_y = c5_pose[2];
+  c5_c_y = c5_pose[2];
   c5_b_z = c5_pose[3];
   c5_b_alpha_rad = c5_pose[4];
   c5_b_beta_rad = c5_pose[5];
   c5_b_gamma_rad = c5_pose[6];
   *chartInstance->c5_time = c5_b_time;
   *chartInstance->c5_x = c5_b_x;
-  *chartInstance->c5_y = c5_b_y;
+  *chartInstance->c5_y = c5_c_y;
   *chartInstance->c5_z = c5_b_z;
   *chartInstance->c5_alpha_rad = c5_b_alpha_rad;
   *chartInstance->c5_beta_rad = c5_b_beta_rad;
@@ -420,10 +431,10 @@ static void init_simulink_io_address
 /* SFunction Glue Code */
 void sf_c5_updated_target_driver_2026_withVariants_get_check_sum(mxArray *plhs[])
 {
-  ((real_T *)mxGetPr((plhs[0])))[0] = (real_T)(478270686U);
-  ((real_T *)mxGetPr((plhs[0])))[1] = (real_T)(3643793626U);
-  ((real_T *)mxGetPr((plhs[0])))[2] = (real_T)(3549134544U);
-  ((real_T *)mxGetPr((plhs[0])))[3] = (real_T)(1257854415U);
+  ((real_T *)mxGetPr((plhs[0])))[0] = (real_T)(1940577912U);
+  ((real_T *)mxGetPr((plhs[0])))[1] = (real_T)(3640531585U);
+  ((real_T *)mxGetPr((plhs[0])))[2] = (real_T)(2591609945U);
+  ((real_T *)mxGetPr((plhs[0])))[3] = (real_T)(4058357177U);
 }
 
 mxArray *sf_c5_updated_target_driver_2026_withVariants_third_party_uses_info
@@ -485,7 +496,7 @@ static const mxArray
 
 static const char* sf_get_instance_specialization(void)
 {
-  return "sgKu9p9ZZ6akBpbtsPiTOID";
+  return "sFPiqywl6iQxfpVNCuwYtRE";
 }
 
 static void sf_opaque_initialize_c5_updated_target_driver_2026_withVariants(void
@@ -602,35 +613,35 @@ const char* sf_c5_updated_target_driver_2026_withVariants_get_post_codegen_info
 {
   int i;
   const char* encStrCodegen [26] = {
-    "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",
-    "O9ar6EOT5oxJfX45lt+aPmlU3r03Rz/7F2mBh40=",
+    "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",
+    "y+hDs+aMWX3+Siy/NX3SrL5/f4l+9g9yOoWA",
     ""
   };
 
-  static char newstr [1841] = "";
+  static char newstr [1837] = "";
   newstr[0] = '\0';
   for (i = 0; i < 26; i++) {
     strcat(newstr, encStrCodegen[i]);
@@ -645,10 +656,10 @@ static void mdlSetWorkWidths_c5_updated_target_driver_2026_withVariants
   const char* newstr =
     sf_c5_updated_target_driver_2026_withVariants_get_post_codegen_info();
   sf_set_work_widths(S, newstr);
-  ssSetChecksum0(S,(3588883154U));
-  ssSetChecksum1(S,(2573403837U));
-  ssSetChecksum2(S,(4053654606U));
-  ssSetChecksum3(S,(2408897676U));
+  ssSetChecksum0(S,(1525257123U));
+  ssSetChecksum1(S,(1328517046U));
+  ssSetChecksum2(S,(591734545U));
+  ssSetChecksum3(S,(1757809366U));
 }
 
 static void mdlRTW_c5_updated_target_driver_2026_withVariants(SimStruct *S)

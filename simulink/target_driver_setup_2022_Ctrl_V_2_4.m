@@ -1,4 +1,4 @@
-c% io %% Geometric Adaptive control
+% io %% Geometric Adaptive control
 %% Geometric Adaptive Control
 
 
@@ -7,12 +7,24 @@ close all;
 
 sampling_f = 10000;			% controller sampling rate
 sampling_time = 1/sampling_f;
-start_delay = 0.0;		%+2.0	% start after xx s
-ramp_delay = 0.1;
 
-adaptive_delay = 0.1;
+% Plant = 1 for vicon, 2 for Drake
+Plant = 2; 
+if Plant == 1 
+    start_delay = 2.0; % ensure start_delay exists if real experiment
+    adaptive_delay = 0.1;
+    ramp_delay = 0.1;
+    
+else 
+    start_delay = 0.0; 
+    adaptive_delay = 0.0; 
+    ramp_delay = 0.0; 
+end 
+
+
 start_delay_control = start_delay + ramp_delay;
 start_delay_adaptive = start_delay + ramp_delay+adaptive_delay;
+
 
 %% Driving signal setup and experiment setup
 f = 180; %170; %165
@@ -51,11 +63,15 @@ set_param(mdl, 'FixedStep', 'dt_s');
 set_param(mdl, 'StopTime', 'running_time');
 %% Vehicle parameters
 g=9.8; % gravity
-m = 101e-6; %101e-6%90e-6;%86e-6; %86*1e-6%86*1e-6; % vehicle weight
+m = 80e-6; %101e-6%90e-6;%86e-6; %86*1e-6%86*1e-6; % vehicle weight in kg (mg * 1e-6)
+% 
+% Ixx = 1.42*1e-9; % Principal moment of inertia
+% Iyy = 1.34*1e-9%1.34*1e-9;
+% Izz = 0.45*1e-9;
 
-Ixx = 1.42*1e-9; % Principal moment of inertia
-Iyy = 1.34*1e-9%1.34*1e-9;
-Izz = 0.45*1e-9;
+Ixx = 2.13e-10; 
+Iyy = 2.33e-10; 
+Izz = 3.27e-11; 
 
 % Payload;
 payload = 23e-6;
@@ -329,14 +345,10 @@ adaptive_gain = [gamma_adaptive, adaptive_roll_limit, adaptive_pitch_limit, adap
 
 %% setup code 
 % Default openloop
-dt_s = 1e-3; 
+dt_s = 1e-5; 
 host = "127.0.0.1";
 port = 4242;
-% Plant = 1 for vicon, 2 for Drake
-Plant = 2; 
-if Plant == 1 
-    start_delay = 2.0; % ensure start_delay exists if real experiment
-end 
+
 
 closedloop_flag=0;
 

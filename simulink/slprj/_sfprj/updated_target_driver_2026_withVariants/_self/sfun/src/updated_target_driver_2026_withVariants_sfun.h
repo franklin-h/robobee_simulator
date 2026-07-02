@@ -30,7 +30,6 @@
 #define rtIsInf(X)                     ((int)mxIsInf(X))
 
 /* Auxiliary Header Files */
-#include "lapacke.h"
 #include "robobee_tcp_client.h"
 
 /* Forward Declarations */

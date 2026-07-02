@@ -980,7 +980,7 @@ class RobobeeSimulationServer final {
         1.0 / (kDriveFrequencyHz * kAngularAccelerationSamplesPerDriveCycle);
     constexpr double kAngularAccelerationFilterTimeConstant =
         kAngularAccelerationFilterCycles / kDriveFrequencyHz;
-    constexpr double kVisualizerPublishPeriod = 1.0 / 120.0*5;
+    constexpr double kVisualizerPublishPeriod = 1.0 / (120.0*20);
 
     auto [plant, scene_graph] =
         drake::multibody::AddMultibodyPlantSceneGraph(&builder_,

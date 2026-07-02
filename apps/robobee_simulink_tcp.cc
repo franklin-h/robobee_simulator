@@ -9,6 +9,7 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 namespace robobee::simulink {
@@ -62,6 +63,19 @@ void SetTcpNoDelay(int fd) {
   }
 }
 
+void SetReceiveTimeout(int fd, double timeout_s) {
+  if (timeout_s <= 0.0) {
+    throw std::runtime_error("Receive timeout must be positive.");
+  }
+  timeval timeout{};
+  timeout.tv_sec = static_cast<time_t>(timeout_s);
+  timeout.tv_usec =
+      static_cast<suseconds_t>((timeout_s - timeout.tv_sec) * 1.0e6);
+  if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0) {
+    ThrowSystemError("setsockopt(SO_RCVTIMEO)");
+  }
+}
+
 FileDescriptor ListenOnLocalhost(int port) {
   FileDescriptor listen_fd(socket(AF_INET, SOCK_STREAM, 0));
   if (!listen_fd.valid()) {
@@ -98,6 +112,7 @@ FileDescriptor AcceptClient(int listen_fd) {
     ThrowSystemError("accept");
   }
   SetTcpNoDelay(client_fd.get());
+  SetReceiveTimeout(client_fd.get(), 2.0);
   return client_fd;
 }
 
@@ -111,6 +126,7 @@ bool RecvExact(int fd, void* data, int byte_count) {
     }
     if (received < 0) {
       if (errno == EINTR) continue;
+      if (errno == EAGAIN || errno == EWOULDBLOCK) return false;
       ThrowSystemError("recv");
     }
     cursor += received;
