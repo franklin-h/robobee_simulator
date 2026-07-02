@@ -144,17 +144,22 @@ int robobee_tcp_step_c(double dt_s,
   request[2] = right_voltage_v;
   request[3] = bias_voltage_v;
 
-  status = robobee_tcp_send_exact(g_socket_fd, request, sizeof(request));
-  if (status != ROBOBEE_TCP_OK) {
+  for (int attempt = 0; attempt < 2; ++attempt) {
+    status = robobee_tcp_send_exact(g_socket_fd, request, sizeof(request));
+    if (status == ROBOBEE_TCP_OK) {
+      status = robobee_tcp_recv_exact(g_socket_fd, pose, 7 * sizeof(double));
+    }
+    if (status == ROBOBEE_TCP_OK) {
+      return ROBOBEE_TCP_OK;
+    }
     robobee_tcp_close();
-    return status;
+    if (attempt == 0) {
+      status = robobee_tcp_connect();
+      if (status != ROBOBEE_TCP_OK) {
+        return status;
+      }
+    }
   }
 
-  status = robobee_tcp_recv_exact(g_socket_fd, pose, 7 * sizeof(double));
-  if (status != ROBOBEE_TCP_OK) {
-    robobee_tcp_close();
-    return status;
-  }
-
-  return ROBOBEE_TCP_OK;
+  return status;
 }
