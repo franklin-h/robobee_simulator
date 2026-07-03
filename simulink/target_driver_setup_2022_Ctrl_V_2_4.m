@@ -34,11 +34,11 @@ T = 1;			% total time in seconds
 
 landing_flag=0; % 0 : No landing, 1: landing on
 
-control_flag=2; %2 % 1: Openloop, 2: closed loop
+control_flag=2; %2 % 1: Openloop, 2: closed loop. 
 adaptive_flag=0;					% 0: no-adaptive 1: adaptive
 adaptive_lateral_flag=0;	% 0:  -adaptive 1: adaptive
 
-max_drv_bias = 300;
+max_drv_bias = 200;
 
 save_flag = 1; %1;
 % save_file_name = '20210920_13_with_adaptive_trajectory_landing_1s_circle_costant_y_heading_h_gain_';
@@ -69,9 +69,17 @@ m = 80e-6; %101e-6%90e-6;%86e-6; %86*1e-6%86*1e-6; % vehicle weight in kg (mg * 
 % Iyy = 1.34*1e-9%1.34*1e-9;
 % Izz = 0.45*1e-9;
 
-Ixx = 2.13e-10; 
-Iyy = 2.33e-10; 
-Izz = 3.27e-11; 
+% Ixx = 2.13e-10; 
+% Iyy = 2.33e-10; 
+% Izz = 3.27e-11; 
+
+% Ixx = 1.42*1e-9;		% Principal moment of inertia
+% Iyy = 1.34*1e-9;		%1.34*1e-9;
+% Izz = 0.45*1e-9;
+
+Ixx = 3.8e-4; 
+Iyy = 6.1e-4; 
+Izz = 2.5e-4; 
 
 % Payload;
 payload = 23e-6;
@@ -188,7 +196,7 @@ drv_pch = drv_pitch_left;
 
 
 % CHRISTIAN OPENLOOP Control
-drv_amp = 300;
+drv_amp = 200;
 drv_roll = 0;
 drv_pitch_left = 0;
 drv_pitch_right = 0;
@@ -201,11 +209,15 @@ a2_openloop = -0; %0.2;2
 %% Feedback Control paramter (Force Control)
 scale = 1e3;
 
-% Default position (with the kevlar string)
-default_x = 0.0594;%0.050;
-default_y = 0.0235;%0.137;
+% Default position (with the kevlar string), in meters 
+% default_x = 0.0594;%0.050;
+% default_y = 0.0235;%0.137;
 % default_z = 0.1278;
-default_z = 0.0855;%0.1535;
+% default_z = 0.0855;%0.1535;
+
+default_x = 0; 
+default_y = 0; 
+default_z = 0.1; 
 jump_height = 0.03;
 % jump_height = 0.02;
 soft_landing_height = 0.012; % 3mm
@@ -345,19 +357,19 @@ adaptive_gain = [gamma_adaptive, adaptive_roll_limit, adaptive_pitch_limit, adap
 
 %% setup code 
 % Default openloop
-dt_s = 1e-5; 
+dt_s = 2.0e-4; 
 host = "127.0.0.1";
 port = 4242;
 
 
-closedloop_flag=0;
+% closedloop_flag=0;
 
 drv_bias = max_drv_bias;
 phase = 0 %pi; %degrees (added on left wing)
 
-if control_flag==2  % Open loop control
+if control_flag==2  % CLosedloop control
 
-	closedloop_flag =1; % For simulink
+	closedloop_flag = 1; % For simulink
 	% Setup the Bias for PZT
 %   drv_bias = max(closedloop_max_drv_bias,max_drv_bias);
 	drv_bias = max_drv_bias;

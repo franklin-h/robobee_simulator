@@ -809,7 +809,9 @@ void AddLoopClosureBallConstraints(
 // checked visually while tuning aerodynamic axes and signs.
 void AddBodyFrameTriadVisual(drake::multibody::MultibodyPlant<double>* plant,
                              const std::string& body_name,
-                             const std::string& name_prefix) {
+                             const std::string& name_prefix,
+                             const Eigen::Vector3d& p_BoF_B =
+                                 Eigen::Vector3d::Zero()) {
   constexpr double kAxisLength = 2.0e-3;
   constexpr double kAxisRadius = 3.5e-5;
   constexpr double kOriginRadius = 6.0e-5;
@@ -827,18 +829,45 @@ void AddBodyFrameTriadVisual(drake::multibody::MultibodyPlant<double>* plant,
       };
 
   plant->RegisterVisualGeometry(
-      body, drake::math::RigidTransformd::Identity(),
+      body, drake::math::RigidTransformd(p_BoF_B),
       drake::geometry::Sphere(kOriginRadius), name_prefix + "_origin",
       Eigen::Vector4d(1.0, 1.0, 1.0, 1.0));
   add_axis("x", drake::math::RotationMatrixd::MakeYRotation(0.5 * kPi),
-           0.5 * kAxisLength * Eigen::Vector3d::UnitX(),
+           p_BoF_B + 0.5 * kAxisLength * Eigen::Vector3d::UnitX(),
            Eigen::Vector4d(1.0, 0.0, 0.0, 1.0));
   add_axis("y", drake::math::RotationMatrixd::MakeXRotation(-0.5 * kPi),
-           0.5 * kAxisLength * Eigen::Vector3d::UnitY(),
+           p_BoF_B + 0.5 * kAxisLength * Eigen::Vector3d::UnitY(),
            Eigen::Vector4d(0.0, 0.8, 0.0, 1.0));
   add_axis("z", drake::math::RotationMatrixd::Identity(),
-           0.5 * kAxisLength * Eigen::Vector3d::UnitZ(),
+           p_BoF_B + 0.5 * kAxisLength * Eigen::Vector3d::UnitZ(),
            Eigen::Vector4d(0.0, 0.2, 1.0, 1.0));
+}
+
+Eigen::Vector3d CalcDefaultRobotComInRootFrame() {
+  drake::multibody::MultibodyPlant<double> plant(0.0);
+  drake::multibody::Parser parser(&plant);
+  RegisterRoboBeePackage(&parser);
+  const std::vector<drake::multibody::ModelInstanceIndex> model_instances =
+      parser.AddModelsFromUrl(kAssemblyUrl);
+  plant.Finalize();
+
+  std::unique_ptr<drake::systems::Context<double>> context =
+      plant.CreateDefaultContext();
+  const Eigen::Vector3d p_WC =
+      plant.CalcCenterOfMassPositionInWorld(*context, model_instances);
+  const drake::math::RigidTransformd X_WR =
+      plant.GetBodyByName("root").EvalPoseInWorld(*context);
+  return X_WR.inverse() * p_WC;
+}
+
+void AddRoboBeeBodyFrameTriadVisuals(
+    drake::multibody::MultibodyPlant<double>* plant) {
+  AddBodyFrameTriadVisual(plant, "root", "root_com_attitude_frame",
+                          CalcDefaultRobotComInRootFrame());
+  AddBodyFrameTriadVisual(plant, "wing_membrane",
+                          "left_wing_membrane_frame");
+  AddBodyFrameTriadVisual(plant, "wing_membrane_1",
+                          "right_wing_membrane_frame");
 }
 
 // Optional free-flight floor. It is compiled in only when ROBOBEE_FREE_FLIGHT
@@ -1036,6 +1065,8 @@ class RobobeeSimulationServer final {
         kSliderEffortLimitN);
     plant_->get_mutable_joint_actuator(left_slider_actuator.index())
         .set_controller_gains({kSliderKp, kSliderKd});
+
+    AddRoboBeeBodyFrameTriadVisuals(plant_);
 
     plant_->Finalize();
 
@@ -1289,9 +1320,7 @@ int main(int argc, char** argv) {
   plant.get_mutable_joint_actuator(left_slider_actuator.index())
       .set_controller_gains({kSliderKp, kSliderKd});
 
-  AddBodyFrameTriadVisual(&plant, "wing_membrane", "left_wing_membrane_frame");
-  AddBodyFrameTriadVisual(&plant, "wing_membrane_1",
-                          "right_wing_membrane_frame");
+  AddRoboBeeBodyFrameTriadVisuals(&plant);
 
   // After Finalize the plant topology is fixed. The diagram can still connect
   // systems to the plant's existing input ports.
