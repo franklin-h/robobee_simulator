@@ -6,8 +6,10 @@ struct StepRequest {
   // All fields are little-endian IEEE doubles, as sent by MATLAB on macOS.
   // Voltage fields are pre-amplifier commands. The Drake server applies its
   // configured voltage amplifier gain before using them as actuator voltages.
-  // left_voltage_v and right_voltage_v are per-wing drive commands. The
-  // bias_voltage_v field is a common-mode actuator bias command.
+  // left_voltage_v and right_voltage_v are per-wing waveform samples. After
+  // amplification, Drake maps (wing_voltage_v - 100 V) to slider stroke using
+  // 200 V peak-to-peak -> 0.6 mm peak-to-peak. bias_voltage_v is logged as the
+  // actuator bias/upper-rail command but is not used to reject wing voltages.
   double dt_s{};
   double left_voltage_v{};
   double right_voltage_v{};

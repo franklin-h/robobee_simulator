@@ -37,8 +37,8 @@
 
 namespace {
 
-// This executable builds a Drake diagram for the RoboBee assembly, drives the
-// two slider joints with a sinusoidal stroke command, applies custom
+// This executable builds a Drake diagram for the RoboBee assembly, maps wing
+// voltage commands to slider stroke commands, applies custom
 // aeromechanical wing loads, publishes geometry to Meldis, and writes the
 // per-wing moment breakdown to a CSV file.
 constexpr char kPackageName[] = "robobee_assembly";
@@ -56,50 +56,34 @@ constexpr bool kFreeFlight = false;
 // TODO: Add a GUI for simulation parameters and a placeholder section for
 // RoboBee parameters.
 
-constexpr double kMinStrokeGainMetersPerVolt = 1.3e-6;
-constexpr double kMaxStrokeGainMetersPerVolt = 1.7e-6;
+constexpr double kActuatorRestVoltageV = 100.0;
+constexpr double kNominalBiasVoltageV = 200.0;
+constexpr double kNominalVoltagePeakToPeakV = 200.0;
+constexpr double kNominalStrokePeakToPeakM = 0.6e-3;
+constexpr double kVoltageToStrokeMetersPerVolt =
+    kNominalStrokePeakToPeakM / kNominalVoltagePeakToPeakV;
 
 struct SimulationConfig {
-  double drive_voltage_v{0.00025 / 1.5e-6};
-  double stroke_gain_m_per_v{1.5e-6};
+  double voltage_bias_v{kNominalBiasVoltageV};
+  double voltage_peak_to_peak_v{kNominalVoltagePeakToPeakV};
   int server_port{4242};
 };
 
-double CalcStrokeAmplitudeFromVoltage(double drive_voltage_v,
-                                      double stroke_gain_m_per_v) {
-  if (!std::isfinite(drive_voltage_v) || drive_voltage_v < 0.0) {
-    throw std::runtime_error("Drive voltage must be finite and non-negative.");
+double CalcStrokeDisplacementFromVoltage(double wing_voltage_v) {
+  if (!std::isfinite(wing_voltage_v)) {
+    throw std::runtime_error("Wing voltage command must be finite.");
   }
-  if (!std::isfinite(stroke_gain_m_per_v) ||
-      stroke_gain_m_per_v < kMinStrokeGainMetersPerVolt ||
-      stroke_gain_m_per_v > kMaxStrokeGainMetersPerVolt) {
-    throw std::runtime_error(
-        "Stroke gain must be finite and in the range [1.3, 1.7] um/V.");
-  }
-  return stroke_gain_m_per_v * drive_voltage_v;
+  return kVoltageToStrokeMetersPerVolt *
+         (wing_voltage_v - kActuatorRestVoltageV);
 }
 
-double CalcSignedStrokeAmplitudeFromDriveVoltage(double drive_voltage_v,
-                                                 double bias_voltage_v,
-                                                 double stroke_gain_m_per_v) {
-  if (!std::isfinite(drive_voltage_v)) {
-    throw std::runtime_error("Drive voltage command must be finite.");
+void ValidateVoltageCommand(double right_voltage_v, double left_voltage_v,
+                            double bias_voltage_v) {
+  CalcStrokeDisplacementFromVoltage(right_voltage_v);
+  CalcStrokeDisplacementFromVoltage(left_voltage_v);
+  if (!std::isfinite(bias_voltage_v)) {
+    throw std::runtime_error("Bias voltage command must be finite.");
   }
-  if (!std::isfinite(bias_voltage_v) || bias_voltage_v < 0.0) {
-    throw std::runtime_error(
-        "Bias voltage command must be finite and non-negative.");
-  }
-  if (std::abs(drive_voltage_v) > 1.5 * bias_voltage_v) {
-    throw std::runtime_error(
-        "Drive voltage magnitude must not exceed bias voltage.");
-  }
-  if (!std::isfinite(stroke_gain_m_per_v) ||
-      stroke_gain_m_per_v < kMinStrokeGainMetersPerVolt ||
-      stroke_gain_m_per_v > kMaxStrokeGainMetersPerVolt) {
-    throw std::runtime_error(
-        "Stroke gain must be finite and in the range [1.3, 1.7] um/V.");
-  }
-  return stroke_gain_m_per_v * drive_voltage_v;
 }
 
 double ParseDoubleFlag(const std::string& arg, const std::string& flag_name) {
@@ -124,11 +108,11 @@ SimulationConfig ParseSimulationConfig(int argc, char** argv) {
   SimulationConfig config;
   for (int i = 1; i < argc; ++i) {
     const std::string arg(argv[i]);
-    if (arg.rfind("--drive_voltage=", 0) == 0) {
-      config.drive_voltage_v = ParseDoubleFlag(arg, "drive_voltage");
-    } else if (arg.rfind("--stroke_gain_um_per_v=", 0) == 0) {
-      config.stroke_gain_m_per_v =
-          1.0e-6 * ParseDoubleFlag(arg, "stroke_gain_um_per_v");
+    if (arg.rfind("--voltage_bias=", 0) == 0) {
+      config.voltage_bias_v = ParseDoubleFlag(arg, "voltage_bias");
+    } else if (arg.rfind("--voltage_peak_to_peak=", 0) == 0) {
+      config.voltage_peak_to_peak_v =
+          ParseDoubleFlag(arg, "voltage_peak_to_peak");
     } else if (arg.rfind("--server_port=", 0) == 0) {
       const double port = ParseDoubleFlag(arg, "server_port");
       if (port < 1 || port > 65535 || std::floor(port) != port) {
@@ -138,33 +122,42 @@ SimulationConfig ParseSimulationConfig(int argc, char** argv) {
     } else if (arg == "--help") {
       std::cout
           << "Usage: visualize_robobee_aeromechanical "
-             "[--drive_voltage=V] [--stroke_gain_um_per_v=K] "
+             "[--voltage_bias=V] [--voltage_peak_to_peak=V] "
              "[--server_port=PORT]\n"
-          << "  drive_voltage: initial actuator drive amplitude in volts\n"
-          << "  stroke_gain_um_per_v: stroke gain K in um/V, range [1.3, 1.7]\n"
+          << "  voltage_bias: upper voltage rail in volts; 100 V maps to zero stroke\n"
+          << "  voltage_peak_to_peak: standalone demo voltage swing in volts\n"
           << "  server_port: TCP port used by robobee_simulink_server\n";
       std::exit(0);
     } else {
       throw std::runtime_error("Unknown argument: " + arg);
     }
   }
-  CalcStrokeAmplitudeFromVoltage(config.drive_voltage_v,
-                                 config.stroke_gain_m_per_v);
+  if (!std::isfinite(config.voltage_bias_v)) {
+    throw std::runtime_error("--voltage_bias must be finite.");
+  }
+  if (!std::isfinite(config.voltage_peak_to_peak_v) ||
+      config.voltage_peak_to_peak_v < 0.0) {
+    throw std::runtime_error(
+        "--voltage_peak_to_peak must be finite and non-negative.");
+  }
   return config;
 }
 
 // Small Drake source system that produces the desired state vector expected by
 // the plant's joint PD controllers: [q_slider_1, q_slider_2, v_slider_1,
-// v_slider_2]. It accepts [right_drive_voltage, left_drive_voltage,
-// bias_voltage]. The per-wing commands are signed drive amplitudes; the bias is
-// a nonnegative common-mode safety voltage and does not directly create stroke.
+// v_slider_2]. It accepts [right_wing_voltage, left_wing_voltage,
+// bias_voltage, right_wing_voltage_dot, left_wing_voltage_dot]. The per-wing
+// commands are instantaneous actuator voltages. A 100 V wing command is the
+// actuator rest position, so a 0..200 V waveform maps to a centered 0.6 mm
+// peak-to-peak slider displacement relative to the transmission's default rest
+// position. The bias voltage is passed through for logging/telemetry but does
+// not gate the wing voltage commands.
 class VoltageStrokeSource final : public drake::systems::LeafSystem<double> {
  public:
-  VoltageStrokeSource(double stroke_gain_m_per_v, double drive_frequency_hz)
-      : stroke_gain_m_per_v_(stroke_gain_m_per_v),
-        drive_omega_(2.0 * kPi * drive_frequency_hz) {
+  explicit VoltageStrokeSource(const Eigen::Vector2d& slider_rest_positions)
+      : slider_rest_positions_(slider_rest_positions) {
     voltage_input_port_ =
-        this->DeclareVectorInputPort("voltage_command", 3).get_index();
+        this->DeclareVectorInputPort("voltage_command", 5).get_index();
     this->DeclareVectorOutputPort("slider_desired_state", 4,
                                   &VoltageStrokeSource::CalcDesiredState);
   }
@@ -176,24 +169,28 @@ class VoltageStrokeSource final : public drake::systems::LeafSystem<double> {
  private:
   void CalcDesiredState(const drake::systems::Context<double>& context,
                         drake::systems::BasicVector<double>* output) const {
-    const double t = context.get_time();
     const Eigen::VectorXd& voltage_command =
         this->EvalVectorInput(context, voltage_input_port_)->get_value();
     const double right_voltage_v = voltage_command[0];
     const double left_voltage_v = voltage_command[1];
     const double bias_voltage_v = voltage_command[2];
-    const double right_stroke_amplitude =
-        CalcSignedStrokeAmplitudeFromDriveVoltage(
-            right_voltage_v, bias_voltage_v, stroke_gain_m_per_v_);
-    const double left_stroke_amplitude =
-        CalcSignedStrokeAmplitudeFromDriveVoltage(
-            left_voltage_v, bias_voltage_v, stroke_gain_m_per_v_);
-    const double sin_drive = std::sin(drive_omega_ * t);
-    const double cos_drive = std::cos(drive_omega_ * t);
-    const double q_right = right_stroke_amplitude * sin_drive;
-    const double q_left = left_stroke_amplitude * sin_drive;
-    const double v_right = right_stroke_amplitude * drive_omega_ * cos_drive;
-    const double v_left = left_stroke_amplitude * drive_omega_ * cos_drive;
+    const double right_voltage_dot_v_s = voltage_command[3];
+    const double left_voltage_dot_v_s = voltage_command[4];
+    ValidateVoltageCommand(right_voltage_v, left_voltage_v, bias_voltage_v);
+    if (!std::isfinite(right_voltage_dot_v_s) ||
+        !std::isfinite(left_voltage_dot_v_s)) {
+      throw std::runtime_error("Wing voltage derivatives must be finite.");
+    }
+    const double right_displacement_m =
+        CalcStrokeDisplacementFromVoltage(right_voltage_v);
+    const double left_displacement_m =
+        CalcStrokeDisplacementFromVoltage(left_voltage_v);
+    const double q_right = slider_rest_positions_.x() + right_displacement_m;
+    const double q_left = slider_rest_positions_.y() + left_displacement_m;
+    const double v_right =
+        kVoltageToStrokeMetersPerVolt * right_voltage_dot_v_s;
+    const double v_left =
+        kVoltageToStrokeMetersPerVolt * left_voltage_dot_v_s;
 
     // Actuators are added below in this order: slider_1, then slider_2.
     Eigen::VectorBlock<Eigen::VectorXd> y = output->get_mutable_value();
@@ -201,8 +198,7 @@ class VoltageStrokeSource final : public drake::systems::LeafSystem<double> {
   }
 
   drake::systems::InputPortIndex voltage_input_port_{};
-  double stroke_gain_m_per_v_{};
-  double drive_omega_{};
+  Eigen::Vector2d slider_rest_positions_{Eigen::Vector2d::Zero()};
 };
 
 // Static information needed to interpret one wing body's kinematics in the
@@ -805,13 +801,13 @@ void AddLoopClosureBallConstraints(
                            p_RL + kAxisPointOffset * axis_R.normalized());
 }
 
-// Draw a small RGB frame on a body in Meldis so the wing body axes can be
-// checked visually while tuning aerodynamic axes and signs.
+// Draw a small body-fixed RGB frame on a body in Meldis.
 void AddBodyFrameTriadVisual(drake::multibody::MultibodyPlant<double>* plant,
                              const std::string& body_name,
                              const std::string& name_prefix,
                              const Eigen::Vector3d& p_BoF_B =
-                                 Eigen::Vector3d::Zero()) {
+                                 Eigen::Vector3d::Zero(),
+                             bool display_controller_convention_axes = false) {
   constexpr double kAxisLength = 2.0e-3;
   constexpr double kAxisRadius = 3.5e-5;
   constexpr double kOriginRadius = 6.0e-5;
@@ -832,12 +828,21 @@ void AddBodyFrameTriadVisual(drake::multibody::MultibodyPlant<double>* plant,
       body, drake::math::RigidTransformd(p_BoF_B),
       drake::geometry::Sphere(kOriginRadius), name_prefix + "_origin",
       Eigen::Vector4d(1.0, 1.0, 1.0, 1.0));
-  add_axis("x", drake::math::RotationMatrixd::MakeYRotation(0.5 * kPi),
-           p_BoF_B + 0.5 * kAxisLength * Eigen::Vector3d::UnitX(),
-           Eigen::Vector4d(1.0, 0.0, 0.0, 1.0));
-  add_axis("y", drake::math::RotationMatrixd::MakeXRotation(-0.5 * kPi),
-           p_BoF_B + 0.5 * kAxisLength * Eigen::Vector3d::UnitY(),
-           Eigen::Vector4d(0.0, 0.8, 0.0, 1.0));
+  if (display_controller_convention_axes) {
+    add_axis("x", drake::math::RotationMatrixd::MakeXRotation(-0.5 * kPi),
+             p_BoF_B + 0.5 * kAxisLength * Eigen::Vector3d::UnitY(),
+             Eigen::Vector4d(1.0, 0.0, 0.0, 1.0));
+    add_axis("y", drake::math::RotationMatrixd::MakeYRotation(-0.5 * kPi),
+             p_BoF_B - 0.5 * kAxisLength * Eigen::Vector3d::UnitX(),
+             Eigen::Vector4d(0.0, 0.8, 0.0, 1.0));
+  } else {
+    add_axis("x", drake::math::RotationMatrixd::MakeYRotation(0.5 * kPi),
+             p_BoF_B + 0.5 * kAxisLength * Eigen::Vector3d::UnitX(),
+             Eigen::Vector4d(1.0, 0.0, 0.0, 1.0));
+    add_axis("y", drake::math::RotationMatrixd::MakeXRotation(-0.5 * kPi),
+             p_BoF_B + 0.5 * kAxisLength * Eigen::Vector3d::UnitY(),
+             Eigen::Vector4d(0.0, 0.8, 0.0, 1.0));
+  }
   add_axis("z", drake::math::RotationMatrixd::Identity(),
            p_BoF_B + 0.5 * kAxisLength * Eigen::Vector3d::UnitZ(),
            Eigen::Vector4d(0.0, 0.2, 1.0, 1.0));
@@ -862,12 +867,27 @@ Eigen::Vector3d CalcDefaultRobotComInRootFrame() {
 
 void AddRoboBeeBodyFrameTriadVisuals(
     drake::multibody::MultibodyPlant<double>* plant) {
+  // The root COM triad displays controller convention axes: +x forward is
+  // Drake root +y, +y left is Drake root -x, and +z is unchanged.
   AddBodyFrameTriadVisual(plant, "root", "root_com_attitude_frame",
-                          CalcDefaultRobotComInRootFrame());
+                          CalcDefaultRobotComInRootFrame(),
+                          true);
   AddBodyFrameTriadVisual(plant, "wing_membrane",
                           "left_wing_membrane_frame");
   AddBodyFrameTriadVisual(plant, "wing_membrane_1",
                           "right_wing_membrane_frame");
+}
+
+Eigen::Vector2d CalcSliderRestPositions(
+    const drake::multibody::MultibodyPlant<double>& plant) {
+  std::unique_ptr<drake::systems::Context<double>> context =
+      plant.CreateDefaultContext();
+  const auto& right_slider =
+      plant.GetJointByName<drake::multibody::PrismaticJoint>("slider_1");
+  const auto& left_slider =
+      plant.GetJointByName<drake::multibody::PrismaticJoint>("slider_2");
+  return Eigen::Vector2d(right_slider.get_translation(*context),
+                         left_slider.get_translation(*context));
 }
 
 // Optional free-flight floor. It is compiled in only when ROBOBEE_FREE_FLIGHT
@@ -937,28 +957,59 @@ void WriteMomentCsvRow(
           << right.total_Nm << ',' << right.applied_total_Nm << '\n';
 }
 
-double CalcSliderDesiredPosition(double time_s, double stroke_amplitude,
+double CalcStandaloneWingVoltage(double time_s, double bias_voltage_v,
+                                 double voltage_peak_to_peak_v,
                                  double drive_frequency_hz) {
-  return stroke_amplitude * std::sin(2.0 * kPi * drive_frequency_hz * time_s);
+  (void)bias_voltage_v;
+  return kActuatorRestVoltageV +
+         0.5 * voltage_peak_to_peak_v *
+             std::sin(2.0 * kPi * drive_frequency_hz * time_s);
+}
+
+double CalcStandaloneWingVoltageDot(double time_s, double voltage_peak_to_peak_v,
+                                    double drive_frequency_hz) {
+  const double drive_omega = 2.0 * kPi * drive_frequency_hz;
+  return 0.5 * voltage_peak_to_peak_v * drive_omega *
+         std::cos(drive_omega * time_s);
+}
+
+Eigen::Matrix<double, 5, 1> MakeVoltageCommandVector(
+    double right_voltage_v, double left_voltage_v, double bias_voltage_v,
+    double right_voltage_dot_v_s, double left_voltage_dot_v_s) {
+  ValidateVoltageCommand(right_voltage_v, left_voltage_v, bias_voltage_v);
+  if (!std::isfinite(right_voltage_dot_v_s) ||
+      !std::isfinite(left_voltage_dot_v_s)) {
+    throw std::runtime_error("Wing voltage derivatives must be finite.");
+  }
+  Eigen::Matrix<double, 5, 1> voltage_command;
+  voltage_command << right_voltage_v, left_voltage_v, bias_voltage_v,
+      right_voltage_dot_v_s, left_voltage_dot_v_s;
+  return voltage_command;
 }
 
 void WriteSliderCsvHeader(std::ostream* output) {
-  *output << "time_s,right_actual_m,left_actual_m,"
-             "right_desired_m,left_desired_m,"
+  *output << "time_s,right_actual_displacement_m,left_actual_displacement_m,"
+             "right_desired_displacement_m,left_desired_displacement_m,"
              "right_error_m,left_error_m,"
-             "drive_voltage_v,stroke_gain_m_per_v\n";
+             "right_voltage_v,left_voltage_v,bias_voltage_v\n";
 }
 
 void WriteSliderCsvRow(std::ostream* output, double time_s,
-                       double right_actual_m, double left_actual_m,
-                       double desired_m, double drive_voltage_v,
-                       double stroke_gain_m_per_v) {
+                       double right_actual_displacement_m,
+                       double left_actual_displacement_m,
+                       double right_desired_displacement_m,
+                       double left_desired_displacement_m,
+                       double right_voltage_v, double left_voltage_v,
+                       double bias_voltage_v) {
   *output << std::setprecision(17) << time_s << ','
-          << right_actual_m << ',' << left_actual_m << ','
-          << desired_m << ',' << desired_m << ','
-          << right_actual_m - desired_m << ','
-          << left_actual_m - desired_m << ','
-          << drive_voltage_v << ',' << stroke_gain_m_per_v << '\n';
+          << right_actual_displacement_m << ','
+          << left_actual_displacement_m << ','
+          << right_desired_displacement_m << ','
+          << left_desired_displacement_m << ','
+          << right_actual_displacement_m - right_desired_displacement_m << ','
+          << left_actual_displacement_m - left_desired_displacement_m << ','
+          << right_voltage_v << ',' << left_voltage_v << ','
+          << bias_voltage_v << '\n';
 }
 
 struct RobotPose {
@@ -996,8 +1047,7 @@ namespace tcp = ::robobee::simulink;
 
 class RobobeeSimulationServer final {
  public:
-  explicit RobobeeSimulationServer(const SimulationConfig& config)
-      : config_stroke_gain_m_per_v_(config.stroke_gain_m_per_v) {
+  explicit RobobeeSimulationServer(const SimulationConfig& config) {
     constexpr double kDriveFrequencyHz = 180;
     constexpr double kPlantStepsPerDriveCycle = 100.0;
     constexpr double kAngularAccelerationSamplesPerDriveCycle =
@@ -1070,8 +1120,10 @@ class RobobeeSimulationServer final {
 
     plant_->Finalize();
 
-    slider_source_ = builder_.AddSystem<VoltageStrokeSource>(
-        config.stroke_gain_m_per_v, kDriveFrequencyHz);
+    const Eigen::Vector2d slider_rest_positions =
+        CalcSliderRestPositions(*plant_);
+    slider_source_ =
+        builder_.AddSystem<VoltageStrokeSource>(slider_rest_positions);
     builder_.Connect(slider_source_->get_output_port(),
                      plant_->get_desired_state_input_port(model_instance));
 
@@ -1091,8 +1143,8 @@ class RobobeeSimulationServer final {
     diagram_ = builder_.Build();
     simulator_ = std::make_unique<drake::systems::Simulator<double>>(*diagram_);
     simulator_->set_target_realtime_rate(0.0);
-    InitializeVoltageCommand(config.drive_voltage_v, config.drive_voltage_v,
-                             config.drive_voltage_v);
+    InitializeVoltageCommand(kActuatorRestVoltageV, kActuatorRestVoltageV,
+                             config.voltage_bias_v);
     if constexpr (kFreeFlight) {
       auto& root_context = simulator_->get_mutable_context();
       auto& plant_context = plant_->GetMyMutableContextFromRoot(&root_context);
@@ -1118,8 +1170,15 @@ class RobobeeSimulationServer final {
     LogReceivedVoltageCommand(request, right_actuator_voltage_v,
                               left_actuator_voltage_v,
                               bias_actuator_voltage_v);
+    const double right_voltage_dot_v_s =
+        (right_actuator_voltage_v - previous_right_voltage_v_) / request.dt_s;
+    const double left_voltage_dot_v_s =
+        (left_actuator_voltage_v - previous_left_voltage_v_) / request.dt_s;
     FixVoltageCommand(right_actuator_voltage_v, left_actuator_voltage_v,
-                      bias_actuator_voltage_v);
+                      bias_actuator_voltage_v, right_voltage_dot_v_s,
+                      left_voltage_dot_v_s);
+    previous_right_voltage_v_ = right_actuator_voltage_v;
+    previous_left_voltage_v_ = left_actuator_voltage_v;
     time_s_ += request.dt_s;
     simulator_->AdvanceTo(time_s_);
 
@@ -1147,56 +1206,47 @@ class RobobeeSimulationServer final {
                                  double left_actuator_voltage_v,
                                  double bias_actuator_voltage_v) {
     ++voltage_log_count_;
-    const double max_abs_drive_preamp_v =
+    const double max_abs_waveform_preamp_v =
         std::max(std::abs(request.left_voltage_v),
                  std::abs(request.right_voltage_v));
-    const double max_abs_drive_actuator_v =
+    const double max_abs_waveform_actuator_v =
         std::max(std::abs(left_actuator_voltage_v),
                  std::abs(right_actuator_voltage_v));
-    const bool violates_bias_limit =
-        !std::isfinite(bias_actuator_voltage_v) ||
-        bias_actuator_voltage_v < 0.0 ||
-        max_abs_drive_actuator_v > bias_actuator_voltage_v;
     if (voltage_log_count_ <= 10 ||
-        voltage_log_count_ % kVoltageLogPeriodSteps == 0 ||
-        violates_bias_limit) {
+        voltage_log_count_ % kVoltageLogPeriodSteps == 0) {
       std::cout << std::setprecision(6)
                 << "Voltage command step " << voltage_log_count_
                 << " at t=" << time_s_
-                << " s: preamp |drive|max=" << max_abs_drive_preamp_v
+                << " s: preamp |waveform|max=" << max_abs_waveform_preamp_v
                 << " V, preamp bias=" << request.bias_voltage_v
-                << " V; actuator |drive|max=" << max_abs_drive_actuator_v
+                << " V; actuator |waveform|max=" << max_abs_waveform_actuator_v
                 << " V, actuator bias=" << bias_actuator_voltage_v << " V";
-      if (violates_bias_limit) {
-        std::cout << "  [violates |drive| <= bias]";
-      }
       std::cout << "\n";
     }
   }
 
   void FixVoltageCommand(double right_voltage_v, double left_voltage_v,
-                         double bias_voltage_v) {
-    CalcSignedStrokeAmplitudeFromDriveVoltage(
-        right_voltage_v, bias_voltage_v, config_stroke_gain_m_per_v_);
-    CalcSignedStrokeAmplitudeFromDriveVoltage(
-        left_voltage_v, bias_voltage_v, config_stroke_gain_m_per_v_);
+                         double bias_voltage_v,
+                         double right_voltage_dot_v_s,
+                         double left_voltage_dot_v_s) {
     voltage_input_value_->GetMutableVectorData<double>()->get_mutable_value()
-        << right_voltage_v, left_voltage_v, bias_voltage_v;
+        = MakeVoltageCommandVector(right_voltage_v, left_voltage_v,
+                                   bias_voltage_v, right_voltage_dot_v_s,
+                                   left_voltage_dot_v_s);
   }
 
   void InitializeVoltageCommand(double right_voltage_v, double left_voltage_v,
                                 double bias_voltage_v) {
-    CalcSignedStrokeAmplitudeFromDriveVoltage(
-        right_voltage_v, bias_voltage_v, config_stroke_gain_m_per_v_);
-    CalcSignedStrokeAmplitudeFromDriveVoltage(
-        left_voltage_v, bias_voltage_v, config_stroke_gain_m_per_v_);
     auto& root_context = simulator_->get_mutable_context();
     auto& source_context =
         slider_source_->GetMyMutableContextFromRoot(&root_context);
-    Eigen::Vector3d voltage_command;
-    voltage_command << right_voltage_v, left_voltage_v, bias_voltage_v;
+    const Eigen::Matrix<double, 5, 1> voltage_command =
+        MakeVoltageCommandVector(right_voltage_v, left_voltage_v,
+                                 bias_voltage_v, 0.0, 0.0);
     voltage_input_value_ = &slider_source_->voltage_input_port().FixValue(
         &source_context, voltage_command);
+    previous_right_voltage_v_ = right_voltage_v;
+    previous_left_voltage_v_ = left_voltage_v;
   }
 
   drake::systems::DiagramBuilder<double> builder_;
@@ -1207,7 +1257,8 @@ class RobobeeSimulationServer final {
   drake::systems::FixedInputPortValue* voltage_input_value_{};
   std::unique_ptr<drake::systems::Diagram<double>> diagram_;
   std::unique_ptr<drake::systems::Simulator<double>> simulator_;
-  double config_stroke_gain_m_per_v_{1.5e-6};
+  double previous_right_voltage_v_{kActuatorRestVoltageV};
+  double previous_left_voltage_v_{kActuatorRestVoltageV};
   double time_s_{0.0};
   int voltage_log_count_{0};
 };
@@ -1219,8 +1270,6 @@ class RobobeeSimulationServer final {
 #ifndef ROBOBEE_SIMULINK_SERVER
 int main(int argc, char** argv) {
   const SimulationConfig config = ParseSimulationConfig(argc, argv);
-  const double kSliderAmplitude = CalcStrokeAmplitudeFromVoltage(
-      config.drive_voltage_v, config.stroke_gain_m_per_v);
 
   drake::systems::DiagramBuilder<double> builder;
 
@@ -1325,13 +1374,15 @@ int main(int argc, char** argv) {
   // After Finalize the plant topology is fixed. The diagram can still connect
   // systems to the plant's existing input ports.
   plant.Finalize();
+  const Eigen::Vector2d slider_rest_positions =
+      CalcSliderRestPositions(plant);
 
   // Diagram wiring:
   //   slider source -> plant desired joint state
   //   plant state   -> wing aeromechanics
   //   wing forces   -> plant applied spatial force input
-  auto* slider_source = builder.AddSystem<VoltageStrokeSource>(
-      config.stroke_gain_m_per_v, kDriveFrequencyHz);
+  auto* slider_source =
+      builder.AddSystem<VoltageStrokeSource>(slider_rest_positions);
   builder.Connect(slider_source->get_output_port(),
                   plant.get_desired_state_input_port(model_instance));
 
@@ -1354,16 +1405,33 @@ int main(int argc, char** argv) {
   auto diagram = builder.Build();
   drake::systems::Simulator<double> simulator(*diagram);
   simulator.set_target_realtime_rate(kTargetRealtimeRate);
-  {
-    auto& root_context = simulator.get_mutable_context();
-    auto& source_context =
-        slider_source->GetMyMutableContextFromRoot(&root_context);
-    Eigen::Vector3d voltage_command;
-    voltage_command << config.drive_voltage_v, config.drive_voltage_v,
-        config.drive_voltage_v;
-    slider_source->voltage_input_port().FixValue(&source_context,
-                                                 voltage_command);
-  }
+  drake::systems::FixedInputPortValue* voltage_input_value{};
+  const auto set_voltage_command =
+      [&](double time_s) {
+        const double right_voltage_v = CalcStandaloneWingVoltage(
+            time_s, config.voltage_bias_v, config.voltage_peak_to_peak_v,
+            kDriveFrequencyHz);
+        const double left_voltage_v = right_voltage_v;
+        const double right_voltage_dot_v_s = CalcStandaloneWingVoltageDot(
+            time_s, config.voltage_peak_to_peak_v, kDriveFrequencyHz);
+        const double left_voltage_dot_v_s = right_voltage_dot_v_s;
+        const Eigen::Matrix<double, 5, 1> voltage_command =
+            MakeVoltageCommandVector(right_voltage_v, left_voltage_v,
+                                     config.voltage_bias_v,
+                                     right_voltage_dot_v_s,
+                                     left_voltage_dot_v_s);
+        if (voltage_input_value == nullptr) {
+          auto& root_context = simulator.get_mutable_context();
+          auto& source_context =
+              slider_source->GetMyMutableContextFromRoot(&root_context);
+          voltage_input_value = &slider_source->voltage_input_port().FixValue(
+              &source_context, voltage_command);
+        } else {
+          voltage_input_value->GetMutableVectorData<double>()
+              ->get_mutable_value() = voltage_command;
+        }
+      };
+  set_voltage_command(0.0);
   if constexpr (kFreeFlight) {
     // Start slightly above the z=0 floor to avoid initial penetration.
     auto& root_context = simulator.get_mutable_context();
@@ -1390,12 +1458,19 @@ int main(int argc, char** argv) {
             << "  python3 tools/plot_slider_positions.py\n\n"
             << "Robot pose for Simulink-style feedback is being logged to:\n"
             << "  " << kPoseLogPath << "\n\n"
-            << "Voltage command:\n"
-            << "  drive voltage amplitude: " << config.drive_voltage_v
-            << " V\n"
-            << "  stroke gain K: " << config.stroke_gain_m_per_v * 1.0e6
-            << " um/V\n"
-            << "  stroke amplitude: " << kSliderAmplitude << " m\n\n"
+            << "Voltage-to-stroke map:\n"
+            << "  bias voltage upper rail: " << config.voltage_bias_v << " V\n"
+            << "  actuator rest voltage: " << kActuatorRestVoltageV << " V\n"
+            << "  standalone voltage peak-to-peak: "
+            << config.voltage_peak_to_peak_v << " V\n"
+            << "  stroke peak-to-peak at 200 Vpp: "
+            << kNominalStrokePeakToPeakM << " m\n"
+            << "  map: stroke = (wing voltage - 100 V) * "
+            << kVoltageToStrokeMetersPerVolt << " m/V\n"
+            << "  right slider rest position: "
+            << slider_rest_positions.x() << " m\n"
+            << "  left slider rest position: "
+            << slider_rest_positions.y() << " m\n\n"
             << "Timing:\n"
             << "  drive frequency: " << kDriveFrequencyHz << " Hz\n"
             << "  plant timestep: " << kPlantTimeStep << " s ("
@@ -1413,7 +1488,7 @@ int main(int argc, char** argv) {
             << "  target realtime rate: " << kTargetRealtimeRate << "\n"
             << "  free flight: " << (kFreeFlight ? "yes" : "no") << "\n\n"
             << "The slider joints are driven by finite-gain joint actuators "
-               "tracking a sinusoidal desired position and velocity; "
+               "tracking desired position and velocity from the voltage map; "
                "the transmission loops are closed with MultibodyPlant weld "
                "constraints, not per-frame IK. "
             << (kFreeFlight
@@ -1454,6 +1529,7 @@ int main(int argc, char** argv) {
   // cadence. The simulator is otherwise advanced one plant step at a time.
   while (true) {
     next_time += kCommandPeriod;
+    set_voltage_command(next_time);
     simulator.AdvanceTo(next_time);
     if (next_time + 0.5 * kCommandPeriod >= next_moment_log_time) {
       WriteMomentCsvRow(&moment_log, next_time, wing_aero->latest_moments(),
@@ -1463,13 +1539,26 @@ int main(int argc, char** argv) {
     if (next_time + 0.5 * kCommandPeriod >= next_slider_log_time) {
       const auto& root_context = simulator.get_context();
       const auto& plant_context = plant.GetMyContextFromRoot(root_context);
-      const double desired_slider_position = CalcSliderDesiredPosition(
-          next_time, kSliderAmplitude, kDriveFrequencyHz);
+      const double right_voltage_v = CalcStandaloneWingVoltage(
+          next_time, config.voltage_bias_v, config.voltage_peak_to_peak_v,
+          kDriveFrequencyHz);
+      const double left_voltage_v = right_voltage_v;
+      const double right_desired_slider_position =
+          CalcStrokeDisplacementFromVoltage(right_voltage_v);
+      const double left_desired_slider_position =
+          CalcStrokeDisplacementFromVoltage(left_voltage_v);
+      const double right_actual_slider_displacement =
+          right_slider.get_translation(plant_context) -
+          slider_rest_positions.x();
+      const double left_actual_slider_displacement =
+          left_slider.get_translation(plant_context) -
+          slider_rest_positions.y();
       WriteSliderCsvRow(&slider_log, next_time,
-                        right_slider.get_translation(plant_context),
-                        left_slider.get_translation(plant_context),
-                        desired_slider_position, config.drive_voltage_v,
-                        config.stroke_gain_m_per_v);
+                        right_actual_slider_displacement,
+                        left_actual_slider_displacement,
+                        right_desired_slider_position,
+                        left_desired_slider_position, right_voltage_v,
+                        left_voltage_v, config.voltage_bias_v);
       next_slider_log_time += kSliderLogPeriod;
     }
     if (next_time + 0.5 * kCommandPeriod >= next_pose_log_time) {
@@ -1507,7 +1596,10 @@ int main(int argc, char** argv) {
                "response = [time_s, x_m, y_m, z_m, roll_rad, pitch_rad, "
                "yaw_rad], all binary double values.\n"
             << "Voltage request fields are pre-amplifier commands; the server "
-               "applies a 100x voltage amplifier gain before driving Drake.\n"
+               "applies a 100x voltage amplifier gain before mapping "
+               "(wing voltage - 100 V) to slider stroke. A 0..200 V "
+               "actuator-side waveform with a 200 V bias rail maps to a "
+               "centered 0.6 mm peak-to-peak stroke.\n"
             << "Waiting for Simulink client...\n";
 
   while (true) {
