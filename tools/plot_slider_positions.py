@@ -48,12 +48,20 @@ def row_value(row, key):
     return parse_float(row.get(key))
 
 
-def xy_series(rows, y_key, scale=1.0):
+def row_value_any(row, keys):
+    for key in keys:
+        value = row_value(row, key)
+        if value is not None:
+            return value
+    return None
+
+
+def xy_series(rows, y_keys, scale=1.0):
     x_values = []
     y_values = []
     for row in rows:
         t = row_value(row, "time_s")
-        y = row_value(row, y_key)
+        y = row_value_any(row, y_keys)
         if t is None or y is None:
             continue
         x_values.append(t)
@@ -135,16 +143,21 @@ def main():
         position_axis = axes[0]
         position_axis.clear()
         position_values = []
-        for key, label, style in [
-            ("right_desired_m", "right desired", "k--"),
-            ("right_actual_m", "right actual", "tab:blue"),
-            ("left_desired_m", "left desired", "0.55"),
-            ("left_actual_m", "left actual", "tab:orange"),
+        for keys, label, color, linestyle in [
+            (("right_desired_displacement_m", "right_desired_m"),
+             "right desired", "black", "--"),
+            (("right_actual_displacement_m", "right_actual_m"),
+             "right actual", "tab:blue", "-"),
+            (("left_desired_displacement_m", "left_desired_m"),
+             "left desired", "0.55", "--"),
+            (("left_actual_displacement_m", "left_actual_m"),
+             "left actual", "tab:orange", "-"),
         ]:
-            x_values, y_values = xy_series(rows_window, key, scale=1.0e3)
+            x_values, y_values = xy_series(rows_window, keys, scale=1.0e3)
             if y_values:
                 position_values.extend(y_values)
-                position_axis.plot(x_values, y_values, style, label=label)
+                position_axis.plot(x_values, y_values, color=color,
+                                   linestyle=linestyle, label=label)
 
         limits = padded_limits(position_values)
         if limits is not None:
@@ -156,11 +169,11 @@ def main():
         error_axis = axes[1]
         error_axis.clear()
         error_values = []
-        for key, label, color in [
-            ("right_error_m", "right actual - desired", "tab:blue"),
-            ("left_error_m", "left actual - desired", "tab:orange"),
+        for keys, label, color in [
+            (("right_error_m",), "right actual - desired", "tab:blue"),
+            (("left_error_m",), "left actual - desired", "tab:orange"),
         ]:
-            x_values, y_values = xy_series(rows_window, key, scale=1.0e6)
+            x_values, y_values = xy_series(rows_window, keys, scale=1.0e6)
             if y_values:
                 error_values.extend(y_values)
                 error_axis.plot(x_values, y_values, color=color, label=label)

@@ -78,6 +78,14 @@ cc_binary(
     ],
 )
 
+# The default aeromechanical build already welds the root body to world, so it is
+# the "fixed" configuration used to characterize wing thrust/torque about the
+# COM. This alias gives that configuration an explicit, discoverable name.
+alias(
+    name = "visualize_robobee_aeromechanical_fixed",
+    actual = ":visualize_robobee_aeromechanical",
+)
+
 cc_binary(
     name = "visualize_robobee_aeromechanical_flying",
     srcs = ["visualize_robobee_aeromechanical.cc"],
@@ -111,6 +119,42 @@ cc_binary(
     ],
     copts = [
         "-DROBOBEE_FREE_FLIGHT",
+        "-DROBOBEE_SIMULINK_SERVER",
+    ],
+    data = [
+        "//models/robobee_assembly:files",
+    ],
+    deps = [
+        "//:aeromechanical_moments",
+        "@drake//geometry:drake_visualizer",
+        "@drake//geometry:shape_specification",
+        "@drake//lcm:drake_lcm",
+        "@drake//math:geometric_transform",
+        "@drake//multibody/parsing:parsing",
+        "@drake//multibody/plant:externally_applied_spatial_force",
+        "@drake//multibody/plant:plant",
+        "@drake//multibody/tree:tree",
+        "@drake//systems/analysis:simulator",
+        "@drake//systems/framework:diagram_builder",
+        "@drake//systems/framework:leaf_system",
+        "@drake//systems/framework:vector",
+    ],
+)
+
+# Fixed/welded Simulink server: same TCP protocol as robobee_simulink_server but
+# built without ROBOBEE_FREE_FLIGHT, so the root body is welded to world (the
+# same configuration as the default visualize_robobee_aeromechanical build).
+# Simulink drives the wing voltages while the airframe is held fixed, and the
+# net aerodynamic wrench about the COM is logged so tools/plot_com_wrench.py can
+# be run against it while the TCP session is live.
+cc_binary(
+    name = "robobee_simulink_server_fixed",
+    srcs = [
+        "robobee_simulink_tcp.cc",
+        "robobee_simulink_tcp.h",
+        "visualize_robobee_aeromechanical.cc",
+    ],
+    copts = [
         "-DROBOBEE_SIMULINK_SERVER",
     ],
     data = [

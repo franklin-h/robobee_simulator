@@ -12,7 +12,7 @@ sampling_time = 1/sampling_f;
 Plant = 2; 
 if Plant == 1 
     start_delay = 2.0; % ensure start_delay exists if real experiment
-    adaptive_delay = 0.1;
+    adaptive_delay = 0.1;c
     ramp_delay = 0.1;
     
 else 
@@ -197,7 +197,7 @@ drv_pch = drv_pitch_left;
 
 % CHRISTIAN OPENLOOP Control
 drv_amp = 200;
-drv_roll = 20;
+drv_roll = 2;
 drv_pitch_left = 0;
 drv_pitch_right = 0;
 % max_drv_bias =300;
@@ -279,9 +279,9 @@ k_x = 0.5/scale;
 k_v = 0.05/scale;
 
 %Attitude gain
-k_R = 1.5/(scale^2);%0.5/(scale^2);		yaw pitch
-k_Rx = 120000/(scale^2);%0.6/(scale^2);		roll
-k_Omega =  0.125/(scale^2);%0.25/(scale^2);
+k_R = 3.0/(scale^2);%0.5/(scale^2);		yaw pitch
+k_Rx = 3.2/(scale^2);%0.6/(scale^2);		roll
+k_Omega =  0.5/(scale^2);%0.25/(scale^2);
 
 %Altitude gain
 k_z = 0.2/scale;%0.2/scale;

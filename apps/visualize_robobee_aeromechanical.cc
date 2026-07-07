@@ -59,7 +59,7 @@ constexpr bool kFreeFlight = false;
 constexpr double kActuatorRestVoltageV = 100.0;
 constexpr double kNominalBiasVoltageV = 200.0;
 constexpr double kNominalVoltagePeakToPeakV = 200.0;
-constexpr double kNominalStrokePeakToPeakM = 0.6e-3;
+constexpr double kNominalStrokePeakToPeakM = 0.5e-3;
 constexpr double kVoltageToStrokeMetersPerVolt =
     kNominalStrokePeakToPeakM / kNominalVoltagePeakToPeakV;
 
@@ -1041,6 +1041,67 @@ void WritePoseCsvRow(std::ostream* output, double time_s,
           << pose.roll_pitch_yaw_rad.z() << '\n';
 }
 
+// Net aerodynamic wrench produced by both wings, reduced to the robot center of
+// mass and resolved in the root (body) frame. When the root is welded to world
+// (the default, "fixed" build) this is the thrust/torque the wing loads would
+// exert on the airframe. thrust_z is the net force along the body z-axis; the
+// roll/pitch/yaw torques are about the body x/y/z axes through the COM.
+struct ComWrench {
+  double thrust_z_N{};
+  double roll_torque_Nm{};
+  double pitch_torque_Nm{};
+  double yaw_torque_Nm{};
+};
+
+// Reduce the per-wing ExternallyAppliedSpatialForce entries to a single spatial
+// force about the robot COM. Each entry carries a force and moment applied at a
+// point Bq fixed in a wing body, both expressed in world coordinates; we shift
+// every force to the COM and re-express the total in the root frame.
+ComWrench CalcAeroWrenchAboutCom(
+    const drake::multibody::MultibodyPlant<double>& plant,
+    const drake::systems::Context<double>& plant_context,
+    const std::vector<drake::multibody::ModelInstanceIndex>& model_instances,
+    const std::vector<drake::multibody::ExternallyAppliedSpatialForce<double>>&
+        forces) {
+  const Eigen::Vector3d p_WC =
+      plant.CalcCenterOfMassPositionInWorld(plant_context, model_instances);
+  Eigen::Vector3d total_force_W = Eigen::Vector3d::Zero();
+  Eigen::Vector3d total_moment_W = Eigen::Vector3d::Zero();
+  for (const auto& applied : forces) {
+    const auto& body = plant.get_body(applied.body_index);
+    const drake::math::RigidTransformd& X_WB =
+        body.EvalPoseInWorld(plant_context);
+    const Eigen::Vector3d p_WBq = X_WB * applied.p_BoBq_B;
+    const Eigen::Vector3d force_W = applied.F_Bq_W.translational();
+    const Eigen::Vector3d moment_W = applied.F_Bq_W.rotational();
+    total_force_W += force_W;
+    total_moment_W += moment_W + (p_WBq - p_WC).cross(force_W);
+  }
+  const drake::math::RotationMatrixd R_RW =
+      plant.GetBodyByName("root").EvalPoseInWorld(plant_context).rotation()
+          .inverse();
+  const Eigen::Vector3d force_R = R_RW * total_force_W;
+  const Eigen::Vector3d moment_R = R_RW * total_moment_W;
+  ComWrench wrench;
+  wrench.thrust_z_N = force_R.z();
+  wrench.roll_torque_Nm = moment_R.x();
+  wrench.pitch_torque_Nm = moment_R.y();
+  wrench.yaw_torque_Nm = moment_R.z();
+  return wrench;
+}
+
+void WriteComWrenchCsvHeader(std::ostream* output) {
+  *output << "time_s,thrust_z_N,roll_torque_Nm,pitch_torque_Nm,"
+             "yaw_torque_Nm\n";
+}
+
+void WriteComWrenchCsvRow(std::ostream* output, double time_s,
+                          const ComWrench& wrench) {
+  *output << std::setprecision(17) << time_s << ',' << wrench.thrust_z_N << ','
+          << wrench.roll_torque_Nm << ',' << wrench.pitch_torque_Nm << ','
+          << wrench.yaw_torque_Nm << '\n';
+}
+
 #ifdef ROBOBEE_SIMULINK_SERVER
 
 namespace tcp = ::robobee::simulink;
@@ -1059,7 +1120,7 @@ class RobobeeSimulationServer final {
         1.0 / (kDriveFrequencyHz * kAngularAccelerationSamplesPerDriveCycle);
     constexpr double kAngularAccelerationFilterTimeConstant =
         kAngularAccelerationFilterCycles / kDriveFrequencyHz;
-    constexpr double kVisualizerPublishPeriod = 1.0 / (120.0*20);
+    constexpr double kVisualizerPublishPeriod = 1.0 / (120.0*40);
 
     auto [plant, scene_graph] =
         drake::multibody::AddMultibodyPlantSceneGraph(&builder_,
@@ -1071,13 +1132,12 @@ class RobobeeSimulationServer final {
 
     drake::multibody::Parser parser(plant_);
     RegisterRoboBeePackage(&parser);
-    const std::vector<drake::multibody::ModelInstanceIndex> model_instances =
-        parser.AddModelsFromUrl(kAssemblyUrl);
-    if (model_instances.size() != 1) {
+    model_instances_ = parser.AddModelsFromUrl(kAssemblyUrl);
+    if (model_instances_.size() != 1) {
       throw std::runtime_error("Expected exactly one RoboBee model instance.");
     }
     const drake::multibody::ModelInstanceIndex model_instance =
-        model_instances.front();
+        model_instances_.front();
 
     if constexpr (kFreeFlight) {
       AddWorldFloor(plant_);
@@ -1102,7 +1162,7 @@ class RobobeeSimulationServer final {
 
     constexpr double kSliderEffortLimitN = 100000.0;
     constexpr double kSliderKp = 1000.0;
-    constexpr double kSliderKd = 5.0e-3;
+    constexpr double kSliderKd = 5.0e-1;
 
     const auto& right_slider_actuator = plant_->AddJointActuator(
         "right_slider_drive", plant_->GetJointByName("slider_1"),
@@ -1120,19 +1180,22 @@ class RobobeeSimulationServer final {
 
     plant_->Finalize();
 
-    const Eigen::Vector2d slider_rest_positions =
-        CalcSliderRestPositions(*plant_);
+    slider_rest_positions_ = CalcSliderRestPositions(*plant_);
+    right_slider_ =
+        &plant_->GetJointByName<drake::multibody::PrismaticJoint>("slider_1");
+    left_slider_ =
+        &plant_->GetJointByName<drake::multibody::PrismaticJoint>("slider_2");
     slider_source_ =
-        builder_.AddSystem<VoltageStrokeSource>(slider_rest_positions);
+        builder_.AddSystem<VoltageStrokeSource>(slider_rest_positions_);
     builder_.Connect(slider_source_->get_output_port(),
                      plant_->get_desired_state_input_port(model_instance));
 
-    auto* wing_aero = builder_.AddSystem<WingAeromechanics>(
+    wing_aero_ = builder_.AddSystem<WingAeromechanics>(
         *plant_, kAngularAccelerationSamplePeriod,
         kAngularAccelerationFilterTimeConstant);
     builder_.Connect(plant_->get_state_output_port(),
-                     wing_aero->get_input_port(0));
-    builder_.Connect(wing_aero->get_output_port(0),
+                     wing_aero_->get_input_port(0));
+    builder_.Connect(wing_aero_->get_output_port(0),
                      plant_->get_applied_spatial_force_input_port());
 
     drake::geometry::DrakeVisualizerParams visualizer_params;
@@ -1155,6 +1218,32 @@ class RobobeeSimulationServer final {
     simulator_->Initialize();
     drake::geometry::DrakeVisualizerd::DispatchLoadMessage(*scene_graph_,
                                                            &lcm_);
+
+    // Log the net aerodynamic wrench about the COM to the same CSV the
+    // standalone build uses, so tools/plot_com_wrench.py works while the
+    // Simulink TCP client is driving the simulation.
+    com_wrench_log_.open(kComWrenchLogPath);
+    if (!com_wrench_log_) {
+      throw std::runtime_error("Could not open RoboBee COM wrench CSV log.");
+    }
+    WriteComWrenchCsvHeader(&com_wrench_log_);
+    std::cout << "Net aerodynamic wrench about the COM (z thrust, "
+                 "roll/pitch/yaw torque) is being logged to:\n"
+              << "  " << kComWrenchLogPath << "\n"
+              << "Plot it and print averages while the server runs with:\n"
+              << "  python3 tools/plot_com_wrench.py --live\n";
+
+    // Log slider actual/desired positions so tools/plot_slider_positions.py
+    // works while the Simulink TCP client is driving the simulation.
+    slider_log_.open(kSliderLogPath);
+    if (!slider_log_) {
+      throw std::runtime_error("Could not open slider position CSV log.");
+    }
+    WriteSliderCsvHeader(&slider_log_);
+    std::cout << "Slider actual/desired positions are being logged to:\n"
+              << "  " << kSliderLogPath << "\n"
+              << "Plot them while the server runs with:\n"
+              << "  python3 tools/plot_slider_positions.py\n";
   }
 
   tcp::StepResponse Step(const tcp::StepRequest& request) {
@@ -1186,6 +1275,45 @@ class RobobeeSimulationServer final {
     const auto& plant_context = plant_->GetMyContextFromRoot(root_context);
     const RobotPose pose = CalcRobotPose(*plant_, plant_context);
 
+    // Reduce the per-wing applied forces to a net wrench about the COM and
+    // append a row to the CSV, flushing periodically so a live plotter sees it.
+    const auto& wing_aero_context =
+        wing_aero_->GetMyContextFromRoot(root_context);
+    const auto& forces =
+        wing_aero_->get_output_port(0)
+            .Eval<std::vector<
+                drake::multibody::ExternallyAppliedSpatialForce<double>>>(
+                wing_aero_context);
+    WriteComWrenchCsvRow(
+        &com_wrench_log_, time_s_,
+        CalcAeroWrenchAboutCom(*plant_, plant_context, model_instances_,
+                               forces));
+    if (time_s_ >= next_com_wrench_flush_time_) {
+      com_wrench_log_.flush();
+      next_com_wrench_flush_time_ = time_s_ + kComWrenchLogFlushPeriod;
+    }
+
+    // Log slider tracking against the desired stroke implied by the commanded
+    // actuator voltages (the same mapping VoltageStrokeSource applies).
+    const double right_desired_displacement_m =
+        CalcStrokeDisplacementFromVoltage(right_actuator_voltage_v);
+    const double left_desired_displacement_m =
+        CalcStrokeDisplacementFromVoltage(left_actuator_voltage_v);
+    const double right_actual_displacement_m =
+        right_slider_->get_translation(plant_context) -
+        slider_rest_positions_.x();
+    const double left_actual_displacement_m =
+        left_slider_->get_translation(plant_context) -
+        slider_rest_positions_.y();
+    WriteSliderCsvRow(&slider_log_, time_s_, right_actual_displacement_m,
+                      left_actual_displacement_m, right_desired_displacement_m,
+                      left_desired_displacement_m, right_actuator_voltage_v,
+                      left_actuator_voltage_v, bias_actuator_voltage_v);
+    if (time_s_ >= next_slider_flush_time_) {
+      slider_log_.flush();
+      next_slider_flush_time_ = time_s_ + kSliderLogFlushPeriod;
+    }
+
     tcp::StepResponse response;
     response.time_s = time_s_;
     response.x_m = pose.p_WR.x();
@@ -1200,6 +1328,10 @@ class RobobeeSimulationServer final {
  private:
   static constexpr double kVoltageAmplifierGain = 100.0;
   static constexpr int kVoltageLogPeriodSteps = 1000;
+  static constexpr char kComWrenchLogPath[] = "/tmp/robobee_com_wrench.csv";
+  static constexpr double kComWrenchLogFlushPeriod = 5.0e-2;
+  static constexpr char kSliderLogPath[] = "/tmp/slider_positions.csv";
+  static constexpr double kSliderLogFlushPeriod = 5.0e-2;
 
   void LogReceivedVoltageCommand(const tcp::StepRequest& request,
                                  double right_actuator_voltage_v,
@@ -1254,9 +1386,18 @@ class RobobeeSimulationServer final {
   drake::geometry::SceneGraph<double>* scene_graph_{};
   drake::lcm::DrakeLcm lcm_;
   VoltageStrokeSource* slider_source_{};
+  WingAeromechanics* wing_aero_{};
+  const drake::multibody::PrismaticJoint<double>* right_slider_{};
+  const drake::multibody::PrismaticJoint<double>* left_slider_{};
+  Eigen::Vector2d slider_rest_positions_{Eigen::Vector2d::Zero()};
+  std::vector<drake::multibody::ModelInstanceIndex> model_instances_;
   drake::systems::FixedInputPortValue* voltage_input_value_{};
   std::unique_ptr<drake::systems::Diagram<double>> diagram_;
   std::unique_ptr<drake::systems::Simulator<double>> simulator_;
+  std::ofstream com_wrench_log_;
+  double next_com_wrench_flush_time_{0.0};
+  std::ofstream slider_log_;
+  double next_slider_flush_time_{0.0};
   double previous_right_voltage_v_{kActuatorRestVoltageV};
   double previous_left_voltage_v_{kActuatorRestVoltageV};
   double time_s_{0.0};
@@ -1303,6 +1444,9 @@ int main(int argc, char** argv) {
   constexpr char kMomentLogPath[] = "/tmp/aeromechanical_moments.csv";
   constexpr char kSliderLogPath[] = "/tmp/slider_positions.csv";
   constexpr char kPoseLogPath[] = "/tmp/robobee_pose.csv";
+  constexpr char kComWrenchLogPath[] = "/tmp/robobee_com_wrench.csv";
+  constexpr double kComWrenchLogPeriod = kMomentLogPeriod;
+  constexpr double kComWrenchLogFlushPeriod = kMomentLogFlushPeriod;
 
   // A discrete MultibodyPlant is used because the assembly has constraints and
   // the wing loads are applied at a high update rate.
@@ -1458,6 +1602,11 @@ int main(int argc, char** argv) {
             << "  python3 tools/plot_slider_positions.py\n\n"
             << "Robot pose for Simulink-style feedback is being logged to:\n"
             << "  " << kPoseLogPath << "\n\n"
+            << "Net aerodynamic wrench about the COM (z thrust, roll/pitch/yaw "
+               "torque) is being logged to:\n"
+            << "  " << kComWrenchLogPath << "\n"
+            << "Plot it and print averages with:\n"
+            << "  python3 tools/plot_com_wrench.py\n\n"
             << "Voltage-to-stroke map:\n"
             << "  bias voltage upper rail: " << config.voltage_bias_v << " V\n"
             << "  actuator rest voltage: " << kActuatorRestVoltageV << " V\n"
@@ -1518,6 +1667,12 @@ int main(int argc, char** argv) {
   }
   WritePoseCsvHeader(&pose_log);
 
+  std::ofstream com_wrench_log(kComWrenchLogPath);
+  if (!com_wrench_log) {
+    throw std::runtime_error("Could not open RoboBee COM wrench CSV log.");
+  }
+  WriteComWrenchCsvHeader(&com_wrench_log);
+
   double next_time = 0.0;
   double next_moment_log_time = 0.0;
   double next_moment_log_flush_time = kMomentLogFlushPeriod;
@@ -1525,6 +1680,8 @@ int main(int argc, char** argv) {
   double next_slider_log_flush_time = kSliderLogFlushPeriod;
   double next_pose_log_time = 0.0;
   double next_pose_log_flush_time = kPoseLogFlushPeriod;
+  double next_com_wrench_log_time = 0.0;
+  double next_com_wrench_log_flush_time = kComWrenchLogFlushPeriod;
   // Manual stepping gives this app explicit control over log cadence and flush
   // cadence. The simulator is otherwise advanced one plant step at a time.
   while (true) {
@@ -1568,6 +1725,22 @@ int main(int argc, char** argv) {
                       CalcRobotPose(plant, plant_context));
       next_pose_log_time += kPoseLogPeriod;
     }
+    if (next_time + 0.5 * kCommandPeriod >= next_com_wrench_log_time) {
+      const auto& root_context = simulator.get_context();
+      const auto& plant_context = plant.GetMyContextFromRoot(root_context);
+      const auto& wing_aero_context =
+          wing_aero->GetMyContextFromRoot(root_context);
+      const auto& forces =
+          wing_aero->get_output_port(0)
+              .Eval<std::vector<
+                  drake::multibody::ExternallyAppliedSpatialForce<double>>>(
+                  wing_aero_context);
+      WriteComWrenchCsvRow(
+          &com_wrench_log, next_time,
+          CalcAeroWrenchAboutCom(plant, plant_context, model_instances,
+                                 forces));
+      next_com_wrench_log_time += kComWrenchLogPeriod;
+    }
     if (next_time + 0.5 * kCommandPeriod >= next_moment_log_flush_time) {
       moment_log.flush();
       next_moment_log_flush_time += kMomentLogFlushPeriod;
@@ -1579,6 +1752,10 @@ int main(int argc, char** argv) {
     if (next_time + 0.5 * kCommandPeriod >= next_pose_log_flush_time) {
       pose_log.flush();
       next_pose_log_flush_time += kPoseLogFlushPeriod;
+    }
+    if (next_time + 0.5 * kCommandPeriod >= next_com_wrench_log_flush_time) {
+      com_wrench_log.flush();
+      next_com_wrench_log_flush_time += kComWrenchLogFlushPeriod;
     }
   }
 
