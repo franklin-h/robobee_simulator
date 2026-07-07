@@ -1044,8 +1044,11 @@ void WritePoseCsvRow(std::ostream* output, double time_s,
 // Net aerodynamic wrench produced by both wings, reduced to the robot center of
 // mass and resolved in the root (body) frame. When the root is welded to world
 // (the default, "fixed" build) this is the thrust/torque the wing loads would
-// exert on the airframe. thrust_z is the net force along the body z-axis; the
-// roll/pitch/yaw torques are about the body x/y/z axes through the COM.
+// exert on the airframe. thrust_z is the net force along the body z-axis. The
+// root frame axes are x = lateral (wingspan, +x toward the right wing), y =
+// forward, and z = up (see AddRoboBeeBodyFrameTriadVisuals). So physical roll
+// is about the forward axis (root +y), pitch is about the lateral axis
+// (root +x), and yaw is about the up axis (root +z).
 struct ComWrench {
   double thrust_z_N{};
   double roll_torque_Nm{};
@@ -1084,8 +1087,11 @@ ComWrench CalcAeroWrenchAboutCom(
   const Eigen::Vector3d moment_R = R_RW * total_moment_W;
   ComWrench wrench;
   wrench.thrust_z_N = force_R.z();
-  wrench.roll_torque_Nm = moment_R.x();
-  wrench.pitch_torque_Nm = moment_R.y();
+  // Roll is about the forward axis (root +y) and pitch is about the lateral
+  // axis (root +x); see the ComWrench doc comment for the root-frame axis
+  // convention.
+  wrench.roll_torque_Nm = moment_R.y();
+  wrench.pitch_torque_Nm = moment_R.x();
   wrench.yaw_torque_Nm = moment_R.z();
   return wrench;
 }

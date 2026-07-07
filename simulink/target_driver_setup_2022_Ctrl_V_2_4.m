@@ -34,7 +34,7 @@ T = 1;			% total time in seconds
 
 landing_flag=0; % 0 : No landing, 1: landing on
 
-control_flag=1; %2 % 1: Openloop, 2: closed loop. 
+control_flag=2; %2 % 1: Openloop, 2: closed loop. 
 adaptive_flag=0;					% 0: no-adaptive 1: adaptive
 adaptive_lateral_flag=0;	% 0:  -adaptive 1: adaptive
 
@@ -114,7 +114,7 @@ roll_offset_angle = 0; % New Vicon calibration
 % params = load('RoboBee_optimal_fitting_parameter_150Hz_2022_Apr.mat');
 
 % BBee System ID without the leg
-params = load('RoboBee_optimal_fitting_parameter_155Hz_2022_BBee_v2.mat');
+params = load('RoboBee_optimal_fitting_parameter_155Hz_2022_BBee_v2_simVariant.mat');
 
 % BBee System ID with the rigid leg
 % params = load('RoboBee_optimal_fitting_parameter_155Hz_2022_BBee_rigid_leg_v1.mat');
@@ -197,7 +197,7 @@ drv_pch = drv_pitch_left;
 
 % CHRISTIAN OPENLOOP Control
 drv_amp = 200;
-drv_roll = 2;
+drv_roll = 0;
 drv_pitch_left = 0;
 drv_pitch_right = 0;
 % max_drv_bias =300;
@@ -279,9 +279,9 @@ k_x = 0.5/scale;
 k_v = 0.05/scale;
 
 %Attitude gain
-k_R = 3.0/(scale^2);%0.5/(scale^2);		yaw pitch
-k_Rx = 3.2/(scale^2);%0.6/(scale^2);		roll
-k_Omega =  0.5/(scale^2);%0.25/(scale^2);
+k_R = 0.2/(scale^2);%0.5/(scale^2);		yaw pitch
+k_Rx = 0.35/(scale^2);%0.6/(scale^2);		roll
+k_Omega =  0.25/(scale^2);%0.25/(scale^2);
 
 %Altitude gain
 k_z = 0.2/scale;%0.2/scale;

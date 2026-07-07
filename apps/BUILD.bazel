@@ -178,6 +178,21 @@ cc_binary(
 )
 
 cc_binary(
+    name = "dump_wing_frames",
+    srcs = ["dump_wing_frames.cc"],
+    data = [
+        "//models/robobee_assembly:files",
+    ],
+    deps = [
+        "//:aeromechanical_wing_constants",
+        "@drake//math:geometric_transform",
+        "@drake//multibody/parsing:parsing",
+        "@drake//multibody/plant:plant",
+        "@drake//systems/framework:context",
+    ],
+)
+
+cc_binary(
     name = "visualize_robobee_spinning",
     srcs = ["visualize_robobee_spinning.cc"],
     data = [
