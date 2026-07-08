@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""Plot the net aerodynamic wrench about the RoboBee COM and report averages.
+"""Plot the running (expanding) average of the RoboBee COM wrench.
 
-Reads the CSV written by visualize_robobee_aeromechanical (the fixed / welded
-build) and plots the net z-axis thrust plus the roll, pitch, and yaw torques
-about the center of mass. The time-average of each signal is printed to stdout
-and annotated on the plot.
+Variant of plot_com_wrench.py. Instead of plotting the raw signals in stacked
+subplots, this plots the expanding moving average of each channel: at every
+timestep i (with i >= 50) the plotted value is the mean of samples 50..i. Each
+channel (z-axis thrust, roll/pitch/yaw torque) is drawn in its own separate
+figure rather than as a subplot.
 
 Usage:
-  python3 tools/plot_com_wrench.py                # one-shot: plot + averages
-  python3 tools/plot_com_wrench.py --live         # refresh continuously
-  python3 tools/plot_com_wrench.py --last 0.1     # average only the last 0.1 s
+  python3 tools/plot_com_wrench_moving_avg.py                # one-shot
+  python3 tools/plot_com_wrench_moving_avg.py --live         # refresh continuously
+  python3 tools/plot_com_wrench_moving_avg.py --start 50     # first sample index
 """
 
 import argparse
@@ -26,6 +27,15 @@ CHANNELS = [
     ("pitch_torque_Nm", "pitch torque", "N·m", "tab:green"),
     ("yaw_torque_Nm", "yaw torque", "N·m", "tab:purple"),
 ]
+
+# Manual y-axis limits per channel. Set (low, high) to override auto-scaling;
+# leave as None to auto-scale that channel from its plotted running average.
+YLIMS = {
+    "thrust_z_N": None,
+    "roll_torque_Nm": None,
+    "pitch_torque_Nm": (-5e-7,5e-7),
+    "yaw_torque_Nm": None,
+}
 
 
 def set_csv_field_limit():
@@ -76,6 +86,26 @@ def xy_series(rows, y_key):
     return x_values, y_values
 
 
+def expanding_average(x_values, y_values, start):
+    """Return (x, running_avg) where running_avg[i] = mean(y[start..i]).
+
+    Only samples from index `start` onward are emitted; each plotted point is
+    the average of every sample from `start` up to and including that point.
+    """
+    x_out = []
+    avg_out = []
+    running_sum = 0.0
+    count = 0
+    for i, (t, y) in enumerate(zip(x_values, y_values)):
+        if i < start:
+            continue
+        running_sum += y
+        count += 1
+        x_out.append(t)
+        avg_out.append(running_sum / count)
+    return x_out, avg_out
+
+
 def average(values):
     finite = [v for v in values if v is not None and math.isfinite(v)]
     if not finite:
@@ -111,17 +141,18 @@ def window_rows(rows, last_seconds):
     ]
 
 
-def compute_averages(rows):
+def compute_averages(rows, start):
     averages = {}
     for key, _label, _unit, _color in CHANNELS:
         _x, y = xy_series(rows, key)
-        averages[key] = average(y[50:])
+        averages[key] = average(y[start:])
     return averages
 
 
-def print_averages(averages, sample_count, span):
+def print_averages(averages, sample_count, span, start):
     print("=" * 52)
-    print(f"Averages over {sample_count} samples ({span:.4f} s of sim time):")
+    print(f"Averages over samples {start}..{sample_count} "
+          f"({span:.4f} s of sim time):")
     for key, label, unit, _color in CHANNELS:
         value = averages.get(key)
         if value is None:
@@ -139,25 +170,32 @@ def time_span(rows):
     return times[-1] - times[0]
 
 
-def draw(fig, axes, rows, averages):
-    for axis, (key, label, unit, color) in zip(axes, CHANNELS):
+def draw(figures, rows, averages, start):
+    for (fig, axis), (key, label, unit, color) in zip(figures, CHANNELS):
         axis.clear()
         x, y = xy_series(rows, key)
-        if y:
-            axis.plot(x[60:], y[60:], color=color, linewidth=1.0)
-            limits = padded_limits(y)
+        x_avg, y_avg = expanding_average(x, y, start)
+        if y_avg:
+            axis.plot(x_avg, y_avg, color=color, linewidth=1.2)
+            limits = YLIMS.get(key) or padded_limits(y_avg)
             if limits is not None:
                 axis.set_ylim(*limits)
+            # Pin the x-axis to the first plotted (post-`start`) sample so the
+            # transient is visibly dropped instead of just being covered by
+            # autoscale padding.
+            if x_avg[0] < x_avg[-1]:
+                axis.set_xlim(x_avg[0], x_avg[-1])
         mean = averages.get(key)
         if mean is not None:
             axis.axhline(mean, color="k", linestyle="--", linewidth=0.9,
-                         label=f"avg = {mean:+.4e} {unit}")
+                         label=f"final avg = {mean:+.4e} {unit}")
             axis.legend(loc="upper right", fontsize="small")
-        axis.set_ylabel(f"{label} [{unit}]")
+        axis.set_ylabel(f"running-avg {label} [{unit}]")
+        axis.set_xlabel("simulation time [s]")
         axis.grid(True, alpha=0.3)
-    axes[-1].set_xlabel("simulation time [s]")
-    fig.suptitle("Net aerodynamic wrench about the RoboBee COM")
-    fig.tight_layout()
+        axis.set_title(f"Running average of {label} about the RoboBee COM "
+                       f"(from sample {start})")
+        fig.tight_layout()
 
 
 def main():
@@ -169,6 +207,12 @@ def main():
         help="CSV written by visualize_robobee_aeromechanical.",
     )
     parser.add_argument(
+        "--start",
+        type=int,
+        default=200,
+        help="First sample index included in the running average.",
+    )
+    parser.add_argument(
         "--last",
         type=float,
         default=None,
@@ -177,7 +221,7 @@ def main():
     parser.add_argument(
         "--live",
         action="store_true",
-        help="Refresh the plot and averages continuously.",
+        help="Refresh the plots and averages continuously.",
     )
     parser.add_argument(
         "--period",
@@ -188,7 +232,7 @@ def main():
     parser.add_argument(
         "--no-plot",
         action="store_true",
-        help="Only print averages; do not open a plot window.",
+        help="Only print averages; do not open plot windows.",
     )
     args = parser.parse_args()
 
@@ -200,17 +244,23 @@ def main():
         rows = window_rows(read_rows(path), args.last)
         if not rows:
             raise SystemExit(f"No usable rows in {path}.")
-        print_averages(compute_averages(rows), len(rows), time_span(rows))
+        print_averages(compute_averages(rows, args.start), len(rows),
+                       time_span(rows), args.start)
         return
 
     try:
         import matplotlib.pyplot as plt
+        
     except ImportError as exc:
         raise SystemExit(
             "matplotlib is required: python3 -m pip install matplotlib"
         ) from exc
 
-    fig, axes = plt.subplots(4, 1, sharex=True, figsize=(10, 9))
+    # One separate figure per channel instead of stacked subplots.
+    figures = []
+    for _key, label, _unit, _color in CHANNELS:
+        fig, axis = plt.subplots(1, 1, figsize=(9, 4), num=label)
+        figures.append((fig, axis))
 
     if not args.live:
         if not path.exists():
@@ -218,9 +268,10 @@ def main():
         rows = window_rows(read_rows(path), args.last)
         if not rows:
             raise SystemExit(f"No usable rows in {path}.")
-        averages = compute_averages(rows)
-        print_averages(averages, len(rows), time_span(rows))
-        draw(fig, axes, rows, averages)
+        averages = compute_averages(rows, args.start)
+        print_averages(averages, len(rows), time_span(rows), args.start)
+        draw(figures, rows, averages, args.start)
+        
         plt.show()
         return
 
@@ -234,9 +285,9 @@ def main():
         if not rows:
             time.sleep(args.period)
             continue
-        averages = compute_averages(rows)
-        print_averages(averages, len(rows), time_span(rows))
-        draw(fig, axes, rows, averages)
+        averages = compute_averages(rows, args.start)
+        print_averages(averages, len(rows), time_span(rows), args.start)
+        draw(figures, rows, averages, args.start)
         plt.pause(0.001)
         time.sleep(args.period)
 

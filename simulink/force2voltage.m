@@ -1,4 +1,6 @@
-function [drv_amp, drv_roll, drv_pitch_left, drv_pitch_right, a2_coeff] =    force2voltage(Thrust_desired, Roll_torque_desired, Pitch_torque_desired, Yaw_torque_desired, params_vec)
+function [drv_amp, drv_roll, drv_pitch_left, drv_pitch_right, a2_coeff] = ...
+    force2voltage(Thrust_desired, Roll_torque_desired, Pitch_torque_desired, ...
+    Yaw_torque_desired, params_vec)
 
 % global params_opt
 

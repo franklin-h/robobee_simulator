@@ -27,7 +27,7 @@ start_delay_adaptive = start_delay + ramp_delay+adaptive_delay;
 
 
 %% Driving signal setup and experiment setup
-f = 180; %170; %165
+f = 155; %170; %165
 f_int = f;					% initial frequency
 f_fin = f;					% final frequency
 T = 1;			% total time in seconds
@@ -213,9 +213,9 @@ drv_pch = drv_pitch_left;
 
 % Franklin Open Loop 
 drv_amp = 188.8; 
-drv_roll = 0; 
-drv_pitch_left = 7.7; 
-drv_pitch_right = 7.7; 
+drv_roll = -0.9655; 
+drv_pitch_left = -1.; 
+drv_pitch_right = 3.8123; 
 a2_openloop = 0; 
 
 
