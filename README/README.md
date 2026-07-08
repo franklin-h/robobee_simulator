@@ -243,3 +243,28 @@ We need to model it as a simple PD servo slider actuator.
 
 +/- 30 deg too small. now +/- 45. that is responsible for 
 
+## URDF Pain Points. Loop closure so it no longer fucks with URDF, and so that the visual mesh actual works. 
+
+What was actually wrong
+The robobee_assembly_loader.h did an in-memory tree-branch swap that re-parented the visual coupler link transmission_link_2 from its hinge-side joint (revolute_2) onto the slider-side joint (revolute_3_loop_closure). But the coupler's <visual><origin> in the URDF is authored in the hinge-side frame. After the swap, the body's frame lands at the slider-side pivot (~0.4 mm off), so the mesh was drawn away from the physical link — that's why link_2 didn't show up where you expected on both sides.
+
+The fix
+Two coordinated changes, verified by driving the mechanism headless:
+
+Loader — stop swapping (robobee_assembly_loader.h): now returns the Onshape export verbatim. The visual coupler stays on its authored revolute_2 (hinge) branch, so the mesh renders in the right place. Removed the four ReplaceOnceOrThrow rewrites (and the now-dead helper).
+
+Close the loop between the two real links (linkage, spinning, aeromechanical): the ball constraints now recreate the slider-side pivot directly between transmission_link_1 and transmission_link_2 — both real, inertia-bearing bodies — instead of routing through the hinge/helper. This is the stiff, well-conditioned coupling that actually transmits slider motion into hinge rotation. The weld on the near-massless helper is kept to pin it.
+
+Verification (headless, driven)
+
+t=0.00  hinge_L=0.000   hinge_R=0.000
+t=0.25  hinge_L=0.338   hinge_R=-0.338
+t=0.50  hinge_L=0.478   hinge_R=-0.478   ← hinges track the slider drive
+t=1.00  hinge_L=0.002   hinge_R=-0.002
+link2_L now at x=-0.00263 (its authored visual frame), was -0.00223 when swapped
+Both loops transmit motion symmetrically, no NaN, and transmission_link_2 sits at its correct visual location.
+
+Notes
+URDF joint/link names: untouched. The loader no longer rewrites anything, and all constraints are added in C++ by body name.
+visualize_robobee_linkage and visualize_robobee_aeromechanical (your open file) built and ran clean. visualize_robobee_spinning has the same edits but I couldn't finish linking it — your disk is at ~1.8 GB free and each binary is ~368 MB. Run bazel clean (or free space) and bazel build //apps:visualize_robobee_spinning to get it.
+Launch Meldis (bazel run @drake//tools:meldis -- --open-window) and run any of the apps to see link_2 rendered in place and the four-bars articulating.

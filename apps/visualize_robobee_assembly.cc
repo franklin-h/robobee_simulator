@@ -13,9 +13,8 @@
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/framework/diagram_builder.h"
 
-/* TODO: 
-It seems that transmission_link_2 is not rotating; Drake happily breaks the revolute joint between link_2 and hinge, while keeping transmission_link_2 completely in line with transmission_link_1, when transmission_link_2 should also be on some arc like path. 
-*/
+#include "apps/robobee_assembly_loader.h"
+
 namespace {
 
   // Adds position and orientation constraints to `ik` to hold `frame` at the
@@ -34,36 +33,18 @@ void AddWorldPoseConstraint(
                                drake::math::RotationMatrixd(), 1e-6);
 }
 
-// 
-void AddInitialCoincidenceConstraint(
-    const drake::multibody::MultibodyPlant<double>& plant,
-    const drake::systems::Context<double>& plant_context,
-    const drake::multibody::Frame<double>& point_frame,
-    const drake::multibody::Frame<double>& target_frame,
+void AddLoopClosurePoseConstraint(
+    const drake::multibody::Frame<double>& loop_frame,
+    const drake::multibody::Frame<double>& real_frame,
+    const drake::math::RigidTransformd& X_RealLoop,
     drake::multibody::InverseKinematics* ik) {
-  const drake::math::RigidTransformd X_TP =
-      plant.CalcRelativeTransform(plant_context, target_frame, point_frame);
-  const Eigen::Vector3d p_PQ = X_TP.inverse().translation();
   constexpr double kTolerance = 1e-7;
   ik->AddPositionConstraint(
-      point_frame, p_PQ, target_frame,
-      Eigen::Vector3d::Constant(-kTolerance),
-      Eigen::Vector3d::Constant(kTolerance));
-}
-
-void AddInitialAxisAlignmentConstraint(
-    const drake::multibody::MultibodyPlant<double>& plant,
-    const drake::systems::Context<double>& plant_context,
-    const drake::multibody::Frame<double>& axis_frame,
-    const drake::multibody::Frame<double>& target_frame,
-    drake::multibody::InverseKinematics* ik) {
-  const drake::math::RigidTransformd X_TA =
-      plant.CalcRelativeTransform(plant_context, target_frame, axis_frame);
-  const Eigen::Vector3d axis_A(0.0, -1.0, 0.0);
-  const Eigen::Vector3d axis_T = X_TA.rotation() * axis_A;
-  constexpr double kAxisTolerance = 1e-4;
-  ik->AddAngleBetweenVectorsConstraint(axis_frame, axis_A, target_frame, axis_T,
-                                       0.0, kAxisTolerance);
+      loop_frame, Eigen::Vector3d::Zero(), real_frame,
+      X_RealLoop.translation() - Eigen::Vector3d::Constant(kTolerance),
+      X_RealLoop.translation() + Eigen::Vector3d::Constant(kTolerance));
+  ik->AddOrientationConstraint(real_frame, X_RealLoop.rotation(), loop_frame,
+                               drake::math::RotationMatrixd(), 1e-6);
 }
 
 bool SolveWingKinematics(
@@ -71,6 +52,8 @@ bool SolveWingKinematics(
     drake::systems::Context<double>* plant_context,
     const drake::math::RigidTransformd& X_WLeftBase,
     const drake::math::RigidTransformd& X_WRightBase, double slider_position,
+    const drake::math::RigidTransformd& X_LeftRealLoop,
+    const drake::math::RigidTransformd& X_RightRealLoop,
     Eigen::VectorXd* q_guess) {
   drake::multibody::InverseKinematics ik(plant, plant_context, false);
   auto* prog = ik.get_mutable_prog();
@@ -92,23 +75,15 @@ bool SolveWingKinematics(
       plant, plant.GetFrameByName("transmission_right_link_base"), X_WRightBase,
       &ik);
 
-  // URDF export forces open kinematic tree. 
-  AddInitialCoincidenceConstraint(
-      plant, *plant_context,
+  // The Onshape URDF opens each four-bar loop by creating a helper body. Keep
+  // the exported helper-body names/topology intact and close each loop in IK by
+  // preserving the helper-to-real-link transform from the CAD default pose.
+  AddLoopClosurePoseConstraint(
       plant.GetFrameByName("transmission_link_2__1__loop_closure"),
-      plant.GetFrameByName("transmission_link_2"), &ik);
-  AddInitialAxisAlignmentConstraint(
-      plant, *plant_context,
-      plant.GetFrameByName("transmission_link_2__1__loop_closure"),
-      plant.GetFrameByName("transmission_link_2"), &ik);
-  AddInitialCoincidenceConstraint(
-      plant, *plant_context,
+      plant.GetFrameByName("transmission_link_2"), X_LeftRealLoop, &ik);
+  AddLoopClosurePoseConstraint(
       plant.GetFrameByName("transmission_right_link_2__1__loop_closure"),
-      plant.GetFrameByName("transmission_right_link_2"), &ik);
-  AddInitialAxisAlignmentConstraint(
-      plant, *plant_context,
-      plant.GetFrameByName("transmission_right_link_2__1__loop_closure"),
-      plant.GetFrameByName("transmission_right_link_2"), &ik);
+      plant.GetFrameByName("transmission_right_link_2"), X_RightRealLoop, &ik);
 
   prog->AddQuadraticErrorCost(Eigen::MatrixXd::Identity(q.size(), q.size()),
                               *q_guess, q);
@@ -137,9 +112,7 @@ int main() {
 
   drake::multibody::Parser parser(&plant);
   parser.package_map().Add("robobee_assembly", "models/robobee_assembly");
-  parser.AddModelsFromUrl(
-      "package://robobee_assembly/urdf/"
-      "robobee_assembly.urdf");
+  robobee_sim::AddRoboBeeAssemblyModels(&parser);
 
   plant.WeldFrames(plant.world_frame(), plant.GetFrameByName("root")); // anchor robot rood to world 
   plant.Finalize();
@@ -161,6 +134,14 @@ int main() {
       plant.CalcRelativeTransform(
           plant_context, plant.world_frame(),
           plant.GetFrameByName("transmission_right_link_base"));
+  const drake::math::RigidTransformd X_LeftRealLoop =
+      plant.CalcRelativeTransform(
+          plant_context, plant.GetFrameByName("transmission_link_2"),
+          plant.GetFrameByName("transmission_link_2__1__loop_closure"));
+  const drake::math::RigidTransformd X_RightRealLoop =
+      plant.CalcRelativeTransform(
+          plant_context, plant.GetFrameByName("transmission_right_link_2"),
+          plant.GetFrameByName("transmission_right_link_2__1__loop_closure"));
 
   std::cout << "Robobee assembly geometry is being published on LCM "
                "for Meldis.\n"
@@ -186,7 +167,8 @@ int main() {
     const double slider_position =
         kSliderAmplitude * std::sin(2.0 * kPi * kDriveFrequencyHz * time);
     if (!SolveWingKinematics(plant, &plant_context, X_WLeftBase, X_WRightBase,
-                             slider_position, &q_guess)) {
+                             slider_position, X_LeftRealLoop, X_RightRealLoop,
+                             &q_guess)) {
       std::cerr << "Wing kinematic solve failed for slider inputs = "
                 << slider_position << " m\n";
     }

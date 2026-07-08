@@ -1,5 +1,4 @@
-% io %% Geometric Adaptive control
-%% Geometric Adaptive Control
+%% Geometric Adaptive control
 
 
 clear all;
@@ -7,38 +6,26 @@ close all;
 
 sampling_f = 10000;			% controller sampling rate
 sampling_time = 1/sampling_f;
+start_delay = 2.0;		%+2.0	% start after xx s
+ramp_delay =0.1;
 
-% Plant = 1 for vicon, 2 for Drake
-Plant = 2; 
-if Plant == 1 
-    start_delay = 2.0; % ensure start_delay exists if real experiment
-    adaptive_delay = 0.1;c
-    ramp_delay = 0.1;Ix
-    
-else 
-    start_delay = 0.0; 
-    adaptive_delay = 0.0; 
-    ramp_delay = 0.0; 
-end 
-
-
+adaptive_delay = 0.1;
 start_delay_control = start_delay + ramp_delay;
 start_delay_adaptive = start_delay + ramp_delay+adaptive_delay;
 
-
 %% Driving signal setup and experiment setup
-f = 180; %170; %165
+f = 155; %170; %165
 f_int = f;					% initial frequency
 f_fin = f;					% final frequency
-T = 1;			% total time in seconds
+T = 0.5;			% total time in seconds
 
 landing_flag=0; % 0 : No landing, 1: landing on
 
-control_flag=2; %2 % 1: Openloop, 2: closed loop. 
+control_flag=1; %2 % 1: Openloop, 2: closed loop
 adaptive_flag=0;					% 0: no-adaptive 1: adaptive
 adaptive_lateral_flag=0;	% 0:  -adaptive 1: adaptive
 
-max_drv_bias = 200;
+max_drv_bias =300;
 
 save_flag = 1; %1;
 % save_file_name = '20210920_13_with_adaptive_trajectory_landing_1s_circle_costant_y_heading_h_gain_';
@@ -55,34 +42,13 @@ save_flag = 1; %1;
 % save_file_name = 'OL_20221213_60';
 % save_file_name = '20221019_DeadBee_falling_121mg_21_rigid';
 save_file_name = '20221217_PBee_OL_1';
-
-mdl = 'updated_target_driver_2026_withVariants';
-set_param(mdl, 'SolverType', 'Fixed-step');
-set_param(mdl, 'Solver', 'FixedStepDiscrete');
-set_param(mdl, 'FixedStep', 'dt_s');
-set_param(mdl, 'StopTime', 'running_time');
 %% Vehicle parameters
 g=9.8; % gravity
-m = 80e-6; %101e-6%90e-6;%86e-6; %86*1e-6%86*1e-6; % vehicle weight in kg (mg * 1e-6)
-% 
-% Ixx = 1.42*1e-9; % Principal moment of inertia
-% Iyy = 1.34*1e-9%1.34*1e-9;
-% Izz = 0.45*1e-9;
-% 
-% Ixx = 2.13e-10; 
-% Iyy = 2.33e-10; 
-% Izz = 3.27e-11; 
+m = 101e-6; %101e-6%90e-6;%86e-6; %86*1e-6%86*1e-6; % vehicle weight
 
-% Ixx = 1.42*1e-9;		% Principal moment of inertia
-% Iyy = 1.34*1e-9;		%1.34*1e-9;
-% Izz = 0.45*1e-9;
-
-Ixx = 2.03e-9; 
-Iyy = 2.30e-9; 
-Izz = 0.31e-9; 
-% Ixx = 3.8e-4; 
-% Iyy = 6.1e-4; 
-% Izz = 2.5e-4; 
+Ixx = 1.42*1e-9; % Principal moment of inertia
+Iyy = 1.34*1e-9%1.34*1e-9;
+Izz = 0.45*1e-9;
 
 % Payload;
 payload = 23e-6;
@@ -117,19 +83,16 @@ roll_offset_angle = 0; % New Vicon calibration
 % params = load('RoboBee_optimal_fitting_parameter_150Hz_2022_Apr.mat');
 
 % BBee System ID without the leg
-params = load('RoboBee_optimal_fitting_parameter_155Hz_2022_BBee_v2_simVariant.mat');
+params = load('RoboBee_optimal_fitting_parameter_155Hz_2022_BBee_v2.mat');
 
 % BBee System ID with the rigid leg
-% params = load('RoboBee_optimal_fitting_parameter_155Hz_2022_BBee_rigid_leg_v1.mat');
+params = load('RoboBee_optimal_fitting_parameter_155Hz_2022_BBee_rigid_leg_v1.mat');
 
 
 
 params_opt = params.params_opt;
-params_opt.gamma_2_1 = 0.011; 
 params_opt.gamma_2 = params_opt.gamma_2_1;
-params_opt.nu = -5; 
-params_opt.eta = 1.0; 
-params_opt.mu = 0.0; 
+
 params_vec = [params_opt.delta_1, params_opt.delta_2, params_opt.delta_3, params_opt.gamma_1, params_opt.gamma_2, params_opt.gamma_3, params_opt.eta, params_opt.nu, params_opt.mu]';
 % Becky 05072022
 % params_vec = [4.615418611008412, 1.864800777306221, -0.003836409949443, 0.000000002617698, 0.002712888814185, 0.470047661467390, 1.252086811352254, -12.320534223706176, -0.106510851419032];
@@ -176,8 +139,6 @@ wing_to_voltage = load('Bee_Trajectory_Input_Linear_fitting.mat'); % Identified 
 
 
 % Correction based on the lift coefficient mismatch
-% don't forget to install curve fitting tool box if you get loading
-% variable error 
 C_R_over_C_L = 1.0; 
 wing_to_voltage.fit_R_total.p1 = C_R_over_C_L*wing_to_voltage.fit_R_total.p1;
 wing_to_voltage.fit_R_total.p2 = C_R_over_C_L*wing_to_voltage.fit_R_total.p2;
@@ -202,8 +163,8 @@ drv_pch = drv_pitch_left;
 
 
 % CHRISTIAN OPENLOOP Control
-drv_amp = 200;
-drv_roll = 0;
+drv_amp = 160;
+drv_roll = -2;
 drv_pitch_left = 0;
 drv_pitch_right = 0;
 % max_drv_bias =300;
@@ -215,16 +176,12 @@ a2_openloop = -0; %0.2;2
 %% Feedback Control paramter (Force Control)
 scale = 1e3;
 
-% Default position (with the kevlar string), in meters 
-% default_x = 0.0594;%0.050;
-% default_y = 0.0235;%0.137;
+% Default position (with the kevlar string)
+default_x = 0.0594;%0.050;
+default_y = 0.0235;%0.137;
 % default_z = 0.1278;
-% default_z = 0.0855;%0.1535;
-
-default_x = 0; 
-default_y = 0; 
-default_z = 0; 
-jump_height = 0.14;
+default_z = 0.0855;%0.1535;
+jump_height = 0.03;
 % jump_height = 0.02;
 soft_landing_height = 0.012; % 3mm
 
@@ -286,7 +243,7 @@ k_v = 0.05/scale;
 
 %Attitude gain
 k_R = 0.5/(scale^2);%0.5/(scale^2);		yaw pitch
-k_Rx = 1.2/(scale^2);%0.6/(scale^2);		roll
+k_Rx = 0.6/(scale^2);%0.6/(scale^2);		roll
 k_Omega =  0.25/(scale^2);%0.25/(scale^2);
 
 %Altitude gain
@@ -363,34 +320,35 @@ adaptive_gain = [gamma_adaptive, adaptive_roll_limit, adaptive_pitch_limit, adap
 
 %% setup code 
 % Default openloop
-dt_s = 2.0e-4; 
-host = "127.0.0.1";
-port = 4242;
 
-
-% closedloop_flag=0;
+closedloop_flag=0;
 
 drv_bias = max_drv_bias;
 phase = 0 %pi; %degrees (added on left wing)
 
-if control_flag==2  % CLosedloop control
+if control_flag==2  % Open loop control
 
-    closedloop_flag = 1; % For simulink
+	closedloop_flag =1; % For simulink
 	% Setup the Bias for PZT
-    % drv_bias = max(closedloop_max_drv_bias,max_drv_bias);
+%   drv_bias = max(closedloop_max_drv_bias,max_drv_bias);
 	drv_bias = max_drv_bias;
-    phase = 0 %pi; %degrees (added on left wing)
-    running_time = start_delay+total_T;
-    running_time_control = start_delay_control+total_T+0.0;   %3.0+T+0.5 %11	
-    % running_time = start_delay + T;
-    % running_time_control = start_delay_control + T;
-else % else, open loop 
-    closedloop_flag = 0; 
-    drv_bias = max_drv_bias; 
-    running_time = start_delay+T;
-	running_time_control = start_delay_control+T+0.0;   %3.0+T+0.5 %11
+  phase = 0 %pi; %degrees (added on left wing)
 end
 
+%% end of setup code
+% running_time = start_delay+T+0.0;   %3.0+T+0.5 %11
+% running_time_control = start_delay_control+T+0.0;   %3.0+T+0.5 %11
+
+if control_flag==1
+	running_time = start_delay+T;
+	running_time_control = start_delay_control+T+0.0;   %3.0+T+0.5 %11
+
+else
+	running_time = start_delay+total_T;
+	running_time_control = start_delay_control+total_T+0.0;   %3.0+T+0.5 %11	
+% 	running_time = start_delay + T;
+% 	running_time_control = start_delay_control + T;
+end
 %% low pass filter
 [lp_num, lp_den]=butter(5, 80/sampling_f);  % 80
 [vlp_num, vlp_den]=butter(5, 40/sampling_f);  % 80

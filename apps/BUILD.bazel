@@ -2,7 +2,10 @@ load("@rules_cc//cc:defs.bzl", "cc_binary")
 
 cc_binary(
     name = "visualize_robobee_assembly",
-    srcs = ["visualize_robobee_assembly.cc"],
+    srcs = [
+        "robobee_assembly_loader.h",
+        "visualize_robobee_assembly.cc",
+    ],
     data = [
         "//models/robobee_assembly:files",
     ],
@@ -37,7 +40,10 @@ cc_binary(
 
 cc_binary(
     name = "visualize_robobee_linkage",
-    srcs = ["visualize_robobee_linkage.cc"],
+    srcs = [
+        "robobee_assembly_loader.h",
+        "visualize_robobee_linkage.cc",
+    ],
     data = [
         "//models/robobee_assembly:files",
     ],
@@ -57,7 +63,10 @@ cc_binary(
 
 cc_binary(
     name = "visualize_robobee_aeromechanical",
-    srcs = ["visualize_robobee_aeromechanical.cc"],
+    srcs = [
+        "robobee_assembly_loader.h",
+        "visualize_robobee_aeromechanical.cc",
+    ],
     data = [
         "//models/robobee_assembly:files",
     ],
@@ -88,7 +97,10 @@ alias(
 
 cc_binary(
     name = "visualize_robobee_aeromechanical_flying",
-    srcs = ["visualize_robobee_aeromechanical.cc"],
+    srcs = [
+        "robobee_assembly_loader.h",
+        "visualize_robobee_aeromechanical.cc",
+    ],
     copts = ["-DROBOBEE_FREE_FLIGHT"],
     data = [
         "//models/robobee_assembly:files",
@@ -113,6 +125,7 @@ cc_binary(
 cc_binary(
     name = "robobee_simulink_server",
     srcs = [
+        "robobee_assembly_loader.h",
         "robobee_simulink_tcp.cc",
         "robobee_simulink_tcp.h",
         "visualize_robobee_aeromechanical.cc",
@@ -150,6 +163,7 @@ cc_binary(
 cc_binary(
     name = "robobee_simulink_server_fixed",
     srcs = [
+        "robobee_assembly_loader.h",
         "robobee_simulink_tcp.cc",
         "robobee_simulink_tcp.h",
         "visualize_robobee_aeromechanical.cc",
@@ -194,7 +208,10 @@ cc_binary(
 
 cc_binary(
     name = "visualize_robobee_spinning",
-    srcs = ["visualize_robobee_spinning.cc"],
+    srcs = [
+        "robobee_assembly_loader.h",
+        "visualize_robobee_spinning.cc",
+    ],
     data = [
         "//models/robobee_assembly:files",
     ],

@@ -19,12 +19,12 @@
 #include "drake/systems/framework/diagram_builder.h"
 #include "drake/systems/framework/leaf_system.h"
 
+#include "apps/robobee_assembly_loader.h"
+
 namespace {
 
 constexpr char kPackageName[] = "robobee_assembly";
 constexpr char kPackagePath[] = "models/robobee_assembly";
-constexpr char kAssemblyUrl[] =
-    "package://robobee_assembly/urdf/robobee_assembly.urdf";
 constexpr double kPi = 3.14159265358979323846;
 
 class SliderStrokeSource final : public drake::systems::LeafSystem<double> {
@@ -61,7 +61,7 @@ drake::math::RigidTransformd CalcDefaultPoseOfLoopFrameInRealLinkFrame(
   drake::multibody::MultibodyPlant<double> plant(0.0);
   drake::multibody::Parser parser(&plant);
   RegisterRoboBeePackage(&parser);
-  parser.AddModelsFromUrl(kAssemblyUrl);
+  robobee_sim::AddRoboBeeAssemblyModels(&parser);
   plant.WeldFrames(plant.world_frame(), plant.GetFrameByName("root"));
   plant.Finalize();
 
@@ -72,13 +72,16 @@ drake::math::RigidTransformd CalcDefaultPoseOfLoopFrameInRealLinkFrame(
                                      plant.GetFrameByName(loop_body_name));
 }
 
+// Recover, in the default CAD pose, the loop-closure pivot point expressed in
+// an arbitrary body frame together with that body's local direction of the
+// loop revolute axis (the exported hinge axis is +Y in the helper body frame).
 void CalcDefaultLoopFramePointAndAxis(
     const std::string& loop_body_name, const std::string& body_name,
     Eigen::Vector3d* p_BL, Eigen::Vector3d* axis_B) {
   drake::multibody::MultibodyPlant<double> plant(0.0);
   drake::multibody::Parser parser(&plant);
   RegisterRoboBeePackage(&parser);
-  parser.AddModelsFromUrl(kAssemblyUrl);
+  robobee_sim::AddRoboBeeAssemblyModels(&parser);
   plant.WeldFrames(plant.world_frame(), plant.GetFrameByName("root"));
   plant.Finalize();
 
@@ -103,14 +106,24 @@ void AddLoopClosureWeldConstraint(
       plant->GetBodyByName(real_body_name), X_RealLoop);
 }
 
+// Close a transmission four-bar by directly re-creating, between two real
+// (inertia-bearing) bodies, the revolute pin that the URDF opened into the
+// helper body. `anchor_body_name` is the tree-side link carrying that pivot
+// (transmission_link_1) and `real_link_body_name` is the coupler
+// (transmission_link_2); the helper `loop_body_name` supplies the pivot point
+// and axis from the default CAD pose. Two ball constraints separated along the
+// axis pin the shared pivot and align it, leaving one rotational DOF. Coupling
+// two real bodies this way transmits slider motion into hinge rotation far more
+// stiffly than the compliant weld propagating through the near-massless helper.
+// All bodies are named exactly as in the URDF, so no joint names are modified.
 void AddLoopClosureBallConstraints(
     drake::multibody::MultibodyPlant<double>* plant,
-    const std::string& loop_body_name, const std::string& hinge_body_name,
+    const std::string& loop_body_name, const std::string& anchor_body_name,
     const std::string& real_link_body_name) {
-  Eigen::Vector3d p_HL;
-  Eigen::Vector3d axis_H;
-  CalcDefaultLoopFramePointAndAxis(loop_body_name, hinge_body_name, &p_HL,
-                                   &axis_H);
+  Eigen::Vector3d p_AL;
+  Eigen::Vector3d axis_A;
+  CalcDefaultLoopFramePointAndAxis(loop_body_name, anchor_body_name, &p_AL,
+                                   &axis_A);
 
   Eigen::Vector3d p_RL;
   Eigen::Vector3d axis_R;
@@ -118,10 +131,10 @@ void AddLoopClosureBallConstraints(
                                    &axis_R);
 
   constexpr double kAxisPointOffset = 1.0e-4;
-  plant->AddBallConstraint(plant->GetBodyByName(hinge_body_name), p_HL,
+  plant->AddBallConstraint(plant->GetBodyByName(anchor_body_name), p_AL,
                            plant->GetBodyByName(real_link_body_name), p_RL);
-  plant->AddBallConstraint(plant->GetBodyByName(hinge_body_name),
-                           p_HL + kAxisPointOffset * axis_H.normalized(),
+  plant->AddBallConstraint(plant->GetBodyByName(anchor_body_name),
+                           p_AL + kAxisPointOffset * axis_A.normalized(),
                            plant->GetBodyByName(real_link_body_name),
                            p_RL + kAxisPointOffset * axis_R.normalized());
 }
@@ -140,7 +153,7 @@ int main() {
   drake::multibody::Parser parser(&plant);
   RegisterRoboBeePackage(&parser);
   const std::vector<drake::multibody::ModelInstanceIndex> model_instances =
-      parser.AddModelsFromUrl(kAssemblyUrl);
+      robobee_sim::AddRoboBeeAssemblyModels(&parser);
   if (model_instances.size() != 1) {
     throw std::runtime_error("Expected exactly one RoboBee model instance.");
   }
@@ -149,7 +162,9 @@ int main() {
 
   plant.WeldFrames(plant.world_frame(), plant.GetFrameByName("root"));
 
-  // more rigid constraints to ensure 
+  // Close the transmission loops while preserving the exported URDF names and
+  // topology. The helper body is the non-tree side of the loop; welding it to
+  // the real link lets Drake enforce the closure constraint at runtime.
   AddLoopClosureWeldConstraint(&plant,
                                "transmission_link_2__1__loop_closure",
                                "transmission_link_2");
@@ -158,11 +173,10 @@ int main() {
                                "transmission_right_link_2");
   AddLoopClosureBallConstraints(&plant,
                                 "transmission_link_2__1__loop_closure",
-                                "transmission_hinge",
-                                "transmission_link_2");
+                                "transmission_link_1", "transmission_link_2");
   AddLoopClosureBallConstraints(&plant,
                                 "transmission_right_link_2__1__loop_closure",
-                                "transmission_right_link_hinge",
+                                "transmission_right_link_1",
                                 "transmission_right_link_2");
 
   const auto& right_slider_actuator = plant.AddJointActuator(

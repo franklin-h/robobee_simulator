@@ -31,6 +31,7 @@
 #include "drake/systems/framework/leaf_system.h"
 
 #include "aeromechanical_moments.h"
+#include "apps/robobee_assembly_loader.h"
 #ifdef ROBOBEE_SIMULINK_SERVER
 #include "apps/robobee_simulink_tcp.h"
 #endif
@@ -43,8 +44,6 @@ namespace {
 // per-wing moment breakdown to a CSV file.
 constexpr char kPackageName[] = "robobee_assembly";
 constexpr char kPackagePath[] = "models/robobee_assembly";
-constexpr char kAssemblyUrl[] =
-    "package://robobee_assembly/urdf/robobee_assembly.urdf";
 constexpr double kPi = 3.14159265358979323846;
 
 #ifdef ROBOBEE_FREE_FLIGHT
@@ -727,7 +726,7 @@ drake::math::RigidTransformd CalcDefaultPoseOfLoopFrameInRealLinkFrame(
   drake::multibody::MultibodyPlant<double> plant(0.0);
   drake::multibody::Parser parser(&plant);
   RegisterRoboBeePackage(&parser);
-  parser.AddModelsFromUrl(kAssemblyUrl);
+  robobee_sim::AddRoboBeeAssemblyModels(&parser);
   plant.WeldFrames(plant.world_frame(), plant.GetFrameByName("root"));
   plant.Finalize();
 
@@ -738,16 +737,16 @@ drake::math::RigidTransformd CalcDefaultPoseOfLoopFrameInRealLinkFrame(
                                      plant.GetFrameByName(loop_body_name));
 }
 
-// Recover a loop-frame origin and its local y-axis, expressed in body frame B,
-// from the model's default configuration. Two points along this axis are later
-// constrained with ball constraints to emulate an aligned hinge axis.
+// Recover, in the default CAD pose, the loop-closure pivot point expressed in
+// an arbitrary body frame together with that body's local direction of the
+// loop revolute axis (the exported hinge axis is +Y in the helper body frame).
 void CalcDefaultLoopFramePointAndAxis(
     const std::string& loop_body_name, const std::string& body_name,
     Eigen::Vector3d* p_BL, Eigen::Vector3d* axis_B) {
   drake::multibody::MultibodyPlant<double> plant(0.0);
   drake::multibody::Parser parser(&plant);
   RegisterRoboBeePackage(&parser);
-  parser.AddModelsFromUrl(kAssemblyUrl);
+  robobee_sim::AddRoboBeeAssemblyModels(&parser);
   plant.WeldFrames(plant.world_frame(), plant.GetFrameByName("root"));
   plant.Finalize();
 
@@ -774,18 +773,24 @@ void AddLoopClosureWeldConstraint(
       plant->GetBodyByName(real_body_name), X_RealLoop);
 }
 
-// Add two ball constraints between the hinge body and the real transmission
-// link. A single ball constraint matches one point; the second offset point also
-// aligns the hinge axis and removes the relative twist that would otherwise
-// remain.
+// Close a transmission four-bar by directly re-creating, between two real
+// (inertia-bearing) bodies, the revolute pin that the URDF opened into the
+// helper body. `anchor_body_name` is the tree-side link carrying that pivot
+// (transmission_link_1) and `real_link_body_name` is the coupler
+// (transmission_link_2); the helper `loop_body_name` supplies the pivot point
+// and axis from the default CAD pose. Two ball constraints separated along the
+// axis pin the shared pivot and align it, leaving one rotational DOF. Coupling
+// two real bodies this way transmits slider motion into hinge rotation far more
+// stiffly than the compliant weld propagating through the near-massless helper.
+// All bodies are named exactly as in the URDF, so no joint names are modified.
 void AddLoopClosureBallConstraints(
     drake::multibody::MultibodyPlant<double>* plant,
-    const std::string& loop_body_name, const std::string& hinge_body_name,
+    const std::string& loop_body_name, const std::string& anchor_body_name,
     const std::string& real_link_body_name) {
-  Eigen::Vector3d p_HL;
-  Eigen::Vector3d axis_H;
-  CalcDefaultLoopFramePointAndAxis(loop_body_name, hinge_body_name, &p_HL,
-                                   &axis_H);
+  Eigen::Vector3d p_AL;
+  Eigen::Vector3d axis_A;
+  CalcDefaultLoopFramePointAndAxis(loop_body_name, anchor_body_name, &p_AL,
+                                   &axis_A);
 
   Eigen::Vector3d p_RL;
   Eigen::Vector3d axis_R;
@@ -793,10 +798,10 @@ void AddLoopClosureBallConstraints(
                                    &axis_R);
 
   constexpr double kAxisPointOffset = 1.0e-4;
-  plant->AddBallConstraint(plant->GetBodyByName(hinge_body_name), p_HL,
+  plant->AddBallConstraint(plant->GetBodyByName(anchor_body_name), p_AL,
                            plant->GetBodyByName(real_link_body_name), p_RL);
-  plant->AddBallConstraint(plant->GetBodyByName(hinge_body_name),
-                           p_HL + kAxisPointOffset * axis_H.normalized(),
+  plant->AddBallConstraint(plant->GetBodyByName(anchor_body_name),
+                           p_AL + kAxisPointOffset * axis_A.normalized(),
                            plant->GetBodyByName(real_link_body_name),
                            p_RL + kAxisPointOffset * axis_R.normalized());
 }
@@ -853,7 +858,7 @@ Eigen::Vector3d CalcDefaultRobotComInRootFrame() {
   drake::multibody::Parser parser(&plant);
   RegisterRoboBeePackage(&parser);
   const std::vector<drake::multibody::ModelInstanceIndex> model_instances =
-      parser.AddModelsFromUrl(kAssemblyUrl);
+      robobee_sim::AddRoboBeeAssemblyModels(&parser);
   plant.Finalize();
 
   std::unique_ptr<drake::systems::Context<double>> context =
@@ -1138,7 +1143,7 @@ class RobobeeSimulationServer final {
 
     drake::multibody::Parser parser(plant_);
     RegisterRoboBeePackage(&parser);
-    model_instances_ = parser.AddModelsFromUrl(kAssemblyUrl);
+    model_instances_ = robobee_sim::AddRoboBeeAssemblyModels(&parser);
     if (model_instances_.size() != 1) {
       throw std::runtime_error("Expected exactly one RoboBee model instance.");
     }
@@ -1159,11 +1164,10 @@ class RobobeeSimulationServer final {
                                  "transmission_right_link_2");
     AddLoopClosureBallConstraints(plant_,
                                   "transmission_link_2__1__loop_closure",
-                                  "transmission_hinge",
-                                  "transmission_link_2");
+                                  "transmission_link_1", "transmission_link_2");
     AddLoopClosureBallConstraints(plant_,
                                   "transmission_right_link_2__1__loop_closure",
-                                  "transmission_right_link_hinge",
+                                  "transmission_right_link_1",
                                   "transmission_right_link_2");
 
     constexpr double kSliderEffortLimitN = 100000.0;
@@ -1464,7 +1468,7 @@ int main(int argc, char** argv) {
   drake::multibody::Parser parser(&plant);
   RegisterRoboBeePackage(&parser);
   const std::vector<drake::multibody::ModelInstanceIndex> model_instances =
-      parser.AddModelsFromUrl(kAssemblyUrl);
+      robobee_sim::AddRoboBeeAssemblyModels(&parser);
   if (model_instances.size() != 1) {
     throw std::runtime_error("Expected exactly one RoboBee model instance.");
   }
@@ -1480,9 +1484,10 @@ int main(int argc, char** argv) {
     plant.WeldFrames(plant.world_frame(), plant.GetFrameByName("root"));
   }
 
-  // Close the transmission loops with Drake constraints. The weld constraints
-  // keep loop-closure placeholder bodies attached to their real links, and the
-  // paired ball constraints align the hinge points and axes.
+  // Close the transmission loops with Drake constraints while preserving the
+  // exported URDF names and topology. Each helper body is the non-tree side of
+  // the loop; welding it to the corresponding real link lets Drake enforce the
+  // closure constraint at runtime.
   AddLoopClosureWeldConstraint(&plant,
                                "transmission_link_2__1__loop_closure",
                                "transmission_link_2");
@@ -1491,11 +1496,10 @@ int main(int argc, char** argv) {
                                "transmission_right_link_2");
   AddLoopClosureBallConstraints(&plant,
                                 "transmission_link_2__1__loop_closure",
-                                "transmission_hinge",
-                                "transmission_link_2");
+                                "transmission_link_1", "transmission_link_2");
   AddLoopClosureBallConstraints(&plant,
                                 "transmission_right_link_2__1__loop_closure",
-                                "transmission_right_link_hinge",
+                                "transmission_right_link_1",
                                 "transmission_right_link_2");
 
   // constexpr double kSliderEffortLimitN = 1.0e-1;
