@@ -13,7 +13,7 @@ Plant = 2;
 if Plant == 1 
     start_delay = 2.0; % ensure start_delay exists if real experiment
     adaptive_delay = 0.1;c
-    ramp_delay = 0.1;
+    ramp_delay = 0.1;Ix
     
 else 
     start_delay = 0.0; 
@@ -65,13 +65,13 @@ set_param(mdl, 'StopTime', 'running_time');
 g=9.8; % gravity
 m = 80e-6; %101e-6%90e-6;%86e-6; %86*1e-6%86*1e-6; % vehicle weight in kg (mg * 1e-6)
 % 
-Ixx = 1.42*1e-9; % Principal moment of inertia
-Iyy = 1.34*1e-9%1.34*1e-9;
-Izz = 0.45*1e-9;
+% Ixx = 1.42*1e-9; % Principal moment of inertia
+% Iyy = 1.34*1e-9%1.34*1e-9;
+% Izz = 0.45*1e-9;
 
-% Ixx = 2.13e-10; 
-% Iyy = 2.33e-10; 
-% Izz = 3.27e-11; 
+Ixx = 2.13e-10; 
+Iyy = 2.33e-10; 
+Izz = 3.27e-11; 
 
 % Ixx = 1.42*1e-9;		% Principal moment of inertia
 % Iyy = 1.34*1e-9;		%1.34*1e-9;
@@ -122,8 +122,10 @@ params = load('RoboBee_optimal_fitting_parameter_155Hz_2022_BBee_v2_simVariant.m
 
 
 params_opt = params.params_opt;
+params_opt.gamma_2_1 = 0.011; 
 params_opt.gamma_2 = params_opt.gamma_2_1;
-
+params_opt.nu = -5; 
+params_opt.eta = 1.4; 
 params_vec = [params_opt.delta_1, params_opt.delta_2, params_opt.delta_3, params_opt.gamma_1, params_opt.gamma_2, params_opt.gamma_3, params_opt.eta, params_opt.nu, params_opt.mu]';
 % Becky 05072022
 % params_vec = [4.615418611008412, 1.864800777306221, -0.003836409949443, 0.000000002617698, 0.002712888814185, 0.470047661467390, 1.252086811352254, -12.320534223706176, -0.106510851419032];
