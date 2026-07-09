@@ -4,6 +4,7 @@ data = load('RoboBee_optimal_fitting_parameter_155Hz_2022_BBee_v2');
 params_opt = data.params_opt; 
 params_opt.gamma_2_1 = 0.011; 
 
+% for 155 hz 
 % params_opt.nu = -5; % More negative nu results in more positive pitch
 % torque. 
 % params_opt.nu = 0; % Results in -1.969e-6 N*m of pitch torque
@@ -12,8 +13,16 @@ params_opt.gamma_2_1 = 0.011;
 % params_opt.nu = -7; % Results in -1e-7 N*m of pitch torque. 
 % params_opt.nu = -7.7; % results in +0.4e-7 N*m of pitch torque 
 % params_opt.nu = -9; % Results in +4.0e-7 
-params_opt.nu = -7.7; 
-params_opt.eta = 1.0; 
+
+
+% For 180 Hz, nu sweep. 
+% -7.5  gives  1.700e-07 
+% -7.0  gives  0.198e-07 
+%  6.95 gives  0.005e-07 FINAL 
+% -6.9  gives -0.102e-07
+% -6.0  gives -2.875e-07 
+params_opt.nu = -6.95; 
+params_opt.eta = 1.0; % basically fully balanced  
 params_opt.mu = 0.0; 
 params_vec = [params_opt.delta_1, params_opt.delta_2, params_opt.delta_3, ...
     params_opt.gamma_1, params_opt.gamma_2_1, params_opt.gamma_3, ...

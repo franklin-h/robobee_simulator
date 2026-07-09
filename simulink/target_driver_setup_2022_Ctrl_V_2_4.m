@@ -34,7 +34,7 @@ T = 1;			% total time in seconds
 
 landing_flag=0; % 0 : No landing, 1: landing on
 
-control_flag=1; %2 % 1: Openloop, 2: closed loop. 
+control_flag=2; %2 % 1: Openloop, 2: closed loop. 
 adaptive_flag=0;					% 0: no-adaptive 1: adaptive
 adaptive_lateral_flag=0;	% 0:  -adaptive 1: adaptive
 
@@ -125,9 +125,10 @@ params = load('RoboBee_optimal_fitting_parameter_155Hz_2022_BBee_v2_simVariant.m
 
 
 params_opt = params.params_opt;
+params_opt.gamma_1 = 5.1653e-09; 
 params_opt.gamma_2_1 = 0.011; 
 params_opt.gamma_2 = params_opt.gamma_2_1;
-params_opt.nu = -5; 
+params_opt.nu = -6.95; 
 params_opt.eta = 1.0; 
 params_opt.mu = 0.0; 
 params_vec = [params_opt.delta_1, params_opt.delta_2, params_opt.delta_3, params_opt.gamma_1, params_opt.gamma_2, params_opt.gamma_3, params_opt.eta, params_opt.nu, params_opt.mu]';
@@ -213,9 +214,9 @@ drv_pch = drv_pitch_left;
 
 % Franklin Open Loop 
 drv_amp = 188.8; 
-drv_roll = 0; 
-drv_pitch_left = 7.7; 
-drv_pitch_right = 7.7; 
+drv_roll = 0.0; 
+drv_pitch_left = 6.95; 
+drv_pitch_right = 6.95; 
 a2_openloop = 0; 
 
 

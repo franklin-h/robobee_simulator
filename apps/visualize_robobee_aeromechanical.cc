@@ -1450,7 +1450,7 @@ int main(int argc, char** argv) {
   constexpr double kSliderLogFlushPeriod = kMomentLogFlushPeriod;
   constexpr double kPoseLogPeriod = kMomentLogPeriod;
   constexpr double kPoseLogFlushPeriod = kMomentLogFlushPeriod;
-  constexpr double kTargetRealtimeRate = 0.02;
+  constexpr double kTargetRealtimeRate = 0.0;
   constexpr char kMomentLogPath[] = "/tmp/aeromechanical_moments.csv";
   constexpr char kSliderLogPath[] = "/tmp/slider_positions.csv";
   constexpr char kPoseLogPath[] = "/tmp/robobee_pose.csv";

@@ -1,0 +1,4 @@
+{
+  "confirmedNone": true,
+  "note": "Model uses built-in Simulink blocks and project S-functions only; no custom reuse libraries."
+}

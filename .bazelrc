@@ -3,7 +3,7 @@ build --cxxopt=-std=c++23
 build --host_cxxopt=-std=c++23
 build --@drake//tools/flags:with_clp=False
 build --jobs=16
-
+build --compilation_mode=opt
 
 # Suppress warnings from module externals.
 # build --per_file_copt=external/.*@-w

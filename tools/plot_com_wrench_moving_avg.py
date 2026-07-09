@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
-"""Plot the running (expanding) average of the RoboBee COM wrench.
+"""Plot a trailing-window moving average of the RoboBee COM wrench.
 
 Variant of plot_com_wrench.py. Instead of plotting the raw signals in stacked
-subplots, this plots the expanding moving average of each channel: at every
-timestep i (with i >= 50) the plotted value is the mean of samples 50..i. Each
-channel (z-axis thrust, roll/pitch/yaw torque) is drawn in its own separate
-figure rather than as a subplot.
+subplots, this plots a trailing-window moving average of each channel: at every
+timestep i the plotted value is the mean of the last `window` samples ending at
+i. Unlike a cumulative average, this tracks the value the signal settles to, so
+the curve flattens where the torque converges and the steady-state reference
+line lands on that flat region. Each channel (z-axis thrust, roll/pitch/yaw
+torque) is drawn in its own separate figure rather than as a subplot.
 
 Usage:
   python3 tools/plot_com_wrench_moving_avg.py                # one-shot
   python3 tools/plot_com_wrench_moving_avg.py --live         # refresh continuously
   python3 tools/plot_com_wrench_moving_avg.py --start 50     # first sample index
+  python3 tools/plot_com_wrench_moving_avg.py --window 300   # trailing window size
 """
 
 import argparse
@@ -86,23 +89,22 @@ def xy_series(rows, y_key):
     return x_values, y_values
 
 
-def expanding_average(x_values, y_values, start):
-    """Return (x, running_avg) where running_avg[i] = mean(y[start..i]).
+def trailing_average(x_values, y_values, start, window):
+    """Return (x, avg) where avg[i] = mean of the trailing `window` samples.
 
-    Only samples from index `start` onward are emitted; each plotted point is
-    the average of every sample from `start` up to and including that point.
+    Only samples from index `start` onward are emitted. Each plotted point is
+    the mean of samples (i - window + 1 .. i), clamped so the window never
+    reaches earlier than `start` (i.e. the window grows from 1 up to `window`
+    over the first `window` plotted points, then slides). This tracks the value
+    the signal settles to rather than accumulating the whole history.
     """
     x_out = []
     avg_out = []
-    running_sum = 0.0
-    count = 0
-    for i, (t, y) in enumerate(zip(x_values, y_values)):
-        if i < start:
-            continue
-        running_sum += y
-        count += 1
-        x_out.append(t)
-        avg_out.append(running_sum / count)
+    for i in range(start, len(x_values)):
+        lo = max(start, i - window + 1)
+        segment = y_values[lo:i + 1]
+        x_out.append(x_values[i])
+        avg_out.append(sum(segment) / len(segment))
     return x_out, avg_out
 
 
@@ -141,17 +143,22 @@ def window_rows(rows, last_seconds):
     ]
 
 
-def compute_averages(rows, start):
+def compute_averages(rows, window):
+    """Steady-state average of each channel: mean of the last `window` samples.
+
+    This matches the endpoint of the trailing-window curve, so the reference
+    line coincides with where the signal settles.
+    """
     averages = {}
     for key, _label, _unit, _color in CHANNELS:
         _x, y = xy_series(rows, key)
-        averages[key] = average(y[start:])
+        averages[key] = average(y[-window:])
     return averages
 
 
-def print_averages(averages, sample_count, span, start):
+def print_averages(averages, sample_count, span, window):
     print("=" * 52)
-    print(f"Averages over samples {start}..{sample_count} "
+    print(f"Steady-state avg over last {window} of {sample_count} samples "
           f"({span:.4f} s of sim time):")
     for key, label, unit, _color in CHANNELS:
         value = averages.get(key)
@@ -170,11 +177,11 @@ def time_span(rows):
     return times[-1] - times[0]
 
 
-def draw(figures, rows, averages, start):
+def draw(figures, rows, averages, start, window):
     for (fig, axis), (key, label, unit, color) in zip(figures, CHANNELS):
         axis.clear()
         x, y = xy_series(rows, key)
-        x_avg, y_avg = expanding_average(x, y, start)
+        x_avg, y_avg = trailing_average(x, y, start, window)
         if y_avg:
             axis.plot(x_avg, y_avg, color=color, linewidth=1.2)
             limits = YLIMS.get(key) or padded_limits(y_avg)
@@ -188,13 +195,13 @@ def draw(figures, rows, averages, start):
         mean = averages.get(key)
         if mean is not None:
             axis.axhline(mean, color="k", linestyle="--", linewidth=0.9,
-                         label=f"final avg = {mean:+.4e} {unit}")
+                         label=f"steady-state avg = {mean:+.4e} {unit}")
             axis.legend(loc="upper right", fontsize="small")
-        axis.set_ylabel(f"running-avg {label} [{unit}]")
+        axis.set_ylabel(f"{window}-sample avg {label} [{unit}]")
         axis.set_xlabel("simulation time [s]")
         axis.grid(True, alpha=0.3)
-        axis.set_title(f"Running average of {label} about the RoboBee COM "
-                       f"(from sample {start})")
+        axis.set_title(f"Trailing {window}-sample average of {label} "
+                       f"about the RoboBee COM")
         fig.tight_layout()
 
 
@@ -210,7 +217,13 @@ def main():
         "--start",
         type=int,
         default=200,
-        help="First sample index included in the running average.",
+        help="First sample index plotted (drops the initial transient).",
+    )
+    parser.add_argument(
+        "--window",
+        type=int,
+        default=500,
+        help="Trailing window size (samples) for the moving average.",
     )
     parser.add_argument(
         "--last",
@@ -244,8 +257,8 @@ def main():
         rows = window_rows(read_rows(path), args.last)
         if not rows:
             raise SystemExit(f"No usable rows in {path}.")
-        print_averages(compute_averages(rows, args.start), len(rows),
-                       time_span(rows), args.start)
+        print_averages(compute_averages(rows, args.window), len(rows),
+                       time_span(rows), args.window)
         return
 
     try:
@@ -268,10 +281,9 @@ def main():
         rows = window_rows(read_rows(path), args.last)
         if not rows:
             raise SystemExit(f"No usable rows in {path}.")
-        averages = compute_averages(rows, args.start)
-        print_averages(averages, len(rows), time_span(rows), args.start)
-        draw(figures, rows, averages, args.start)
-        
+        averages = compute_averages(rows, args.window)
+        print_averages(averages, len(rows), time_span(rows), args.window)
+        draw(figures, rows, averages, args.start, args.window)
         plt.show()
         return
 
@@ -285,9 +297,9 @@ def main():
         if not rows:
             time.sleep(args.period)
             continue
-        averages = compute_averages(rows, args.start)
-        print_averages(averages, len(rows), time_span(rows), args.start)
-        draw(figures, rows, averages, args.start)
+        averages = compute_averages(rows, args.window)
+        print_averages(averages, len(rows), time_span(rows), args.window)
+        draw(figures, rows, averages, args.start, args.window)
         plt.pause(0.001)
         time.sleep(args.period)
 
