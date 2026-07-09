@@ -21,6 +21,9 @@ params_opt.gamma_2_1 = 0.011;
 %  6.95 gives  0.005e-07 FINAL 
 % -6.9  gives -0.102e-07
 % -6.0  gives -2.875e-07 
+
+% I find that -0.1 = drv_roll trims it a lot better. 
+% Solving for eta, we get 1.0043. 
 params_opt.nu = -6.95; 
 params_opt.eta = 1.0; % basically fully balanced  
 params_opt.mu = 0.0; 
@@ -30,7 +33,7 @@ params_vec = [params_opt.delta_1, params_opt.delta_2, params_opt.delta_3, ...
 
 % 0.14 seconds 
 Thrust_desired = 1.2e-3; 
-Roll_torque_desired = 0; 
+Roll_torque_desired = -1e-6; 
 Pitch_torque_desired = 0; 
 Yaw_torque_desired = 0; 
 [drv_amp, drv_roll, drv_pitch_left, drv_pitch_right, a2_coeff] = ...
