@@ -171,7 +171,7 @@ def main():
     parser.add_argument(
         "--last",
         type=float,
-        default=None,
+        default=0.02,
         help="Average/plot only the last N seconds of sim time.",
     )
     parser.add_argument(

@@ -9,11 +9,21 @@ the curve flattens where the torque converges and the steady-state reference
 line lands on that flat region. Each channel (z-axis thrust, roll/pitch/yaw
 torque) is drawn in its own separate figure rather than as a subplot.
 
+The wrench is a periodic flapping signal (default 155 Hz) riding on the DC
+offset you actually care about. To recover that offset the trailing window MUST
+span a whole number of flap cycles, otherwise the leftover partial cycle keeps
+the moving average wobbling and biases the steady-state line. By default the
+window is therefore computed from the data's sample rate and the flap frequency
+as `round(cycles / (flap_hz * dt))` samples, so it is an integer number of flap
+cycles regardless of the logging rate. `--window` overrides this with an
+explicit sample count; `--start` is likewise expressed in flap cycles.
+
 Usage:
   python3 tools/plot_com_wrench_moving_avg.py                # one-shot
   python3 tools/plot_com_wrench_moving_avg.py --live         # refresh continuously
-  python3 tools/plot_com_wrench_moving_avg.py --start 50     # first sample index
-  python3 tools/plot_com_wrench_moving_avg.py --window 300   # trailing window size
+  python3 tools/plot_com_wrench_moving_avg.py --cycles 30    # avg over 30 flap cycles
+  python3 tools/plot_com_wrench_moving_avg.py --flap-hz 160  # flap frequency [Hz]
+  python3 tools/plot_com_wrench_moving_avg.py --window 300   # force raw sample count
 """
 
 import argparse
@@ -24,19 +34,24 @@ import sys
 import time
 
 
+# CSV is logged in SI (thrust N, torque N·m). `scale` converts each channel to
+# its display unit: thrust N -> mN (x1e3), torque N·m -> mN·mm (x1e6, since
+# 1 N·m = 1e3 mN * 1e3 mm). Plotted values, reference lines and printed averages
+# all use these display units.
 CHANNELS = [
-    ("thrust_z_N", "z-axis thrust", "N", "tab:blue"),
-    ("roll_torque_Nm", "roll torque", "N·m", "tab:red"),
-    ("pitch_torque_Nm", "pitch torque", "N·m", "tab:green"),
-    ("yaw_torque_Nm", "yaw torque", "N·m", "tab:purple"),
+    ("thrust_z_N", "z-axis thrust", "mN", "tab:blue", 1e3),
+    ("roll_torque_Nm", "roll torque", "mN·mm", "tab:red", 1e6),
+    ("pitch_torque_Nm", "pitch torque", "mN·mm", "tab:green", 1e6),
+    ("yaw_torque_Nm", "yaw torque", "mN·mm", "tab:purple", 1e6),
 ]
 
-# Manual y-axis limits per channel. Set (low, high) to override auto-scaling;
-# leave as None to auto-scale that channel from its plotted running average.
+# Manual y-axis limits per channel, expressed in the DISPLAY units above
+# (mN / mN·mm). Set (low, high) to override auto-scaling; leave as None to
+# auto-scale that channel from its plotted running average.
 YLIMS = {
     "thrust_z_N": None,
     "roll_torque_Nm": None,
-    "pitch_torque_Nm": (-5e-7,5e-7),
+    "pitch_torque_Nm": (-0.5, 0.8),
     "yaw_torque_Nm": None,
 }
 
@@ -87,6 +102,51 @@ def xy_series(rows, y_key):
         x_values.append(t)
         y_values.append(y)
     return x_values, y_values
+
+
+def estimate_dt(rows):
+    """Median sample spacing (s) of the time_s column, or None if unknown."""
+    times = sorted(
+        t for t in (parse_float(row.get("time_s")) for row in rows)
+        if t is not None
+    )
+    diffs = sorted(b - a for a, b in zip(times, times[1:]) if b > a)
+    if not diffs:
+        return None
+    return diffs[len(diffs) // 2]
+
+
+def samples_per_cycle(rows, flap_hz):
+    """How many logged samples make up one flap cycle, or None if unknown."""
+    dt = estimate_dt(rows)
+    if dt is None or flap_hz <= 0.0:
+        return None
+    return 1.0 / (flap_hz * dt)
+
+
+def resolve_window(rows, window_arg, cycles, flap_hz):
+    """Trailing window in samples spanning an integer number of flap cycles.
+
+    An explicit --window wins. Otherwise the window is
+    round(cycles * samples_per_cycle) so the periodic flap component averages
+    out and only the DC offset (the value we want) survives.
+    """
+    if window_arg is not None:
+        return max(1, window_arg)
+    per_cycle = samples_per_cycle(rows, flap_hz)
+    if per_cycle is None:
+        return 50
+    return max(1, round(cycles * per_cycle))
+
+
+def resolve_start(rows, start_arg, transient_cycles, flap_hz):
+    """First plotted sample index. --start wins; else drop transient_cycles."""
+    if start_arg is not None:
+        return max(0, start_arg)
+    per_cycle = samples_per_cycle(rows, flap_hz)
+    if per_cycle is None:
+        return 200
+    return max(0, round(transient_cycles * per_cycle))
 
 
 def trailing_average(x_values, y_values, start, window):
@@ -150,17 +210,22 @@ def compute_averages(rows, window):
     line coincides with where the signal settles.
     """
     averages = {}
-    for key, _label, _unit, _color in CHANNELS:
+    for key, _label, _unit, _color, scale in CHANNELS:
         _x, y = xy_series(rows, key)
-        averages[key] = average(y[-window:])
+        avg = average(y[-window:])
+        averages[key] = None if avg is None else scale * avg
     return averages
 
 
-def print_averages(averages, sample_count, span, window):
+def print_averages(averages, sample_count, span, window, per_cycle=None):
     print("=" * 52)
-    print(f"Steady-state avg over last {window} of {sample_count} samples "
-          f"({span:.4f} s of sim time):")
-    for key, label, unit, _color in CHANNELS:
+    if per_cycle:
+        print(f"Steady-state avg over last {window} of {sample_count} samples "
+              f"(~{window / per_cycle:.2f} flap cycles, {span:.4f} s):")
+    else:
+        print(f"Steady-state avg over last {window} of {sample_count} samples "
+              f"({span:.4f} s of sim time):")
+    for key, label, unit, _color, _scale in CHANNELS:
         value = averages.get(key)
         if value is None:
             print(f"  {label:<14s}: (no data)")
@@ -178,9 +243,10 @@ def time_span(rows):
 
 
 def draw(figures, rows, averages, start, window):
-    for (fig, axis), (key, label, unit, color) in zip(figures, CHANNELS):
+    for (fig, axis), (key, label, unit, color, scale) in zip(figures, CHANNELS):
         axis.clear()
         x, y = xy_series(rows, key)
+        y = [scale * v for v in y]
         x_avg, y_avg = trailing_average(x, y, start, window)
         if y_avg:
             axis.plot(x_avg, y_avg, color=color, linewidth=1.2)
@@ -216,14 +282,35 @@ def main():
     parser.add_argument(
         "--start",
         type=int,
-        default=200,
-        help="First sample index plotted (drops the initial transient).",
+        default=None,
+        help="First sample index plotted (drops the initial transient). "
+             "Default: drop --transient-cycles flap cycles.",
     )
     parser.add_argument(
         "--window",
         type=int,
-        default=500,
-        help="Trailing window size (samples) for the moving average.",
+        default=None,
+        help="Trailing window size (samples). Default: an integer number of "
+             "flap cycles derived from --cycles, --flap-hz and the sample rate.",
+    )
+    parser.add_argument(
+        "--cycles",
+        type=float,
+        default=30.0,
+        help="Number of flap cycles the trailing window should span when "
+             "--window is not given.",
+    )
+    parser.add_argument(
+        "--flap-hz",
+        type=float,
+        default=155.0,
+        help="Flapping frequency [Hz] used to size the window in whole cycles.",
+    )
+    parser.add_argument(
+        "--transient-cycles",
+        type=float,
+        default=6.0,
+        help="Flap cycles of initial transient to drop when --start is unset.",
     )
     parser.add_argument(
         "--last",
@@ -257,8 +344,10 @@ def main():
         rows = window_rows(read_rows(path), args.last)
         if not rows:
             raise SystemExit(f"No usable rows in {path}.")
-        print_averages(compute_averages(rows, args.window), len(rows),
-                       time_span(rows), args.window)
+        window = resolve_window(rows, args.window, args.cycles, args.flap_hz)
+        per_cycle = samples_per_cycle(rows, args.flap_hz)
+        print_averages(compute_averages(rows, window), len(rows),
+                       time_span(rows), window, per_cycle)
         return
 
     try:
@@ -271,7 +360,7 @@ def main():
 
     # One separate figure per channel instead of stacked subplots.
     figures = []
-    for _key, label, _unit, _color in CHANNELS:
+    for _key, label, _unit, _color, _scale in CHANNELS:
         fig, axis = plt.subplots(1, 1, figsize=(9, 4), num=label)
         figures.append((fig, axis))
 
@@ -281,9 +370,12 @@ def main():
         rows = window_rows(read_rows(path), args.last)
         if not rows:
             raise SystemExit(f"No usable rows in {path}.")
-        averages = compute_averages(rows, args.window)
-        print_averages(averages, len(rows), time_span(rows), args.window)
-        draw(figures, rows, averages, args.start, args.window)
+        window = resolve_window(rows, args.window, args.cycles, args.flap_hz)
+        start = resolve_start(rows, args.start, args.transient_cycles, args.flap_hz)
+        per_cycle = samples_per_cycle(rows, args.flap_hz)
+        averages = compute_averages(rows, window)
+        print_averages(averages, len(rows), time_span(rows), window, per_cycle)
+        draw(figures, rows, averages, start, window)
         plt.show()
         return
 
@@ -297,9 +389,12 @@ def main():
         if not rows:
             time.sleep(args.period)
             continue
-        averages = compute_averages(rows, args.window)
-        print_averages(averages, len(rows), time_span(rows), args.window)
-        draw(figures, rows, averages, args.start, args.window)
+        window = resolve_window(rows, args.window, args.cycles, args.flap_hz)
+        start = resolve_start(rows, args.start, args.transient_cycles, args.flap_hz)
+        per_cycle = samples_per_cycle(rows, args.flap_hz)
+        averages = compute_averages(rows, window)
+        print_averages(averages, len(rows), time_span(rows), window, per_cycle)
+        draw(figures, rows, averages, start, window)
         plt.pause(0.001)
         time.sleep(args.period)
 

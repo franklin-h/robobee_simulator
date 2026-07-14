@@ -41,7 +41,7 @@ start_delay_adaptive = start_delay + ramp_delay+adaptive_delay;
 
 
 %% Driving signal setup and experiment setup
-f = 180; %170; %165
+f = 155; %170; %165
 f_int = f;					% initial frequency
 f_fin = f;					% final frequency
 T = 1;			% total time in seconds
@@ -121,24 +121,29 @@ roll_offset_angle = 0; % New Vicon calibration
 % params = load('RoboBee_optimal_fitting_parameter_150Hz_2022_Apr.mat');
 
 % BBee System ID without the leg
-params = load('RoboBee_optimal_fitting_parameter_155Hz_2022_BBee_v2_simVariant.mat');
-
+params = load('system id/Drake Model/Optimal_fitting_parameter_155Hz_v2.mat');
 % BBee System ID with the rigid leg
 % params = load('RoboBee_optimal_fitting_parameter_155Hz_2022_BBee_rigid_leg_v1.mat');
 
 
-
+% best so far, 180 Hz, gamma1 = 2.0e-9, gamma_2 = 0.008
 params_opt = params.params_opt;
+% [params_opt.gamma_1, params_opt.gamma_2] = deal(2.0e-9,0.008); % Good for 180 Hz 
+% [params_opt.gamma_1, params_opt.gamma_2] = deal(4.0e-9,0.0119);
 % params_opt.gamma_1 = 5.1653e-09;
-params_opt.gamma_1 = 2.0e-9;
-params_opt.gamma_2_1 = 0.008; % whoa, its really not close to r_cp!! 
-params_opt.gamma_2 = params_opt.gamma_2_1;
-% params_opt.delta_1 = %4.6154 default
+% params_opt.gamma_1 = 2.0e-9; % good for f = 180 Hz flapping
+% params_opt.gamma_1 = 2.1e-09; % rolls left
+% params_opt.gamma_1 = 0.15e-09; 
+% params_opt.gamma_2_1 = 0.008; % whoa, its really not close to r_cp!! 
+% params_opt.gamma_2 = params_opt.gamma_2_1;
+% params_opt.delta_1 = 4.6154;%4.6154 default
 % params_opt.delta_2 = %1.8648 default 
-% params_opt.delta_3 = %-0.0038 default 
-params_opt.nu = -6.95;
-params_opt.eta = 1.0043;
-params_opt.mu = 0.0;
+% params_opt.delta_3 = -0.0038%-cont0.0038 default 
+% params_opt.nu = -6.95; %manually found to be best 
+% params_opt.eta = 1.0043; % manually foundto be best 
+% params_opt.mu = 0.0; % nominal 
+params_opt.gamma_2 = params_opt.gamma_2_1; 
+
 params_vec = [params_opt.delta_1, params_opt.delta_2, params_opt.delta_3, params_opt.gamma_1, params_opt.gamma_2, params_opt.gamma_3, params_opt.eta, params_opt.nu, params_opt.mu]';
 % Becky 05072022
 % params_vec = [4.615418611008412, 1.864800777306221, -0.003836409949443, 0.000000002617698, 0.002712888814185, 0.470047661467390, 1.252086811352254, -12.320534223706176, -0.106510851419032];
@@ -221,10 +226,13 @@ drv_pch = drv_pitch_left;
 % a2_openloop = -0; %0.2;2
 
 % Franklin Open Loop
-drv_amp = 120;
-drv_roll = -1e-3;
-drv_pitch_left = 6.95;
-drv_pitch_right = 6.95;
+drv_amp = 160;
+% drv_roll = -1e-3;
+drv_roll = 0; 
+% drv_pitch_left = 6.95;
+% drv_pitch_right = 6.95;
+drv_pitch_left = 0; 
+drv_pitch_right = 0; 
 a2_openloop = 0;
 
 
@@ -297,17 +305,17 @@ xd_ddot = [0, 0, 0];
 b_1_d_desired = [1,0,0];
 
 %Lateral gain
-k_x = 0.5/scale;
-k_v = 0.05/scale;
+k_x = 0.5/scale; %0.5
+k_v = 0.05/scale; %0.05
 
 %Attitude gain
 k_R = 0.5/(scale^2);%0.5/(scale^2);		yaw pitch
-k_Rx = 0.8/(scale^2);%0.6/(scale^2);		roll
-k_Omega =  0.5/(scale^2);%0.25/(scale^2);
+k_Rx = 0.6/(scale^2);%0.6/(scale^2);		roll
+k_Omega =  0.25/(scale^2);%0.25/(scale^2);
 
 %Altitude gain
-k_z = 0.005/scale;%0.2/scale;
-k_vz = 0.35/scale;%0.25/scale;
+k_z = 0.2/scale;%0.2/scale;
+k_vz = 0.25/scale;%0.25/scale;
 
 control_gain = [k_x,k_v, k_R, k_Omega, k_z, k_vz, k_Rx];
 
@@ -438,3 +446,5 @@ set_param(mdl, 'SolverType', 'Fixed-step');
 set_param(mdl, 'Solver', 'FixedStepDiscrete');
 set_param(mdl, 'FixedStep', 'dt_s');
 set_param(mdl, 'StopTime', 'running_time');
+
+sim(updated_target_driver_2026_withVariants); 

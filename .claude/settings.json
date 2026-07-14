@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__matlab__check_matlab_code",
+      "mcp__matlab__run_matlab_file",
+      "Bash(pkill -f 'robobee_simulink_server ')",
+      "Bash(pkill -f 'bazel-bin/apps/robobee_simulink_server$')",
+      "Bash(pkill -f 'robobee_simulink_server --server_port')",
+      "Bash(./bazel-bin/apps/robobee_simulink_server_fixed --server_port=4242)",
+      "Bash(lsof -nP -iTCP:4242 -sTCP:LISTEN)",
+      "Bash(python3 -c ' *)",
+      "Bash(kill %1)",
+      "Bash(pkill -f \"iname data_optimize\")",
+      "Bash(python3 -m py_compile tools/plot_com_wrench_moving_avg.py)",
+      "Bash(grep -icE \"nan|inf|,,|^,|,$\" /tmp/robobee_com_wrench.csv)"
+    ]
+  }
+}

@@ -1,25 +1,39 @@
 % io %% Geometric Adaptive control
 %% Geometric Adaptive Control
 
-
 clear all;
 close all;
 
-sampling_f = 10000;			% controller sampling rate
+%% Timing and sampling rate
+dt_s = 2.0e-4;
+% sampling_f = 10000;			% controller sampling rate
+sampling_f = 1/dt_s;
 sampling_time = 1/sampling_f;
 
+%% Network (target communication)
+host = "127.0.0.1";
+port = 4242;
+
+%% Control mode flags
+landing_flag=0; % 0 : No landing, 1: landing on
+
+control_flag=2; %2 % 1: Openloop, 2: closed loop.
+adaptive_flag=0;					% 0: no-adaptive 1: adaptive
+adaptive_lateral_flag=0;	% 0:  -adaptive 1: adaptive
+
+%% Plant selection and start-up delays
 % Plant = 1 for vicon, 2 for Drake
-Plant = 2; 
-if Plant == 1 
+Plant = 2;
+if Plant == 1
     start_delay = 2.0; % ensure start_delay exists if real experiment
-    adaptive_delay = 0.1;c
-    ramp_delay = 0.1;Ix
-    
-else 
-    start_delay = 0.0; 
-    adaptive_delay = 0.0; 
-    ramp_delay = 0.0; 
-end 
+    adaptive_delay = 0.1;
+    ramp_delay = 0.1;
+
+else
+    start_delay = 0.0;
+    adaptive_delay = 0.0;
+    ramp_delay = 0.0;
+end
 
 
 start_delay_control = start_delay + ramp_delay;
@@ -32,14 +46,8 @@ f_int = f;					% initial frequency
 f_fin = f;					% final frequency
 T = 1;			% total time in seconds
 
-landing_flag=0; % 0 : No landing, 1: landing on
 
-control_flag=1; %2 % 1: Openloop, 2: closed loop. 
-adaptive_flag=0;					% 0: no-adaptive 1: adaptive
-adaptive_lateral_flag=0;	% 0:  -adaptive 1: adaptive
-
-max_drv_bias = 200;
-
+%% Save settings
 save_flag = 1; %1;
 % save_file_name = '20210920_13_with_adaptive_trajectory_landing_1s_circle_costant_y_heading_h_gain_';
 % save_file_name = '20220316_01_with_adaptive_trajectory_landing_new';
@@ -56,33 +64,28 @@ save_flag = 1; %1;
 % save_file_name = '20221019_DeadBee_falling_121mg_21_rigid';
 save_file_name = '20221217_PBee_OL_1';
 
-mdl = 'updated_target_driver_2026_withVariants';
-set_param(mdl, 'SolverType', 'Fixed-step');
-set_param(mdl, 'Solver', 'FixedStepDiscrete');
-set_param(mdl, 'FixedStep', 'dt_s');
-set_param(mdl, 'StopTime', 'running_time');
 %% Vehicle parameters
 g=9.8; % gravity
 m = 80e-6; %101e-6%90e-6;%86e-6; %86*1e-6%86*1e-6; % vehicle weight in kg (mg * 1e-6)
-% 
+%
 % Ixx = 1.42*1e-9; % Principal moment of inertia
 % Iyy = 1.34*1e-9%1.34*1e-9;
 % Izz = 0.45*1e-9;
-% 
-% Ixx = 2.13e-10; 
-% Iyy = 2.33e-10; 
-% Izz = 3.27e-11; 
+%
+% Ixx = 2.13e-10;
+% Iyy = 2.33e-10;
+% Izz = 3.27e-11;
 
 % Ixx = 1.42*1e-9;		% Principal moment of inertia
 % Iyy = 1.34*1e-9;		%1.34*1e-9;
 % Izz = 0.45*1e-9;
 
-Ixx = 2.03e-9; 
-Iyy = 2.30e-9; 
-Izz = 0.31e-9; 
-% Ixx = 3.8e-4; 
-% Iyy = 6.1e-4; 
-% Izz = 2.5e-4; 
+Ixx = 2.03e-9;
+Iyy = 2.30e-9;
+Izz = 0.31e-9;
+% Ixx = 3.8e-4;
+% Iyy = 6.1e-4;
+% Izz = 2.5e-4;
 
 % Payload;
 payload = 23e-6;
@@ -111,31 +114,43 @@ e3=[0;0;1];
 
 % roll_offset_angle = deg2rad(5);
 roll_offset_angle = 0; % New Vicon calibration
+
 %% Voltage to Force Mapping
 % params = load('RoboBee_optimal_fitting_parameter_150Hz.mat');
 % params = load('RoboBee_optimal_fitting_parameter_150Hz_2022.mat');
 % params = load('RoboBee_optimal_fitting_parameter_150Hz_2022_Apr.mat');
 
 % BBee System ID without the leg
-params = load('RoboBee_optimal_fitting_parameter_155Hz_2022_BBee_v2_simVariant.mat');
-
+params = load('system id/Drake Model/Optimal_fitting_parameter_155Hz_v2.mat');
+'/Users/franklinho/robobee_simulator/simulink/system id/Drake Model/Optimal_fitting_parameter_155Hz_v2.mat'
 % BBee System ID with the rigid leg
 % params = load('RoboBee_optimal_fitting_parameter_155Hz_2022_BBee_rigid_leg_v1.mat');
 
 
-
+% best so far, 180 Hz, gamma1 = 2.0e-9, gamma_2 = 0.008
 params_opt = params.params_opt;
-params_opt.gamma_2_1 = 0.011; 
-params_opt.gamma_2 = params_opt.gamma_2_1;
-params_opt.nu = -5; 
-params_opt.eta = 1.0; 
-params_opt.mu = 0.0; 
+% [params_opt.gamma_1, params_opt.gamma_2] = deal(2.0e-9,0.008); % Good for 180 Hz 
+% [params_opt.gamma_1, params_opt.gamma_2] = deal(4.0e-9,0.0119);
+% params_opt.gamma_1 = 5.1653e-09;
+% params_opt.gamma_1 = 2.0e-9; % good for f = 180 Hz flapping
+% params_opt.gamma_1 = 2.1e-09; % rolls left
+% params_opt.gamma_1 = 0.15e-09; 
+% params_opt.gamma_2_1 = 0.008; % whoa, its really not close to r_cp!! 
+% params_opt.gamma_2 = params_opt.gamma_2_1;
+% params_opt.delta_1 = 4.6154;%4.6154 default
+% params_opt.delta_2 = %1.8648 default 
+% params_opt.delta_3 = -0.0038%-cont0.0038 default 
+% params_opt.nu = -6.95; %manually found to be best 
+% params_opt.eta = 1.0043; % manually foundto be best 
+% params_opt.mu = 0.0; % nominal 
+
+
 params_vec = [params_opt.delta_1, params_opt.delta_2, params_opt.delta_3, params_opt.gamma_1, params_opt.gamma_2, params_opt.gamma_3, params_opt.eta, params_opt.nu, params_opt.mu]';
 % Becky 05072022
 % params_vec = [4.615418611008412, 1.864800777306221, -0.003836409949443, 0.000000002617698, 0.002712888814185, 0.470047661467390, 1.252086811352254, -12.320534223706176, -0.106510851419032];
 
-Thurst_limit = 1.2*1e-3;        % 1.2   mN 
-Torque_roll_limit = -0.35*1e-6;   % 0.2   mNmm;
+Thurst_limit = 1.2*1e-3;        % 1.2   mN
+Torque_roll_limit = -0.35*1e-4;   % 0.2   mNmm;
 Torque_pitch_limit = 0.2*1e-6;  % 0.2   mNmm;
 Torque_yaw_limit = 0.2*1e-7;%0.2*1e-7;    % 0.02  mNmm;
 
@@ -177,8 +192,8 @@ wing_to_voltage = load('Bee_Trajectory_Input_Linear_fitting.mat'); % Identified 
 
 % Correction based on the lift coefficient mismatch
 % don't forget to install curve fitting tool box if you get loading
-% variable error 
-C_R_over_C_L = 1.0; 
+% variable error
+C_R_over_C_L = 1.0;
 wing_to_voltage.fit_R_total.p1 = C_R_over_C_L*wing_to_voltage.fit_R_total.p1;
 wing_to_voltage.fit_R_total.p2 = C_R_over_C_L*wing_to_voltage.fit_R_total.p2;
 wing_to_voltage.fit_pitch_R_total.p1 = C_R_over_C_L*wing_to_voltage.fit_pitch_R_total.p1;
@@ -195,7 +210,7 @@ left_mapping(4) = -wing_to_voltage.fit_pitch_L_total.p2/wing_to_voltage.fit_pitc
 right_mapping(3) = 1/wing_to_voltage.fit_pitch_R_total.p1;
 right_mapping(4) = -wing_to_voltage.fit_pitch_R_total.p2/wing_to_voltage.fit_pitch_R_total.p1;
 
-% Open_loop controller setup 
+% Open_loop controller setup
 
 [drv_amp, drv_roll, drv_pitch_left, drv_pitch_right] = Wing_traj_to_Voltage(Phi_p2p_nominal_left,Phi_p2p_nominal_right,Phi_pitch_offset_openloop,left_mapping,right_mapping);
 drv_pch = drv_pitch_left;
@@ -208,30 +223,33 @@ drv_pch = drv_pitch_left;
 % drv_pitch_right = 0;
 % % max_drv_bias =300;
 % drv_pch = drv_pitch_left;
-% 
+%
 % a2_openloop = -0; %0.2;2
 
-% Franklin Open Loop 
-drv_amp = 188.8; 
-drv_roll = -0.9655; 
-drv_pitch_left = -1.; 
-drv_pitch_right = 3.8123; 
-a2_openloop = 0; 
+% Franklin Open Loop
+drv_amp = 160;
+% drv_roll = -1e-3;
+drv_roll = 0; 
+% drv_pitch_left = 6.95;
+% drv_pitch_right = 6.95;
+drv_pitch_left = 0; 
+drv_pitch_right = 0; 
+a2_openloop = 0;
 
 
 %% Feedback Control paramter (Force Control)
 scale = 1e3;
 
-% Default position (with the kevlar string), in meters 
+% Default position (with the kevlar string), in meters
 % default_x = 0.0594;%0.050;
 % default_y = 0.0235;%0.137;
 % default_z = 0.1278;
 % default_z = 0.0855;%0.1535;
 
-default_x = 0; 
-default_y = 0; 
-default_z = 0; 
-jump_height = 0.14;
+default_x = 0;
+default_y = 0;
+default_z = 0;
+jump_height = 0.05;
 % jump_height = 0.02;
 soft_landing_height = 0.012; % 3mm
 
@@ -257,9 +275,9 @@ total_T = transition_time+T+prelanding_time+landing_time;
 
 % Task parameter
 
-task_flag = 0; % Task 0 : Hovering, Task 1 : Circle, Task 2 : Ellipse 
+task_flag = 0; % Task 0 : Hovering, Task 1 : Circle, Task 2 : Ellipse
 							 % Task 3 : Vertical up and down
-               % Task 4 : Y-Z circle, Task 5 : Lissajous curve, 
+               % Task 4 : Y-Z circle, Task 5 : Lissajous curve,
                % Task 6 :Ellipse with Z
 							 % Task 7 : Twp way points test (Speed test)
 							 % Task 8 : Landing on different set point
@@ -288,16 +306,16 @@ xd_ddot = [0, 0, 0];
 b_1_d_desired = [1,0,0];
 
 %Lateral gain
-k_x = 0.5/scale;
-k_v = 0.05/scale;
+k_x = 0.5/scale; %0.5
+k_v = 0.05/scale; %0.05
 
 %Attitude gain
 k_R = 0.5/(scale^2);%0.5/(scale^2);		yaw pitch
-k_Rx = 1.2/(scale^2);%0.6/(scale^2);		roll
-k_Omega =  0.25/(scale^2);%0.25/(scale^2);
+k_Rx = 0.7/(scale^2);%0.6/(scale^2);		roll
+k_Omega =  0.5/(scale^2);%0.25/(scale^2);
 
 %Altitude gain
-k_z = 0.2/scale;%0.2/scale;
+k_z = 0.010/scale;%0.2/scale;
 k_vz = 0.35/scale;%0.25/scale;
 
 control_gain = [k_x,k_v, k_R, k_Omega, k_z, k_vz, k_Rx];
@@ -324,7 +342,7 @@ low_bound =-8; %-4 % rad/s
 upp_bound_eR =0.8; %0.3   % attitude error
 low_bound_eR =-0.8; %-0.3 % attitude error
 
-% Adaptive Control gain
+%% Adaptive Control gain
 gamma_adaptive = 5e-8*upp_bound;
 adaptive_roll_limit = 0.3/(scale^2);%0.17/(scale^2);
 adaptive_pitch_limit = 0.1/(scale^2);%0.09/(scale^2);
@@ -368,39 +386,9 @@ adaptive_z_init = 0/scale; %-0.015/(scale); %0.016/(scale);
 adaptive_gain = [gamma_adaptive, adaptive_roll_limit, adaptive_pitch_limit, adaptive_yaw_limit, c_2_adaptive, gamma_lateral_adaptive, adaptive_x_limit, adaptive_y_limit, adaptive_z_limit, c_1_adaptive];
 
 
-%% setup code 
-% Default openloop
-dt_s = 2.0e-4; 
-host = "127.0.0.1";
-port = 4242;
-
-
-% closedloop_flag=0;
-
-drv_bias = max_drv_bias;
-phase = 0 %pi; %degrees (added on left wing)
-
-if control_flag==2  % CLosedloop control
-
-    closedloop_flag = 1; % For simulink
-	% Setup the Bias for PZT
-    % drv_bias = max(closedloop_max_drv_bias,max_drv_bias);
-	drv_bias = max_drv_bias;
-    phase = 0 %pi; %degrees (added on left wing)
-    running_time = start_delay+total_T;
-    running_time_control = start_delay_control+total_T+0.0;   %3.0+T+0.5 %11	
-    % running_time = start_delay + T;
-    % running_time_control = start_delay_control + T;
-else % else, open loop 
-    closedloop_flag = 0; 
-    drv_bias = max_drv_bias; 
-    running_time = start_delay+T;
-	running_time_control = start_delay_control+T+0.0;   %3.0+T+0.5 %11
-end
-
 %% low pass filter
-[lp_num, lp_den]=butter(5, 80/sampling_f);  % 80
-[vlp_num, vlp_den]=butter(5, 40/sampling_f);  % 80
+[lp_num, lp_den]=butter(5, 100/sampling_f);  % 80
+[vlp_num, vlp_den]=butter(5, 100/sampling_f);  % 80
 
 
 %% attitude controller setup (Filtering to get angular velocity wrt body frame)
@@ -417,8 +405,6 @@ simple_lp = c2d(simple_lp, sampling_time);
 
 %% Angular velocity estimation
 
-
-
 fs_vicon = 500;
 f_res = f;
 vicon_sample_cycle = ceil(sampling_f/fs_vicon);
@@ -430,3 +416,36 @@ for i=0:vicon_sample_cycle:num_cycle*sample_cycle
    cnt=cnt+1;
 end
 delay = delay-vicon_sample_cycle/2;
+
+%% Drive bias (PZT)
+max_drv_bias = 200;
+drv_bias = max_drv_bias;
+phase = 0; %pi; %degrees (added on left wing)
+
+%% Run time setup (depends on start_delay, start_delay_control, total_T, T)
+if control_flag==2  % CLosedloop control
+
+    closedloop_flag = 1; % For simulink
+	% Setup the Bias for PZT
+    % drv_bias = max(closedloop_max_drv_bias,max_drv_bias);
+	drv_bias = max_drv_bias;
+    phase = 0; %pi; %degrees (added on left wing)
+    running_time = start_delay+total_T;
+    running_time_control = start_delay_control+total_T+0.0;   %3.0+T+0.5 %11
+    % running_time = start_delay + T;
+    % running_time_control = start_delay_control + T;
+else % else, open loop
+    closedloop_flag = 0;
+    drv_bias = max_drv_bias;
+    running_time = start_delay+T;
+	running_time_control = start_delay_control+T+0.0;   %3.0+T+0.5 %11
+end
+
+%% Model configuration (needs dt_s and running_time defined above)
+mdl = 'updated_target_driver_2026_withVariants';
+set_param(mdl, 'SolverType', 'Fixed-step');
+set_param(mdl, 'Solver', 'FixedStepDiscrete');
+set_param(mdl, 'FixedStep', 'dt_s');
+set_param(mdl, 'StopTime', 'running_time');
+
+% sim(updated_target_driver_2026_withVariants); 

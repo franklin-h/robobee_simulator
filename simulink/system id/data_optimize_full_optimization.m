@@ -1,0 +1,443 @@
+clear all; 
+close all;
+
+%% Get RoboBee physical parameters
+
+% Body Parameters
+m_a = 25e-6;
+J_phi = 51.1e-12;
+T = 2666;
+r_cp = 1.42*9.56e-3;
+b1 = 2.03e-6;
+k_a = 300;
+k_t = 28.2e-6;
+
+% Wing Parameters
+rho = 1.2041; % kg/m^3 at 20deg C
+
+AR = 3;
+R = 12e-3; % m
+rhat1 = 0.49;
+rhat2 = 0.929*rhat1^0.732;
+
+beta = R^4/AR*rhat2^2;
+CL_max = 1.8;
+CD_0 = 0.4;
+CD_max = 3.4;
+
+% approximate lift/drag coefficients
+alpha = pi/4;
+C_L = CL_max*sin(2*alpha);
+C_D = (CD_max+CD_0)/2-(CD_max-CD_0)/2*cos(2*alpha);
+
+%% Get Data
+
+folder_name = 'Drake Model';
+% open_loop_test_file_name = strcat(folder_name, '/Open_loop_test_PBee_20230927.mat')
+open_loop_test_file_name = strcat(folder_name, '/system_id_sweep_results_20260714_191129.mat')
+loaded = load(open_loop_test_file_name);
+if isfield(loaded, 'openloop_data')
+    openloop_data = loaded.openloop_data;   % system_id_sweep bundle (struct saved as one variable)
+else
+    openloop_data = loaded;                 % legacy file: fields saved as top-level variables
+end
+
+
+freq= 155;
+
+% experiment_valid_index =[7, 13:19, 21:23, 26:27, 29:31, 39:43, 48:53, 56:62, 64:68];
+experiment_valid_index = 1:length(openloop_data.left_voltage_offset);
+
+
+% valid_roll_index = [1:20, 45:60];
+% valid_pitch_index=[1,6,11,16,21:44];
+valid_roll_index = [15:25];
+valid_pitch_index = [7:42];
+
+% load 'open_loop_data_all160';
+% V_off_L V_off_R V_p2p_L V_p2p_R A1 A2 freq Ft Tr Tp Ty
+V_off_L = (openloop_data.left_voltage_offset)';
+V_off_R = (openloop_data.right_voltage_offset)';
+V_p2p_L = (openloop_data.left_voltage_p2p)';
+V_p2p_R = (openloop_data.right_voltage_p2p)';
+A1 = 1.1;
+A2 = (openloop_data.a2_yaw)';
+
+Ft = (openloop_data.y_thrust_average)';
+Tr = (openloop_data.y_torque_x_average)';
+Tp = (openloop_data.y_torque_y_average)';
+Ty = (openloop_data.y_torque_z_average)';
+
+
+% Remove data (for testing)
+% nrmv = 1:38;
+% V_off_L(nrmv) = []; V_off_R(nrmv) = []; V_p2p_L(nrmv) = []; V_p2p_R(nrmv) = [];
+% A1(nrmv) = []; A2(nrmv) = []; freq(nrmv) = [];
+% Ft(nrmv) = []; Tr(nrmv) = []; Tp(nrmv) = []; Ty(nrmv) = [];
+
+V_amp_L = V_p2p_L / 2;
+V_amp_R = V_p2p_R / 2;
+
+% 05282021 - Frequency same across all tests
+omega = 2*pi * freq(1);
+
+N = length(Ft);
+
+%% Optimization
+
+[H_mag,H_phase] = get_transfer_function(m_a,J_phi,T,r_cp,b1,k_a,k_t);
+    delta_1 = A1*omega*H_mag(omega);
+    delta_2 = 2*omega*H_mag(2*omega);
+
+N_opt = 1e3;
+RMS_init = 1e6;
+
+B = delta_1.^2 + delta_2.^2.*A2;
+
+eta_lims = [0 10.0];
+eta_test = linspace(eta_lims(1),eta_lims(2),N_opt);
+FTTR_RMS_min = RMS_init;
+TP_RMS_min = RMS_init;
+TY_RMS_min = RMS_init;
+
+for i = 1:N_opt
+
+    % 1: Thrust
+    BU = B .* (eta_test(i) * V_amp_L.^2 + V_amp_R.^2);
+    G1 = BU \ Ft;
+    Ft_temp = BU*G1;
+    FT_RMS = sqrt(sum((Ft-Ft_temp).^2)/N);
+
+    % 2: Roll Torque
+    BGU = G1*B .* (eta_test(i)*V_amp_L.^2 - V_amp_R.^2);
+    G2 = BGU \ Tr;
+    TR_RMS = sqrt(sum((Tr-BGU*G2).^2)/N);
+
+    % Choose eta
+    if (FT_RMS * TR_RMS) < FTTR_RMS_min
+        FTTR_RMS_min = FT_RMS * TR_RMS;
+        gamma_1 = G1;
+        gamma_2 = G2;
+        eta = eta_test(i);
+        FT_RMS_final = FT_RMS;
+        TR_RMS_final = TR_RMS;
+        
+    end
+end
+
+gamma_1_multi = gamma_1;
+gamma_2_multi = gamma_2;
+eta_multi = eta;
+
+%%
+% % OLD OPTIMIZATION
+% u1 = B.*[V_amp_L.^2, V_amp_R.^2];
+% opt_gamma = inv(u1'*u1)*u1'*Ft;
+% 
+% % gamma_1 = opt_gamma(2);
+% % eta = opt_gamma(1)/opt_gamma(2);
+% 
+% u2 = gamma_1*B.*[eta*V_amp_L.^2, -V_amp_R.^2];
+% opt_beta = inv(u2'*u2)*u2'*Tr;
+
+
+% Weighted sum optimization with the necessary condition
+scale = 1e3;
+% valid_roll_index = [1:15, 20:21, 23:24];
+% valid_roll_index = [1:20];
+% valid_roll_index = [1:60];
+% valid_roll_index = [1:15];
+
+Ft_new = Ft(valid_roll_index)*scale;
+Tr_new = Tr(valid_roll_index)*scale^2;
+
+syms u11 u12 
+
+AA = B(valid_roll_index).*[V_amp_L(valid_roll_index).^2, V_amp_R(valid_roll_index).^2];
+BB = B(valid_roll_index).*[V_amp_L(valid_roll_index).^2, -V_amp_R(valid_roll_index).^2];
+
+
+Du1 = [u11, 0 ; 0, u12];
+Du1_simple = [u11; u12];
+
+
+% ADJUST WEIGHTING PARAMETER
+% weighting parameter for 1st stage optimization (Thrust_error^2 + alpha Troll_error^2)
+% alpha_opt = 2e-2;
+alpha_opt = 0.1;
+
+
+u2_opt = (Du1*(BB')*BB*Du1)^(-1)*Du1*BB'*Tr_new;
+u2_opt_simple = (Du1_simple.'*(BB.')*BB*Du1_simple)^(-1)*(Du1_simple.')*BB.'*Tr_new;
+
+Du2 = [u2_opt(1), 0; 0, u2_opt(2)];
+Du2_simple = u2_opt_simple;
+optimality_cond = simplify(-(Ft_new'*AA+alpha_opt*Tr_new'*BB*Du2)+[u11, u12]*(AA.'*AA+alpha_opt*Du2'*(BB.')*BB*Du2));
+optimality_cond_simple = -(Ft_new'*AA+alpha_opt*Tr_new'*BB*Du2_simple)+[u11, u12]*(AA.'*AA+alpha_opt*Du2_simple'*((BB.')*BB)*Du2_simple);
+
+
+S_thrust_opt=solve(optimality_cond==0, [u11, u12]);
+S_thrust_opt_simple=solve(optimality_cond_simple==0, [u11, u12]);
+
+Du1_opt = [S_thrust_opt.u11, 0 ; 0, S_thrust_opt.u12];
+Du1_opt_simple = [S_thrust_opt_simple.u11; S_thrust_opt_simple.u12];
+
+u2_opt_final = double((Du1_opt*(BB.')*BB*Du1_opt)^(-1)*Du1_opt*BB'*Tr_new);
+u2_opt_final_simple = double((Du1_opt_simple'*(BB.')*BB*Du1_opt_simple)^(-1)*(Du1_opt_simple'*BB.'*Tr_new));
+
+gamma_1_NLP = double(S_thrust_opt.u12);
+eta_NLP = double(S_thrust_opt.u11/S_thrust_opt.u12);
+
+gamma_1_NLP_simple = double(S_thrust_opt_simple.u12);
+eta_NLP_simple = double(S_thrust_opt_simple.u11/S_thrust_opt_simple.u12);
+
+
+% FT_RMS_NLP = sqrt(sum((Ft-AA*[gamma_1_NLP*eta_NLP; gamma_1_NLP]).^2)/N);
+% TR_RMS_NLP = sqrt(sum((Tr-BB*[gamma_1_NLP*eta_NLP*u2_opt_final(1); gamma_1_NLP*u2_opt_final(2)]).^2)/N);
+% 
+% FT_RMS_NLP_simple = sqrt(sum((Ft-AA*[gamma_1_NLP_simple*eta_NLP_simple; gamma_1_NLP_simple]).^2)/N);
+% TR_RMS_NLP_simple = sqrt(sum((Tr-BB*[gamma_1_NLP_simple*eta_NLP_simple*u2_opt_final_simple; gamma_1_NLP_simple*u2_opt_final_simple]).^2)/N);
+
+
+% Multiplicative Error with one gamma_2
+
+gamma_2_1 = gamma_2;
+gamma_2_2 = gamma_2;
+
+
+% Weighted sum parameters with two gamma_2
+
+gamma_1 = gamma_1_NLP/scale;
+eta = eta_NLP;
+gamma_2_1 = u2_opt_final(1)/scale;
+gamma_2_2 = u2_opt_final(2)/scale;
+
+% Weighted sum parameters with one gamma2
+gamma_1 = gamma_1_NLP_simple/scale;
+eta = eta_NLP_simple;
+gamma_2_1 = u2_opt_final_simple/scale;
+gamma_2_2 = u2_opt_final_simple/scale;
+
+
+% eta = 1.0911;
+% gamma_1 = 2.7628e-09;
+% gamma_2 = 0.0023;
+
+% 3: Pitch Torque
+nu_lims = [-20 20];
+nu_test = linspace(nu_lims(1),nu_lims(2),N_opt);
+
+d3_lims = [-10 10]*H_mag(0);
+% d3_lims = [0 10]*H_mag(0);
+d3_test = linspace(d3_lims(1),d3_lims(2),N_opt);
+
+
+AA = B(valid_pitch_index).*[V_amp_L(valid_pitch_index).^2, V_amp_R(valid_pitch_index).^2];
+BB = B(valid_pitch_index).*[V_amp_L(valid_pitch_index).^2, -V_amp_R(valid_pitch_index).^2];
+
+
+CC = gamma_1*AA*[eta*gamma_2_1, 0 ; 0, 1*gamma_2_2];
+CC_total = [(CC.*[V_off_L(valid_pitch_index), V_off_R(valid_pitch_index)])*[1;1], CC*[1;1]];
+
+opt_pitch = (CC_total'*CC_total)^(-1)*(CC_total'*Tp(valid_pitch_index));
+
+delta_3_opt = opt_pitch(1);
+nu_opt = opt_pitch(2)/delta_3_opt;
+
+% 
+% for j = 1:N_opt
+%     for k = 1:N_opt
+%         D3 = d3_test(k);
+%         NU = nu_test(j);
+% %         Tp_temp = gamma_1.*gamma_2.*(delta_1.^2+delta_2.^2.*A2.^2) .* ...
+% %                          	D3.*(eta*V_amp_L.^2.*(V_off_L+NU)+V_amp_R.^2.*(V_off_R+NU));
+%         Tp_temp = gamma_1.*(delta_1.^2+delta_2.^2.*A2.^2) .* ...
+%                          	D3.*(eta*V_amp_L.^2.*gamma_2_1.*(V_off_L+NU)+V_amp_R.^2.*gamma_2_2.*(V_off_R+NU));
+% %         Tp_temp = gamma_1.*gamma_2.*(delta_1.^2+delta_2.^2.*A2.^2) .* ...
+% %                          	D3.*(eta*V_amp_L.^2+V_amp_R.^2).*(V_off+NU);
+%         TP_RMS = sqrt(sum((Tp-Tp_temp).^2)/N);
+%         if TP_RMS < TP_RMS_min
+%             TP_RMS_min = TP_RMS;
+%             delta_3 = D3;
+%             nu = NU;
+%         end
+%     end
+% end
+
+
+
+% nu = 0;
+% delta_3 = 0.0038;
+
+% 4: Yaw Torque
+
+
+DD = gamma_1.*delta_1.*delta_2.*(eta*V_amp_L.^2*gamma_2_1+V_amp_R.^2*gamma_2_2);
+
+DD_total = [DD.*A2, DD];
+opt_yaw = (DD_total'*DD_total)^(-1)*(DD_total'*Ty);
+
+gamma_3_opt = opt_yaw(1);
+mu_opt = opt_yaw(2)/gamma_3_opt;
+
+
+
+BGUY = gamma_1.*delta_1.*delta_2.*(eta*V_amp_L.^2*gamma_2_1+V_amp_R.^2*gamma_2_2).*A2;
+gamma_3 = BGUY \ Ty;
+
+mu_lims = [-0.2 0.2];
+mu_test = linspace(mu_lims(1),mu_lims(2),N_opt);
+
+g3a_lims = [-10 10]*8/(3*pi)*C_D./C_L;
+g3a_test = linspace(g3a_lims(1),g3a_lims(2),N_opt);
+
+% for j = 1:N_opt
+%     for k = 1:N_opt
+%         G3 = g3a_test(k)*cos(2*H_phase(omega)-H_phase(2*omega));
+%         MU = mu_test(j);
+%         Ty_temp = gamma_1.*G3.*delta_1.*delta_2.*(eta*V_amp_L.^2.*gamma_2_1+V_amp_R.^2.*gamma_2_2).*(A2+MU);
+%         TY_RMS = sqrt(sum((Ty-Ty_temp).^2)/N);
+%         if TY_RMS < TY_RMS_min
+%             TY_RMS_min = TY_RMS;
+%             gamma_3 = G3;
+%             gamma_3a = g3a_test(k);
+%             mu = MU;
+%         end
+%     end
+% end
+
+nu=nu_opt;
+delta_3 = delta_3_opt;
+gamma_3= gamma_3_opt;
+mu = mu_opt;
+
+params_opt.gamma_1 = gamma_1;
+params_opt.gamma_2_1 = gamma_2_1;
+params_opt.gamma_2_2 = gamma_2_2;
+params_opt.gamma_3 = gamma_3;
+params_opt.delta_1 = delta_1(1);
+params_opt.delta_2 = delta_2;
+params_opt.delta_3 = delta_3;
+params_opt.eta = eta;
+params_opt.nu = nu;
+params_opt.mu = mu;
+
+
+%% Save file
+
+optimal_fitting_parameter_save_file_name = strcat(folder_name, '/Optimal_fitting_parameter_155Hz_PBee_20231005_test.mat')
+save(optimal_fitting_parameter_save_file_name, 'params_opt')
+
+
+%% Estimate forces and torques
+
+if all(delta_1==delta_1(1))
+    delta_1 = delta_1(1);
+end 
+
+% Constant values (single frequency) for thrust, roll, pitch
+g1 = gamma_1; g2 = gamma_2; g3 = gamma_3;
+d1 = delta_1; d2 = delta_2; d3 = delta_3;
+
+
+
+Ft_est = gamma_1*(delta_1.^2+delta_2.^2.*A2.^2).*(eta*V_amp_L.^2+V_amp_R.^2);
+Tr_est = gamma_1.*(delta_1.^2+delta_2.^2.*A2.^2).*(eta*V_amp_L.^2.*gamma_2_1-V_amp_R.^2.*gamma_2_2);
+Tp_est = gamma_1.*(delta_1.^2+delta_2.^2.*A2.^2).*delta_3.*(eta*V_amp_L.^2.*gamma_2_1.*(V_off_L+nu)+V_amp_R.^2*gamma_2_2.*(V_off_R+nu));
+Ty_est = gamma_1.*gamma_3.*delta_1.*delta_2.*(eta*V_amp_L.^2.*gamma_2_1+V_amp_R.^2.*gamma_2_2).*(A2+mu);
+
+
+%% Plot Results
+N=length(Ft);
+
+uNmm = 1e3;   % torque display scale: mN*mm -> uN*mm (1 mN*mm = 1000 uN*mm)
+
+figure()
+subplot(2,4,1)
+    hold on;
+    plot(experiment_valid_index,Ft, 'bo-');
+    plot(experiment_valid_index,Ft_est,'ro-');
+    title('F_T');
+    legend('Measured','Estimated');
+    xlabel('Trials'); ylabel('Thrust [mN]');
+    ax = gca;
+%         ax.XLim = [0 N];
+        ax.FontName = 'Times New Roman';
+        ax.FontSize = 16;
+subplot(2,4,2)
+    hold on;
+    plot(experiment_valid_index,uNmm*Tr, 'bo-');
+    plot(experiment_valid_index,uNmm*Tr_est,'ro-');
+    title('\tau_R');
+    legend('Measured','Estimated');
+    xlabel('Trials'); ylabel('Roll Torque [\muNmm]');
+    ax = gca;
+%         ax.XLim = [0 N];
+        ax.FontName = 'Times New Roman';
+        ax.FontSize = 16;
+subplot(2,4,3)
+    hold on;
+    plot(experiment_valid_index,uNmm*Tp, 'bo-');
+    plot(experiment_valid_index,uNmm*Tp_est,'ro-');
+    title('\tau_P');
+    legend('Measured','Estimated');
+    xlabel('Trials'); ylabel('Pitch Torque [\muNmm]');
+    ax = gca;
+%         ax.XLim = [0 N];
+        ax.FontName = 'Times New Roman';
+        ax.FontSize = 16;
+subplot(2,4,4)
+    hold on;
+    plot(experiment_valid_index,uNmm*Ty, 'bo-');
+    plot(experiment_valid_index,uNmm*Ty_est,'ro-');
+    title('\tau_Y');
+    legend('Measured','Estimated');
+    xlabel('Trials'); ylabel('Yaw Torque [\muNmm]');
+    ax = gca;
+%         ax.XLim = [0 N];
+        ax.FontName = 'Times New Roman';
+        ax.FontSize = 16;
+subplot(2,4,5)
+    hold on;
+    plot(experiment_valid_index,Ft_est - Ft, 'bo-');
+    plot(experiment_valid_index,sqrt(sum((Ft_est-Ft).^2)/N).*ones(N,1),'ro-');
+    legend('Error','RMS');
+    title('F_T');
+    xlabel('Trials'); ylabel('Thrust Error [mN]');
+    ax = gca;
+%         ax.XLim = [0 N];
+        ax.FontName = 'Times New Roman';
+        ax.FontSize = 16;
+subplot(2,4,6)
+    hold on;
+    plot(experiment_valid_index,uNmm*(Tr_est - Tr), 'bo-');
+    plot(experiment_valid_index,uNmm*sqrt(sum((Tr_est-Tr).^2)/N).*ones(N,1),'ro-');
+    legend('Error','RMS');
+    title('\tau_R');
+    xlabel('Trials'); ylabel('Roll Torque Error [\muNmm]');
+    ax = gca;
+%         ax.XLim = [0 N];
+        ax.FontName = 'Times New Roman';
+        ax.FontSize = 16;
+subplot(2,4,7)
+    hold on;
+    plot(experiment_valid_index,uNmm*(Tp_est - Tp), 'bo-');
+    plot(experiment_valid_index,uNmm*sqrt(sum((Tp_est-Tp).^2)/N).*ones(N,1),'ro-');
+    legend('Error','RMS');
+    title('\tau_P');
+    xlabel('Trials'); ylabel('Pitch Torque Error [\muNmm]');
+    ax = gca;
+%         ax.XLim = [0 N];
+        ax.FontName = 'Times New Roman';
+        ax.FontSize = 16;
+subplot(2,4,8)
+    hold on;
+    plot(experiment_valid_index,uNmm*(Ty_est - Ty), 'bo-');
+    plot(experiment_valid_index,uNmm*sqrt(sum((Ty_est-Ty).^2)/N)*ones(N,1),'ro-');
+    legend('Error','RMS');
+    title('\tau_Y');
+    xlabel('Trials'); ylabel('Yaw Torque Error [\muNmm]');
+    ax = gca;
+%         ax.XLim = [0 N];
+        ax.FontName = 'Times New Roman';
+        ax.FontSize = 16;

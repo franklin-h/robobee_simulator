@@ -126,7 +126,7 @@ int robobee_tcp_step_c(double dt_s,
                        double left_voltage_v,
                        double right_voltage_v,
                        double bias_voltage_v,
-                       double pose[7]) {
+                       double pose[11]) {
   if (pose == NULL || !isfinite(dt_s) || dt_s <= 0.0 ||
       !isfinite(left_voltage_v) || !isfinite(right_voltage_v) ||
       !isfinite(bias_voltage_v)) {
@@ -147,7 +147,7 @@ int robobee_tcp_step_c(double dt_s,
   for (int attempt = 0; attempt < 2; ++attempt) {
     status = robobee_tcp_send_exact(g_socket_fd, request, sizeof(request));
     if (status == ROBOBEE_TCP_OK) {
-      status = robobee_tcp_recv_exact(g_socket_fd, pose, 7 * sizeof(double));
+      status = robobee_tcp_recv_exact(g_socket_fd, pose, 11 * sizeof(double));
     }
     if (status == ROBOBEE_TCP_OK) {
       return ROBOBEE_TCP_OK;

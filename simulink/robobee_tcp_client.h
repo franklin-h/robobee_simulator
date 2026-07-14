@@ -17,11 +17,13 @@ enum {
 void robobee_tcp_set_endpoint_c(const char* host, int port);
 void robobee_tcp_reset_c(void);
 
+/* pose is [time_s, x_m, y_m, z_m, roll_rad, pitch_rad, yaw_rad, thrust_z_N,
+ * roll_torque_Nm, pitch_torque_Nm, yaw_torque_Nm] -- 11 doubles. */
 int robobee_tcp_step_c(double dt_s,
                        double left_voltage_v,
                        double right_voltage_v,
                        double bias_voltage_v,
-                       double pose[7]);
+                       double pose[11]);
 
 #ifdef __cplusplus
 }

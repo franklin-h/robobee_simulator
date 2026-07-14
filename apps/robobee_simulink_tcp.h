@@ -24,6 +24,14 @@ struct StepResponse {
   double roll_rad{};
   double pitch_rad{};
   double yaw_rad{};
+  // Net aerodynamic wrench about the robot COM, expressed in the body/root
+  // frame. thrust_z_N is the net force along the body z-axis; the torques are
+  // the roll/pitch/yaw moments. Appended after the pose so existing clients
+  // that only parse the first seven doubles keep the same field layout.
+  double thrust_z_N{};
+  double roll_torque_Nm{};
+  double pitch_torque_Nm{};
+  double yaw_torque_Nm{};
 };
 
 class FileDescriptor final {

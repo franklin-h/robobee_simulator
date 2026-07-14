@@ -119,7 +119,7 @@ static void
   sfSetAnimationVectors(chartInstance->S, &chartInstance->c5_JITStateAnimation[0],
                         &chartInstance->c5_JITTransitionAnimation[0]);
   covrtCreateStateflowInstanceData(chartInstance->c5_covrtInstance, 1U, 0U, 1U,
-    186U);
+    198U);
   covrtChartInitFcn(chartInstance->c5_covrtInstance, 0U, false, false, false);
   covrtStateInitFcn(chartInstance->c5_covrtInstance, 0U, 0U, false, false, false,
                     0U, &c5_decisionTxtStartIdx, &c5_decisionTxtEndIdx);
@@ -132,13 +132,13 @@ static void
                   "/Users/franklinho/robobee_simulator/simulink/robobee_tcp_step_codegen.m",
                   14U, 0U, 1U, 0U, 2U, 0U, 0U, 0U, 0U, 0U, 0U, 0U);
   covrtEmlFcnInitFcn(chartInstance->c5_covrtInstance, 14U, 0U, 0U,
-                     "robobee_tcp_step_codegen", 0, -1, 1262);
-  covrtEmlIfInitFcn(chartInstance->c5_covrtInstance, 14U, 0U, 0U, 480, 505, 668,
-                    1258, false);
-  covrtEmlIfInitFcn(chartInstance->c5_covrtInstance, 14U, 0U, 1U, 1175, 1189, -1,
-                    1254, false);
-  covrtEmlRelationalInitFcn(chartInstance->c5_covrtInstance, 14U, 0U, 0U, 1178,
-    1189, -1, 1U);
+                     "robobee_tcp_step_codegen", 0, -1, 1470);
+  covrtEmlIfInitFcn(chartInstance->c5_covrtInstance, 14U, 0U, 0U, 688, 713, 876,
+                    1466, false);
+  covrtEmlIfInitFcn(chartInstance->c5_covrtInstance, 14U, 0U, 1U, 1383, 1397, -1,
+                    1462, false);
+  covrtEmlRelationalInitFcn(chartInstance->c5_covrtInstance, 14U, 0U, 0U, 1386,
+    1397, -1, 1U);
 }
 
 static void
@@ -163,7 +163,7 @@ static void disable_c5_updated_target_driver_2026_withVariants
 static void sf_gateway_c5_updated_target_driver_2026_withVariants
   (SFc5_updated_target_driver_2026_withVariantsInstanceStruct *chartInstance)
 {
-  real_T c5_pose[7];
+  real_T c5_pose[11];
   real_T c5_b_alpha_rad;
   real_T c5_b_beta_rad;
   real_T c5_b_bias_voltage_v;
@@ -207,7 +207,7 @@ static void sf_gateway_c5_updated_target_driver_2026_withVariants
   if (covrtEmlIfEval(chartInstance->c5_covrtInstance, 14U, 0, 1,
                      covrtRelationalopUpdateFcn(chartInstance->c5_covrtInstance,
         14U, 0U, 0U, (real_T)c5_status, 0.0, -1, 1U, c5_status != 0))) {
-    for (c5_i = 0; c5_i < 7; c5_i++) {
+    for (c5_i = 0; c5_i < 11; c5_i++) {
       c5_pose[c5_i] = rtNaN;
     }
 
@@ -337,12 +337,12 @@ const mxArray
 {
   const mxArray *c5_nameCaptureInfo = NULL;
   const char_T *c5_data[4] = {
-    "789cc553cb4ac340149d482d6eaa5d892b3fc108a2c5a568a50a16a1352022318f5b33263313261369bfa2bfe2fff8232e258fc90b8688c17a37670e67e69e7b"
-    "0f0cd26eee3484d02ecaeab89fe120e7c31cb750bd9abaa64059dba8577b27f5758e0ea302962223d42250bc7419c1d4a262be0a01718858f00e6eaa2c700073",
-    "4c605625d38491eb8a5490444ace971e38fe2c26887b5139615025451e2f8a7d7b2d7934ab9947f39ef45bfed24ff63f68f1933a6736b3014ce184662420341d"
-    "e6c22bd0ae7b4bdfbe728e4c71596c0750eefdd1d1ef56e957d79fc6cffa43043cd217dca27e80a9c774194684491c5882713d3d61eaebaa9c8e48d6af2dafbd",
-    "1fceaffa3703b493a231be7adba4dfd7e7e1f926fd64fd975fd77fb7aff01b36f41377ea4e8c33cbe6a7c628c68fab11151793728efb169fb6399082ff75ff6f"
-    "8d036314", "" };
+    "789cc553cb4ac340149d482d6eaa5d895bc1b5d1956bd15614df7d2c148979dc9a9879844c529bfe83b8f62ffc44c963f2822162b0decd99c399b9e7de038394"
+    "f32b0521b489d23ae8a6d8cb783fc33554adbaae4850d43aea54de09fd234393d10016414aa84e207f6931e2509d06e3c803e40367780e56a2cc1c0c6387c0a8",
+    "4cae634686252927b1149f4f6c30dd5148906ff362425c26791ecf927d3b0d79d4ab9e47fd9ef05bfcd24ff4df69f013bacf0c66006881e9693c004f3399052f"
+    "40dbee2d7cbbd23952c562a181a1d8fbaba5df85d4afaa3f0e9ed409079fab335fa72e76a8cd541106774888f580f96a7272a8abca72da2769bfa6bcb67e38bf",
+    "ecdff4d046829f3777afabf47b5feeeeadd24fd47ff9b5fd77db12bf7e4de7c783c3fba3683a9d5bcb53881e86fc72f27656cc71dbe0d3340792f0bfeeff0ddb"
+    "d762ea", "" };
 
   c5_nameCaptureInfo = NULL;
   emlrtNameCaptureMxArrayR2016a(&c5_data[0], 1608U, &c5_nameCaptureInfo);
@@ -420,10 +420,10 @@ static void init_simulink_io_address
 /* SFunction Glue Code */
 void sf_c5_updated_target_driver_2026_withVariants_get_check_sum(mxArray *plhs[])
 {
-  ((real_T *)mxGetPr((plhs[0])))[0] = (real_T)(478270686U);
-  ((real_T *)mxGetPr((plhs[0])))[1] = (real_T)(3643793626U);
-  ((real_T *)mxGetPr((plhs[0])))[2] = (real_T)(3549134544U);
-  ((real_T *)mxGetPr((plhs[0])))[3] = (real_T)(1257854415U);
+  ((real_T *)mxGetPr((plhs[0])))[0] = (real_T)(12528594U);
+  ((real_T *)mxGetPr((plhs[0])))[1] = (real_T)(727609648U);
+  ((real_T *)mxGetPr((plhs[0])))[2] = (real_T)(2464157020U);
+  ((real_T *)mxGetPr((plhs[0])))[3] = (real_T)(1643694753U);
 }
 
 mxArray *sf_c5_updated_target_driver_2026_withVariants_third_party_uses_info
@@ -485,7 +485,7 @@ static const mxArray
 
 static const char* sf_get_instance_specialization(void)
 {
-  return "sgKu9p9ZZ6akBpbtsPiTOID";
+  return "s4AheeGNHG4hsDIkE1ZmcOC";
 }
 
 static void sf_opaque_initialize_c5_updated_target_driver_2026_withVariants(void
@@ -602,35 +602,35 @@ const char* sf_c5_updated_target_driver_2026_withVariants_get_post_codegen_info
 {
   int i;
   const char* encStrCodegen [26] = {
-    "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",
-    "O9ar6EOT5oxJfX45lt+aPmlU3r03Rz/7F2mBh40=",
+    "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",
     ""
   };
 
-  static char newstr [1841] = "";
+  static char newstr [1845] = "";
   newstr[0] = '\0';
   for (i = 0; i < 26; i++) {
     strcat(newstr, encStrCodegen[i]);
@@ -645,10 +645,10 @@ static void mdlSetWorkWidths_c5_updated_target_driver_2026_withVariants
   const char* newstr =
     sf_c5_updated_target_driver_2026_withVariants_get_post_codegen_info();
   sf_set_work_widths(S, newstr);
-  ssSetChecksum0(S,(3588883154U));
-  ssSetChecksum1(S,(2573403837U));
-  ssSetChecksum2(S,(4053654606U));
-  ssSetChecksum3(S,(2408897676U));
+  ssSetChecksum0(S,(2801961351U));
+  ssSetChecksum1(S,(4259575322U));
+  ssSetChecksum2(S,(2151388162U));
+  ssSetChecksum3(S,(864075677U));
 }
 
 static void mdlRTW_c5_updated_target_driver_2026_withVariants(SimStruct *S)

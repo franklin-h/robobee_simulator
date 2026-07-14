@@ -1294,10 +1294,9 @@ class RobobeeSimulationServer final {
             .Eval<std::vector<
                 drake::multibody::ExternallyAppliedSpatialForce<double>>>(
                 wing_aero_context);
-    WriteComWrenchCsvRow(
-        &com_wrench_log_, time_s_,
-        CalcAeroWrenchAboutCom(*plant_, plant_context, model_instances_,
-                               forces));
+    const ComWrench com_wrench = CalcAeroWrenchAboutCom(
+        *plant_, plant_context, model_instances_, forces);
+    WriteComWrenchCsvRow(&com_wrench_log_, time_s_, com_wrench);
     if (time_s_ >= next_com_wrench_flush_time_) {
       com_wrench_log_.flush();
       next_com_wrench_flush_time_ = time_s_ + kComWrenchLogFlushPeriod;
@@ -1332,6 +1331,10 @@ class RobobeeSimulationServer final {
     response.roll_rad = pose.roll_pitch_yaw_rad.x();
     response.pitch_rad = pose.roll_pitch_yaw_rad.y();
     response.yaw_rad = pose.roll_pitch_yaw_rad.z();
+    response.thrust_z_N = com_wrench.thrust_z_N;
+    response.roll_torque_Nm = com_wrench.roll_torque_Nm;
+    response.pitch_torque_Nm = com_wrench.pitch_torque_Nm;
+    response.yaw_torque_Nm = com_wrench.yaw_torque_Nm;
     return response;
   }
 
@@ -1450,7 +1453,7 @@ int main(int argc, char** argv) {
   constexpr double kSliderLogFlushPeriod = kMomentLogFlushPeriod;
   constexpr double kPoseLogPeriod = kMomentLogPeriod;
   constexpr double kPoseLogFlushPeriod = kMomentLogFlushPeriod;
-  constexpr double kTargetRealtimeRate = 0.02;
+  constexpr double kTargetRealtimeRate = 0.0;
   constexpr char kMomentLogPath[] = "/tmp/aeromechanical_moments.csv";
   constexpr char kSliderLogPath[] = "/tmp/slider_positions.csv";
   constexpr char kPoseLogPath[] = "/tmp/robobee_pose.csv";
@@ -1507,7 +1510,7 @@ int main(int argc, char** argv) {
   // stroke while still using Drake's finite-gain actuator path.
   constexpr double kSliderEffortLimitN = 100000.0;
   constexpr double kSliderKp = 1000.0;
-  constexpr double kSliderKd = 5.0e-3;
+  constexpr double kSliderKd = 5.0;
 
   // Add PD-controlled actuators to the two slider joints. The desired state
   // input is provided after Finalize by VoltageStrokeSource.
