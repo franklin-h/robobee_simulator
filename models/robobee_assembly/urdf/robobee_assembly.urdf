@@ -113,9 +113,9 @@
     </link>
     <link name="part_1">
         <inertial>
-            <mass value="3.68516e-06" />
-            <origin xyz="1.47071e-18 -4.11003e-21 -0.000202819" rpy="0 -0 0" />
-            <inertia ixx="5.99148e-11" ixy="0" ixz="0" iyy="6.04043e-11" iyz="0" izz="5.07226e-13" />
+            <mass value="3.73646e-06" />
+            <origin xyz="-2.73267e-17 -3.54238e-05 -0.000338918" rpy="0 -0 0" />
+            <inertia ixx="6.55456e-11" ixy="0" ixz="0" iyy="6.64362e-11" iyz="-1.44584e-12" izz="1.79653e-12" />
         </inertial>
         <visual>
             <origin xyz="0 0 0" rpy="0 -0 0" />
@@ -129,9 +129,9 @@
     </link>
     <link name="part_10">
         <inertial>
-            <mass value="1.458e-06" />
-            <origin xyz="0 0.000217 0.0105" rpy="0 -0 0" />
-            <inertia ixx="1.09525e-12" ixy="0" ixz="0" iyy="1.12387e-12" iyz="0" izz="3.21246e-14" />
+            <mass value="1.8225e-06" />
+            <origin xyz="2.80484e-20 0.000217 -0.00065" rpy="0 -0 0" />
+            <inertia ixx="3.56056e-13" ixy="0" ixz="0" iyy="6.51923e-13" iyz="0" izz="3.00242e-13" />
         </inertial>
         <visual>
             <origin xyz="0 0 0" rpy="0 -0 0" />
@@ -145,9 +145,9 @@
     </link>
     <link name="part_10_1">
         <inertial>
-            <mass value="1.458e-06" />
-            <origin xyz="0 0.000217 0.0105" rpy="0 -0 0" />
-            <inertia ixx="1.09525e-12" ixy="0" ixz="0" iyy="1.12387e-12" iyz="0" izz="3.21246e-14" />
+            <mass value="1.8225e-06" />
+            <origin xyz="2.80484e-20 0.000217 -0.00065" rpy="0 -0 0" />
+            <inertia ixx="3.56056e-13" ixy="0" ixz="0" iyy="6.51923e-13" iyz="0" izz="3.00242e-13" />
         </inertial>
         <visual>
             <origin xyz="0 0 0" rpy="0 -0 0" />
@@ -159,50 +159,50 @@
             </material>
         </visual>
     </link>
-    <link name="part_10__1__loop_closure">
+    <link name="part_11">
+        <inertial>
+            <mass value="1.8225e-07" />
+            <origin xyz="1.54967e-20 0.0002845 0.0105" rpy="0 -0 0" />
+            <inertia ixx="1.36691e-13" ixy="0" ixz="0" iyy="1.40484e-13" iyz="0" izz="3.80029e-15" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 -0 0" />
+            <geometry>
+                <mesh filename="package://robobee_assembly/meshes/Part_11.obj" scale="1 1 1" />
+            </geometry>
+            <material name="0.980392_0.713725_0.003922_0.000000_0.000000">
+                <color rgba="0.980392 0.713726 0.00392157 1" />
+            </material>
+        </visual>
+    </link>
+    <link name="part_11_1">
+        <inertial>
+            <mass value="1.8225e-07" />
+            <origin xyz="1.54967e-20 0.0002845 0.0105" rpy="0 -0 0" />
+            <inertia ixx="1.36691e-13" ixy="0" ixz="0" iyy="1.40484e-13" iyz="0" izz="3.80029e-15" />
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 -0 0" />
+            <geometry>
+                <mesh filename="package://robobee_assembly/meshes/Part_11.obj" scale="1 1 1" />
+            </geometry>
+            <material name="0.980392_0.713725_0.003922_0.000000_0.000000">
+                <color rgba="0.980392 0.713726 0.00392157 1" />
+            </material>
+        </visual>
+    </link>
+    <link name="part_11__1__loop_closure">
         <inertial>
             <mass value="1e-09" />
             <origin xyz="0 0 0" rpy="0 -0 0" />
             <inertia ixx="4e-14" ixy="0" ixz="0" iyy="4e-14" iyz="0" izz="4e-14" />
         </inertial>
     </link>
-    <link name="part_11">
-        <inertial>
-            <mass value="1.8225e-06" />
-            <origin xyz="2.80484e-20 0.000217 -0.00065" rpy="0 -0 0" />
-            <inertia ixx="3.56056e-13" ixy="0" ixz="0" iyy="6.51923e-13" iyz="0" izz="3.00242e-13" />
-        </inertial>
-        <visual>
-            <origin xyz="0 0 0" rpy="0 -0 0" />
-            <geometry>
-                <mesh filename="package://robobee_assembly/meshes/Part_11.obj" scale="1 1 1" />
-            </geometry>
-            <material name="0.301961_0.301961_0.301961_0.000000_0.000000">
-                <color rgba="0.301961 0.301961 0.301961 1" />
-            </material>
-        </visual>
-    </link>
-    <link name="part_11_1">
-        <inertial>
-            <mass value="1.8225e-06" />
-            <origin xyz="2.80484e-20 0.000217 -0.00065" rpy="0 -0 0" />
-            <inertia ixx="3.56056e-13" ixy="0" ixz="0" iyy="6.51923e-13" iyz="0" izz="3.00242e-13" />
-        </inertial>
-        <visual>
-            <origin xyz="0 0 0" rpy="0 -0 0" />
-            <geometry>
-                <mesh filename="package://robobee_assembly/meshes/Part_11.obj" scale="1 1 1" />
-            </geometry>
-            <material name="0.301961_0.301961_0.301961_0.000000_0.000000">
-                <color rgba="0.301961 0.301961 0.301961 1" />
-            </material>
-        </visual>
-    </link>
     <link name="part_12">
         <inertial>
-            <mass value="1.8225e-07" />
-            <origin xyz="1.54967e-20 0.0002845 0.0105" rpy="0 -0 0" />
-            <inertia ixx="1.36691e-13" ixy="0" ixz="0" iyy="1.40484e-13" iyz="0" izz="3.80029e-15" />
+            <mass value="2.27812e-07" />
+            <origin xyz="3.50605e-20 0.0002845 -0.00065" rpy="0 -0 0" />
+            <inertia ixx="4.42379e-14" ixy="0" ixz="0" iyy="8.14904e-14" iyz="0" izz="3.72611e-14" />
         </inertial>
         <visual>
             <origin xyz="0 0 0" rpy="0 -0 0" />
@@ -216,9 +216,9 @@
     </link>
     <link name="part_12_1">
         <inertial>
-            <mass value="1.8225e-07" />
-            <origin xyz="1.54967e-20 0.0002845 0.0105" rpy="0 -0 0" />
-            <inertia ixx="1.36691e-13" ixy="0" ixz="0" iyy="1.40484e-13" iyz="0" izz="3.80029e-15" />
+            <mass value="2.27812e-07" />
+            <origin xyz="3.50605e-20 0.0002845 -0.00065" rpy="0 -0 0" />
+            <inertia ixx="4.42379e-14" ixy="0" ixz="0" iyy="8.14904e-14" iyz="0" izz="3.72611e-14" />
         </inertial>
         <visual>
             <origin xyz="0 0 0" rpy="0 -0 0" />
@@ -237,46 +237,7 @@
             <inertia ixx="4e-14" ixy="0" ixz="0" iyy="4e-14" iyz="0" izz="4e-14" />
         </inertial>
     </link>
-    <link name="part_13">
-        <inertial>
-            <mass value="2.27812e-07" />
-            <origin xyz="3.50605e-20 0.0002845 -0.00065" rpy="0 -0 0" />
-            <inertia ixx="4.42379e-14" ixy="0" ixz="0" iyy="8.14904e-14" iyz="0" izz="3.72611e-14" />
-        </inertial>
-        <visual>
-            <origin xyz="0 0 0" rpy="0 -0 0" />
-            <geometry>
-                <mesh filename="package://robobee_assembly/meshes/Part_13.obj" scale="1 1 1" />
-            </geometry>
-            <material name="0.980392_0.713725_0.003922_0.000000_0.000000">
-                <color rgba="0.980392 0.713726 0.00392157 1" />
-            </material>
-        </visual>
-    </link>
-    <link name="part_13_1">
-        <inertial>
-            <mass value="2.27812e-07" />
-            <origin xyz="3.50605e-20 0.0002845 -0.00065" rpy="0 -0 0" />
-            <inertia ixx="4.42379e-14" ixy="0" ixz="0" iyy="8.14904e-14" iyz="0" izz="3.72611e-14" />
-        </inertial>
-        <visual>
-            <origin xyz="0 0 0" rpy="0 -0 0" />
-            <geometry>
-                <mesh filename="package://robobee_assembly/meshes/Part_13.obj" scale="1 1 1" />
-            </geometry>
-            <material name="0.980392_0.713725_0.003922_0.000000_0.000000">
-                <color rgba="0.980392 0.713726 0.00392157 1" />
-            </material>
-        </visual>
-    </link>
-    <link name="part_13__1__loop_closure">
-        <inertial>
-            <mass value="1e-09" />
-            <origin xyz="0 0 0" rpy="0 -0 0" />
-            <inertia ixx="4e-14" ixy="0" ixz="0" iyy="4e-14" iyz="0" izz="4e-14" />
-        </inertial>
-    </link>
-    <link name="part_13__1__loop_closure_1">
+    <link name="part_12__1__loop_closure_1">
         <inertial>
             <mass value="1e-09" />
             <origin xyz="0 0 0" rpy="0 -0 0" />
@@ -317,9 +278,9 @@
     </link>
     <link name="part_1_3">
         <inertial>
-            <mass value="4.38258e-06" />
-            <origin xyz="-1.3127e-18 -6.91197e-21 0.00746901" rpy="0 -0 0" />
-            <inertia ixx="8.14618e-11" ixy="0" ixz="0" iyy="8.2521e-11" iyz="0" izz="1.0803e-12" />
+            <mass value="4.43388e-06" />
+            <origin xyz="-6.79329e-18 -2.98519e-05 0.00734408" rpy="0 -0 0" />
+            <inertia ixx="8.80331e-11" ixy="0" ixz="0" iyy="8.94927e-11" iyz="-1.56441e-12" izz="2.37034e-12" />
         </inertial>
         <visual>
             <origin xyz="0 0 0" rpy="0 -0 0" />
@@ -586,37 +547,58 @@
     </link>
     <link name="part_9">
         <inertial>
-            <mass value="3.00105e-08" />
-            <origin xyz="0.00031 -0.0002845 -0.001175" rpy="0 -0 0" />
-            <inertia ixx="1.05718e-15" ixy="0" ixz="0" iyy="1.41775e-15" iyz="0" izz="3.61e-16" />
+            <mass value="1.458e-06" />
+            <origin xyz="0 0.000217 0.0105" rpy="0 -0 0" />
+            <inertia ixx="1.09525e-12" ixy="0" ixz="0" iyy="1.12387e-12" iyz="0" izz="3.21246e-14" />
         </inertial>
         <visual>
             <origin xyz="0 0 0" rpy="0 -0 0" />
             <geometry>
                 <mesh filename="package://robobee_assembly/meshes/Part_9.obj" scale="1 1 1" />
             </geometry>
-            <material name="0.980392_0.713725_0.003922_0.000000_0.000000">
-                <color rgba="0.980392 0.713726 0.00392157 1" />
+            <material name="0.301961_0.301961_0.301961_0.000000_0.000000">
+                <color rgba="0.301961 0.301961 0.301961 1" />
             </material>
         </visual>
     </link>
     <link name="part_9_1">
         <inertial>
-            <mass value="3.00105e-08" />
-            <origin xyz="0.00031 -0.0002845 -0.001175" rpy="0 -0 0" />
-            <inertia ixx="1.05718e-15" ixy="0" ixz="0" iyy="1.41775e-15" iyz="0" izz="3.61e-16" />
+            <mass value="1.458e-06" />
+            <origin xyz="0 0.000217 0.0105" rpy="0 -0 0" />
+            <inertia ixx="1.09525e-12" ixy="0" ixz="0" iyy="1.12387e-12" iyz="0" izz="3.21246e-14" />
         </inertial>
         <visual>
             <origin xyz="0 0 0" rpy="0 -0 0" />
             <geometry>
                 <mesh filename="package://robobee_assembly/meshes/Part_9.obj" scale="1 1 1" />
             </geometry>
-            <material name="0.980392_0.713725_0.003922_0.000000_0.000000">
-                <color rgba="0.980392 0.713726 0.00392157 1" />
+            <material name="0.301961_0.301961_0.301961_0.000000_0.000000">
+                <color rgba="0.301961 0.301961 0.301961 1" />
             </material>
         </visual>
     </link>
+    <link name="part_9__1_">
+        <inertial>
+            <mass value="1e-09" />
+            <origin xyz="0 0 0" rpy="0 -0 0" />
+            <inertia ixx="4e-14" ixy="0" ixz="0" iyy="4e-14" iyz="0" izz="4e-14" />
+        </inertial>
+    </link>
+    <link name="part_9__1__1">
+        <inertial>
+            <mass value="1e-09" />
+            <origin xyz="0 0 0" rpy="0 -0 0" />
+            <inertia ixx="4e-14" ixy="0" ixz="0" iyy="4e-14" iyz="0" izz="4e-14" />
+        </inertial>
+    </link>
     <link name="part_9__1__loop_closure">
+        <inertial>
+            <mass value="1e-09" />
+            <origin xyz="0 0 0" rpy="0 -0 0" />
+            <inertia ixx="4e-14" ixy="0" ixz="0" iyy="4e-14" iyz="0" izz="4e-14" />
+        </inertial>
+    </link>
+    <link name="part_9__1__loop_closure_1">
         <inertial>
             <mass value="1e-09" />
             <origin xyz="0 0 0" rpy="0 -0 0" />
@@ -1021,19 +1003,19 @@
         <origin xyz="0.000822004 3.57999e-11 0.001008" rpy="-2.53551e-15 -2.15805e-21 1.5708" />
         <axis xyz="0 0 1" />
         <parent link="root" />
-        <child link="part_11_1" />
+        <child link="part_10_1" />
     </joint>
     <joint name="fixed_node_to_root_joint_11" type="fixed">
         <origin xyz="0.000822004 3.57999e-11 0.001008" rpy="-2.53551e-15 -2.15805e-21 1.5708" />
         <axis xyz="0 0 1" />
         <parent link="root" />
-        <child link="part_10_1" />
+        <child link="part_9_1" />
     </joint>
     <joint name="fixed_node_to_root_joint_12" type="fixed">
         <origin xyz="0.000822004 3.57999e-11 0.001008" rpy="-2.53551e-15 -2.15805e-21 1.5708" />
         <axis xyz="0 0 1" />
         <parent link="root" />
-        <child link="part_13_1" />
+        <child link="part_12_1" />
     </joint>
     <joint name="fixed_node_to_root_joint_13" type="fixed">
         <origin xyz="-0.000822 3.57999e-11 0.001008" rpy="2.34122e-15 1.9429e-16 -1.5708" />
@@ -1087,13 +1069,13 @@
         <origin xyz="-0.000822 3.57999e-11 0.001008" rpy="2.34122e-15 1.9429e-16 -1.5708" />
         <axis xyz="0 0 1" />
         <parent link="root" />
-        <child link="part_12" />
+        <child link="part_11" />
     </joint>
     <joint name="fixed_node_to_root_joint_21" type="fixed">
         <origin xyz="-0.000822 3.57999e-11 0.001008" rpy="2.34122e-15 1.9429e-16 -1.5708" />
         <axis xyz="0 0 1" />
         <parent link="root" />
-        <child link="part_9" />
+        <child link="part_9__1__1" />
     </joint>
     <joint name="fixed_node_to_root_joint_22" type="fixed">
         <origin xyz="-0.000822 3.57999e-11 0.001008" rpy="2.34122e-15 1.9429e-16 -1.5708" />
@@ -1105,19 +1087,19 @@
         <origin xyz="-0.000822 3.57999e-11 0.001008" rpy="2.34122e-15 1.9429e-16 -1.5708" />
         <axis xyz="0 0 1" />
         <parent link="root" />
-        <child link="part_11" />
+        <child link="part_10" />
     </joint>
     <joint name="fixed_node_to_root_joint_24" type="fixed">
         <origin xyz="-0.000822 3.57999e-11 0.001008" rpy="2.34122e-15 1.9429e-16 -1.5708" />
         <axis xyz="0 0 1" />
         <parent link="root" />
-        <child link="part_10" />
+        <child link="part_9" />
     </joint>
     <joint name="fixed_node_to_root_joint_25" type="fixed">
         <origin xyz="-0.000822 3.57999e-11 0.001008" rpy="2.34122e-15 1.9429e-16 -1.5708" />
         <axis xyz="0 0 1" />
         <parent link="root" />
-        <child link="part_13" />
+        <child link="part_12" />
     </joint>
     <joint name="fixed_node_to_root_joint_26" type="fixed">
         <origin xyz="-3.12792e-17 1.40187e-16 4.5e-05" rpy="-9.7945e-22 1.94289e-16 3.14159" />
@@ -1189,13 +1171,13 @@
         <origin xyz="0.000822004 3.57999e-11 0.001008" rpy="-2.53551e-15 -2.15805e-21 1.5708" />
         <axis xyz="0 0 1" />
         <parent link="root" />
-        <child link="part_12_1" />
+        <child link="part_11_1" />
     </joint>
     <joint name="fixed_node_to_root_joint_8" type="fixed">
         <origin xyz="0.000822004 3.57999e-11 0.001008" rpy="-2.53551e-15 -2.15805e-21 1.5708" />
         <axis xyz="0 0 1" />
         <parent link="root" />
-        <child link="part_9_1" />
+        <child link="part_9__1_" />
     </joint>
     <joint name="fixed_node_to_root_joint_9" type="fixed">
         <origin xyz="0.000822004 3.57999e-11 0.001008" rpy="-2.53551e-15 -2.15805e-21 1.5708" />
@@ -1236,32 +1218,32 @@
     <joint name="group_1_fastened_joint_loop_closure_12" type="fixed">
         <origin xyz="0 0 0" rpy="-3.9443e-31 -1.88079e-37 -3.15545e-30" />
         <axis xyz="0 0 1" />
-        <parent link="part_9" />
+        <parent link="part_9__1__1" />
         <child link="part_8__1__loop_closure_1" />
     </joint>
     <joint name="group_1_fastened_joint_loop_closure_13" type="fixed">
         <origin xyz="0 0 0" rpy="-3.9443e-31 -1.88079e-37 -3.15545e-30" />
         <axis xyz="0 0 1" />
-        <parent link="part_13" />
-        <child link="part_12__1__loop_closure" />
+        <parent link="part_12" />
+        <child link="part_11__1__loop_closure" />
     </joint>
     <joint name="group_1_fastened_joint_loop_closure_14" type="fixed">
         <origin xyz="0 0 0" rpy="-3.9443e-31 -1.88079e-37 -3.15545e-30" />
         <axis xyz="0 0 1" />
-        <parent link="part_10" />
+        <parent link="part_9" />
         <child link="part_9__1__loop_closure" />
     </joint>
     <joint name="group_1_fastened_joint_loop_closure_15" type="fixed">
         <origin xyz="0 0 0" rpy="-3.9443e-31 -1.88079e-37 -3.15545e-30" />
         <axis xyz="-0 -0 -1" />
-        <parent link="part_11" />
+        <parent link="part_10" />
         <child link="part_7__1__loop_closure" />
     </joint>
     <joint name="group_1_fastened_joint_loop_closure_16" type="fixed">
         <origin xyz="0 0 0" rpy="-3.9443e-31 -1.88079e-37 -3.15545e-30" />
         <axis xyz="0 0 1" />
         <parent link="part_8" />
-        <child link="part_13__1__loop_closure" />
+        <child link="part_12__1__loop_closure" />
     </joint>
     <joint name="group_1_fastened_joint_loop_closure_2" type="fixed">
         <origin xyz="0 0 0" rpy="0 -0 1.50479e-44" />
@@ -1272,26 +1254,26 @@
     <joint name="group_1_fastened_joint_loop_closure_3" type="fixed">
         <origin xyz="0 0 0" rpy="0 -0 1.50479e-44" />
         <axis xyz="0 0 1" />
-        <parent link="part_9_1" />
+        <parent link="part_9__1_" />
         <child link="part_8__1__loop_closure" />
     </joint>
     <joint name="group_1_fastened_joint_loop_closure_4" type="fixed">
         <origin xyz="0 0 0" rpy="0 -0 1.50479e-44" />
         <axis xyz="0 0 1" />
-        <parent link="part_12_1" />
+        <parent link="part_11_1" />
         <child link="part_7__1__loop_closure_1" />
     </joint>
     <joint name="group_1_fastened_joint_loop_closure_5" type="fixed">
         <origin xyz="0 0 0" rpy="0 -0 1.50479e-44" />
         <axis xyz="0 0 1" />
         <parent link="pzt_layer2_1" />
-        <child link="part_10__1__loop_closure" />
+        <child link="part_9__1__loop_closure_1" />
     </joint>
     <joint name="group_1_fastened_joint_loop_closure_6" type="fixed">
         <origin xyz="0 0 0" rpy="0 -0 1.50479e-44" />
         <axis xyz="-0 -0 -1" />
-        <parent link="part_12_1" />
-        <child link="part_13__1__loop_closure_1" />
+        <parent link="part_11_1" />
+        <child link="part_12__1__loop_closure_1" />
     </joint>
     <joint name="group_1_fastened_joint_loop_closure_7" type="fixed">
         <origin xyz="0 0 0" rpy="-3.9443e-31 -1.88079e-37 -3.15545e-30" />
@@ -1302,7 +1284,7 @@
     <joint name="group_1_fastened_joint_loop_closure_8" type="fixed">
         <origin xyz="0 0 0" rpy="-3.9443e-31 -1.88079e-37 -3.15545e-30" />
         <axis xyz="-0 -0 -1" />
-        <parent link="part_10" />
+        <parent link="part_9" />
         <child link="pzt_layer2__1__loop_closure" />
     </joint>
     <joint name="group_1_fastened_joint_loop_closure_9" type="fixed">

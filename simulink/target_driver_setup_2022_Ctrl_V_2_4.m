@@ -3,6 +3,7 @@
 
 clear all;
 close all;
+christian_params = load('RoboBee_optimal_fitting_parameter_155Hz_2022_BBee_v2.mat'); 
 
 %% Timing and sampling rate
 dt_s = 2.0e-4;
@@ -14,13 +15,14 @@ sampling_time = 1/sampling_f;
 host = "127.0.0.1";
 port = 4242;
 
+reset_plant('updated_target_driver_2026_withVariants')
 %% Control mode flags
 landing_flag=0; % 0 : No landing, 1: landing on
 
 control_flag=2; %2 % 1: Openloop, 2: closed loop.
 adaptive_flag=0;					% 0: no-adaptive 1: adaptive
 adaptive_lateral_flag=0;	% 0:  -adaptive 1: adaptive
-
+autosim = 1; 
 %% Plant selection and start-up delays
 % Plant = 1 for vicon, 2 for Drake
 Plant = 2;
@@ -44,7 +46,7 @@ start_delay_adaptive = start_delay + ramp_delay+adaptive_delay;
 f = 155; %170; %165
 f_int = f;					% initial frequency
 f_fin = f;					% final frequency
-T = 1;			% total time in seconds
+T = 0.3;			% total time in seconds
 
 
 %% Save settings
@@ -66,7 +68,7 @@ save_file_name = '20221217_PBee_OL_1';
 
 %% Vehicle parameters
 g=9.8; % gravity
-m = 80e-6; %101e-6%90e-6;%86e-6; %86*1e-6%86*1e-6; % vehicle weight in kg (mg * 1e-6)
+m = 1.05e-4; %101e-6%90e-6;%86e-6; %86*1e-6%86*1e-6; % vehicle weight in kg (mg * 1e-6)
 %
 % Ixx = 1.42*1e-9; % Principal moment of inertia
 % Iyy = 1.34*1e-9%1.34*1e-9;
@@ -88,7 +90,8 @@ Izz = 0.31e-9;
 % Izz = 2.5e-4;
 
 % Payload;
-payload = 23e-6;
+% payload = 23e-6;
+payload = 0; 
 l_payload = 0e-3;
 Ixx_payload = payload*l_payload^2;
 Iyy_payload = payload*l_payload^2;
@@ -121,7 +124,7 @@ roll_offset_angle = 0; % New Vicon calibration
 % params = load('RoboBee_optimal_fitting_parameter_150Hz_2022_Apr.mat');
 
 % BBee System ID without the leg
-params = load('system id/Drake Model/Optimal_fitting_parameter_155Hz_v2.mat');
+params = load('system id/Drake Model/Optimal_fitting_parameter_proper_signs2.mat');
 % BBee System ID with the rigid leg
 % params = load('RoboBee_optimal_fitting_parameter_155Hz_2022_BBee_rigid_leg_v1.mat');
 
@@ -143,13 +146,14 @@ params_opt = params.params_opt;
 % params_opt.eta = 1.0043; % manually foundto be best 
 % params_opt.mu = 0.0; % nominal 
 params_opt.gamma_2 = params_opt.gamma_2_1; 
-
+% params_opt.delta_3 = -0.0038;
+% params_opt.delta_3 = -0.0044; 
 params_vec = [params_opt.delta_1, params_opt.delta_2, params_opt.delta_3, params_opt.gamma_1, params_opt.gamma_2, params_opt.gamma_3, params_opt.eta, params_opt.nu, params_opt.mu]';
 % Becky 05072022
 % params_vec = [4.615418611008412, 1.864800777306221, -0.003836409949443, 0.000000002617698, 0.002712888814185, 0.470047661467390, 1.252086811352254, -12.320534223706176, -0.106510851419032];
 
 Thurst_limit = 1.2*1e-3;        % 1.2   mN
-Torque_roll_limit = -0.35*1e-4;   % 0.2   mNmm;
+Torque_roll_limit = 0.35*1e-4;   % 0.2   mNmm;
 Torque_pitch_limit = 0.2*1e-6;  % 0.2   mNmm;
 Torque_yaw_limit = 0.2*1e-7;%0.2*1e-7;    % 0.02  mNmm;
 
@@ -226,13 +230,13 @@ drv_pch = drv_pitch_left;
 % a2_openloop = -0; %0.2;2
 
 % Franklin Open Loop
-drv_amp = 160;
+drv_amp = 180;
 % drv_roll = -1e-3;
-drv_roll = 0; 
+drv_roll = 20; 
 % drv_pitch_left = 6.95;
 % drv_pitch_right = 6.95;
-drv_pitch_left = 0; 
-drv_pitch_right = 0; 
+drv_pitch_left = 6.95; 
+drv_pitch_right = 6.95; 
 a2_openloop = 0;
 
 
@@ -305,41 +309,41 @@ xd_ddot = [0, 0, 0];
 b_1_d_desired = [1,0,0];
 
 %Lateral gain
-k_x = 0.5/scale; %0.5
-k_v = 0.05/scale; %0.05
+k_x = 1.5/scale; %0.5
+k_v = 0.5/scale; %0.05
 
 %Attitude gain
 k_R = 0.5/(scale^2);%0.5/(scale^2);		yaw pitch
-k_Rx = 0.6/(scale^2);%0.6/(scale^2);		roll
-k_Omega =  0.25/(scale^2);%0.25/(scale^2);
+k_Rx = 13/(scale^2);%0.6/(scale^2);		roll
+k_Omega =  7.0/(scale^2);%0.25/(scale^2);
 
 %Altitude gain
-k_z = 0.2/scale;%0.2/scale;
+k_z = 1.2/scale;%0.2/scale;
 k_vz = 0.25/scale;%0.25/scale;
 
 control_gain = [k_x,k_v, k_R, k_Omega, k_z, k_vz, k_Rx];
 
 % Altitude feed back saturation
-upp_bound_z = 0.04; % m
-low_bound_z =-0.04; % m
+upp_bound_z = 0.1; % m
+low_bound_z =-0.1; % m
 upp_bound_vz = 0.5; % m/s
 low_bound_vz =-0.5; % m/s
 
-upp_bound_x = 0.06; % m
-low_bound_x =-0.06; % m
+upp_bound_x = 0.6; % m
+low_bound_x =-0.6; % m
 upp_bound_vx = 0.5; % m/s
 low_bound_vx =-0.5; % m/s
 
-upp_bound_y = 0.06; % m
-low_bound_y =-0.06; % m
+upp_bound_y = 0.6; % m
+low_bound_y =-0.6; % m
 upp_bound_vy = 0.5; % m/s
 low_bound_vy =-0.5; % m/s
 
 
-upp_bound =8; %4 % rad/s
-low_bound =-8; %-4 % rad/s
-upp_bound_eR =0.8; %0.3   % attitude error
-low_bound_eR =-0.8; %-0.3 % attitude error
+upp_bound =10; %4 % rad/s this helped a lot!! 
+low_bound =-10; %-4 % rad/s
+upp_bound_eR =1.2; %0.3   % attitude error
+low_bound_eR =-1.2; %-0.3 % attitude error
 
 %% Adaptive Control gain
 gamma_adaptive = 5e-8*upp_bound;
@@ -386,8 +390,12 @@ adaptive_gain = [gamma_adaptive, adaptive_roll_limit, adaptive_pitch_limit, adap
 
 
 %% low pass filter
-[lp_num, lp_den]=butter(5, 100/sampling_f);  % 80
-[vlp_num, vlp_den]=butter(5, 100/sampling_f);  % 80
+% butter() normalizes the cutoff to Nyquist (sampling_f/2), so a cutoff of
+% lp_cutoff_hz must be divided by (sampling_f/2), NOT by sampling_f (which
+% would give half the intended cutoff).
+lp_cutoff_hz = 100;   % desired low-pass cutoff [Hz]
+[lp_num, lp_den]  =butter(5, lp_cutoff_hz/(sampling_f/2));
+[vlp_num, vlp_den]=butter(5, lp_cutoff_hz/(sampling_f/2));
 
 
 %% attitude controller setup (Filtering to get angular velocity wrt body frame)
@@ -395,7 +403,7 @@ adaptive_gain = [gamma_adaptive, adaptive_roll_limit, adaptive_pitch_limit, adap
 att_s = 500;
 k_da = exp(-att_s*sampling_time);
 att_s2 = 60;
-k_da2 = exp(-att_s*sampling_time);
+k_da2 = exp(-att_s2*sampling_time);
 att_k = 72e-9;  %72
 att_Lambda = 12.5;		% or 12.5?
 simple_s = 500;
@@ -447,4 +455,18 @@ set_param(mdl, 'Solver', 'FixedStepDiscrete');
 set_param(mdl, 'FixedStep', 'dt_s');
 set_param(mdl, 'StopTime', 'running_time');
 
-sim(updated_target_driver_2026_withVariants); 
+if autosim == 1
+    sim('updated_target_driver_2026_withVariants'); 
+end 
+
+function reset_plant(mdl)
+%RESET_PLANT Drop the persistent Drake TCP socket so the next sim() gets a
+% fresh simulation (pose reset, wrench CSV truncated). Unloading the model
+% sim-target MEX destroys the native client's static socket; the server then
+% sees the disconnect, flushes/closes the current wrench CSV, and rebuilds a
+% clean simulation on the next connect.
+    sfun = [mdl '_sfun'];
+    clear(sfun);
+    clear mex; %#ok<CLMEX>  % ensure the sim-target library is fully unloaded
+    pause(0.2);            % give the server time to notice the disconnect + flush
+end

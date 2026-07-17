@@ -88,7 +88,7 @@ end
 % 1) USER SETTINGS  (edit these)
 % -------------------------------------------------------------------------
 PORT            = 4242;      % Drake server TCP port
-SYSID_DURATION  = 0.4;      % [s] per-run open-loop hold time (transient + averaging window)
+SYSID_DURATION  = 0.3;      % [s] per-run open-loop hold time (transient + averaging window)
 BIAS_V          = 200;       % max_drv_bias (PZT bias rail); Excel campaigns used 300
 
 % Steady-state wrench averaging (mirrors tools/plot_com_wrench_moving_avg.py):
@@ -115,7 +115,7 @@ FORCE_SERVER_RELAUNCH = false;  % true -> kill any server on PORT and launch the
 % Command ranges: full usable ranges from Patrick_Bee_systemID_20231103.xlsx /
 % OL_20230927 (155 Hz). Excludes the 5 rows that sheet flags "DO NOT USE"
 % (a2 = -4, -2, -1, -0.5, and the 190/-0.2 point -> excessive negative yaw).
-AMP_LIST   = [160 170 180 190];                                % drv_amp  (peak-to-peak drive command)
+AMP_LIST   = [155 165 175 185];                                % drv_amp  (peak-to-peak drive command)
 ROLL_LIST  = [-4 -2 0 2 4 6 8 10];                             % drv_roll (differential -> roll)
 PITCH_LIST = [-20 -15 -10 -5 0 5 10 15 20 25 30 40 50 60 70];  % drv_pitch_left = drv_pitch_right (offset -> pitch)
 A2_LIST    = [-0.3 -0.2 -0.15 -0.1 0 0.1 0.15 0.2 0.3];        % a2_openloop (2nd-harmonic coeff -> yaw)

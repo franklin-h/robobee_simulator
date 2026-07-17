@@ -45,6 +45,7 @@ namespace {
 constexpr char kPackageName[] = "robobee_assembly";
 constexpr char kPackagePath[] = "models/robobee_assembly";
 constexpr double kPi = 3.14159265358979323846;
+constexpr double kInitialFreeFlightHeightM = 7.0e-3;
 
 #ifdef ROBOBEE_FREE_FLIGHT
 constexpr bool kFreeFlight = true;
@@ -883,6 +884,13 @@ void AddRoboBeeBodyFrameTriadVisuals(
                           "right_wing_membrane_frame");
 }
 
+// Express a vector from the URDF root frame R in the controller/robot frame C.
+// The URDF root axes are +x toward the right wing, +y forward, and +z up.
+// The controller axes are +x forward, +y left, and +z up.
+Eigen::Vector3d RootVectorToController(const Eigen::Vector3d& vector_R) {
+  return Eigen::Vector3d(vector_R.y(), -vector_R.x(), vector_R.z());
+}
+
 Eigen::Vector2d CalcSliderRestPositions(
     const drake::multibody::MultibodyPlant<double>& plant) {
   std::unique_ptr<drake::systems::Context<double>> context =
@@ -895,24 +903,41 @@ Eigen::Vector2d CalcSliderRestPositions(
                          left_slider.get_translation(*context));
 }
 
-// Optional free-flight floor. It is compiled in only when ROBOBEE_FREE_FLIGHT
-// is defined, otherwise the root is welded to world in main().
-[[maybe_unused]] void AddWorldFloor(
+// Contact geometry for free flight. The Onshape-exported URDF contains visual
+// meshes but no <collision> elements, so a rigid airframe proxy is registered
+// here; without it, the floor exists in SceneGraph but the robot falls through.
+// This is compiled in only when ROBOBEE_FREE_FLIGHT is defined; otherwise the
+// root is welded to world.
+[[maybe_unused]] void AddFreeFlightContactGeometry(
     drake::multibody::MultibodyPlant<double>* plant) {
   constexpr double kFloorThickness = 1.0e-3;
   constexpr double kFloorSize = 0.20;
+  constexpr double kAirframeCollisionSizeX = 12.7e-3;
+  constexpr double kAirframeCollisionSizeY = 5.2e-3;
+  constexpr double kAirframeCollisionSizeZ = 20.5e-3;
+  constexpr double kAirframeCollisionCenterZ = 3.25e-3;
+  const drake::multibody::CoulombFriction<double> friction(1.0, 1.0);
   const auto& world = plant->world_body();
 
   plant->RegisterCollisionGeometry(
       world, drake::math::RigidTransformd::Identity(),
-      drake::geometry::HalfSpace(), "floor_collision",
-      drake::multibody::CoulombFriction<double>(1.0, 1.0));
+      drake::geometry::HalfSpace(), "floor_collision", friction);
   plant->RegisterVisualGeometry(
       world,
       drake::math::RigidTransformd(
           Eigen::Vector3d(0.0, 0.0, -0.5 * kFloorThickness)),
       drake::geometry::Box(kFloorSize, kFloorSize, kFloorThickness),
       "floor_visual", Eigen::Vector4d(0.55, 0.58, 0.62, 0.35));
+
+  const auto& root = plant->GetBodyByName("root");
+  plant->RegisterCollisionGeometry(
+      root,
+      drake::math::RigidTransformd(
+          Eigen::Vector3d(0.0, 0.0, kAirframeCollisionCenterZ)),
+      drake::geometry::Box(kAirframeCollisionSizeX,
+                           kAirframeCollisionSizeY,
+                           kAirframeCollisionSizeZ),
+      "airframe_collision", friction);
 }
 
 // CSV utilities for the moment log. The order matches the left/right entries in
@@ -1047,13 +1072,13 @@ void WritePoseCsvRow(std::ostream* output, double time_s,
 }
 
 // Net aerodynamic wrench produced by both wings, reduced to the robot center of
-// mass and resolved in the root (body) frame. When the root is welded to world
-// (the default, "fixed" build) this is the thrust/torque the wing loads would
-// exert on the airframe. thrust_z is the net force along the body z-axis. The
-// root frame axes are x = lateral (wingspan, +x toward the right wing), y =
-// forward, and z = up (see AddRoboBeeBodyFrameTriadVisuals). So physical roll
-// is about the forward axis (root +y), pitch is about the lateral axis
-// (root +x), and yaw is about the up axis (root +z).
+// mass and resolved in controller/robot axes: +x forward, +y left, and +z up.
+// Consequently, roll_torque_Nm is the positive moment about controller +x,
+// pitch_torque_Nm is the positive moment about controller +y, and
+// yaw_torque_Nm is the positive moment about controller +z. The URDF root frame
+// uses +x toward the right wing and +y forward, so CalcAeroWrenchAboutCom
+// explicitly transforms the wrench before it is written to CSV or returned to
+// Simulink.
 struct ComWrench {
   double thrust_z_N{};
   double roll_torque_Nm{};
@@ -1064,7 +1089,8 @@ struct ComWrench {
 // Reduce the per-wing ExternallyAppliedSpatialForce entries to a single spatial
 // force about the robot COM. Each entry carries a force and moment applied at a
 // point Bq fixed in a wing body, both expressed in world coordinates; we shift
-// every force to the COM and re-express the total in the root frame.
+// every force to the COM, re-express the total in the root frame, and finally
+// convert it to controller/robot axes for logging and telemetry.
 ComWrench CalcAeroWrenchAboutCom(
     const drake::multibody::MultibodyPlant<double>& plant,
     const drake::systems::Context<double>& plant_context,
@@ -1090,14 +1116,13 @@ ComWrench CalcAeroWrenchAboutCom(
           .inverse();
   const Eigen::Vector3d force_R = R_RW * total_force_W;
   const Eigen::Vector3d moment_R = R_RW * total_moment_W;
+  const Eigen::Vector3d force_C = RootVectorToController(force_R);
+  const Eigen::Vector3d moment_C = RootVectorToController(moment_R);
   ComWrench wrench;
-  wrench.thrust_z_N = force_R.z();
-  // Roll is about the forward axis (root +y) and pitch is about the lateral
-  // axis (root +x); see the ComWrench doc comment for the root-frame axis
-  // convention.
-  wrench.roll_torque_Nm = moment_R.y();
-  wrench.pitch_torque_Nm = moment_R.x();
-  wrench.yaw_torque_Nm = moment_R.z();
+  wrench.thrust_z_N = force_C.z();
+  wrench.roll_torque_Nm = moment_C.x();
+  wrench.pitch_torque_Nm = moment_C.y();
+  wrench.yaw_torque_Nm = moment_C.z();
   return wrench;
 }
 
@@ -1151,7 +1176,7 @@ class RobobeeSimulationServer final {
         model_instances_.front();
 
     if constexpr (kFreeFlight) {
-      AddWorldFloor(plant_);
+      AddFreeFlightContactGeometry(plant_);
     } else {
       plant_->WeldFrames(plant_->world_frame(), plant_->GetFrameByName("root"));
     }
@@ -1223,7 +1248,8 @@ class RobobeeSimulationServer final {
       auto& plant_context = plant_->GetMyMutableContextFromRoot(&root_context);
       plant_->SetFreeBodyPose(
           &plant_context, plant_->GetBodyByName("root"),
-          drake::math::RigidTransformd(Eigen::Vector3d(0.0, 0.0, 1.0e-2)));
+          drake::math::RigidTransformd(
+              Eigen::Vector3d(0.0, 0.0, kInitialFreeFlightHeightM)));
     }
     simulator_->Initialize();
     drake::geometry::DrakeVisualizerd::DispatchLoadMessage(*scene_graph_,
@@ -1482,7 +1508,7 @@ int main(int argc, char** argv) {
   // visualization build welds the root to world so the linkage motion is easier
   // to inspect.
   if constexpr (kFreeFlight) {
-    AddWorldFloor(&plant);
+    AddFreeFlightContactGeometry(&plant);
   } else {
     plant.WeldFrames(plant.world_frame(), plant.GetFrameByName("root"));
   }
@@ -1508,9 +1534,9 @@ int main(int argc, char** argv) {
   // constexpr double kSliderEffortLimitN = 1.0e-1;
   // The high effort limit makes the slider source behave like a prescribed
   // stroke while still using Drake's finite-gain actuator path.
-  constexpr double kSliderEffortLimitN = 100000.0;
-  constexpr double kSliderKp = 1000.0;
-  constexpr double kSliderKd = 5.0;
+  constexpr double kSliderEffortLimitN = 1000000000.0;
+  constexpr double kSliderKp = 10000.0;
+  constexpr double kSliderKd = 50.0;
 
   // Add PD-controlled actuators to the two slider joints. The desired state
   // input is provided after Finalize by VoltageStrokeSource.
@@ -1595,7 +1621,8 @@ int main(int argc, char** argv) {
     auto& plant_context = plant.GetMyMutableContextFromRoot(&root_context);
     plant.SetFreeBodyPose(
         &plant_context, plant.GetBodyByName("root"),
-        drake::math::RigidTransformd(Eigen::Vector3d(0.0, 0.0, 1.0e-2)));
+        drake::math::RigidTransformd(
+            Eigen::Vector3d(0.0, 0.0, kInitialFreeFlightHeightM)));
   }
   const auto& right_slider =
       plant.GetJointByName<drake::multibody::PrismaticJoint>("slider_1");

@@ -56,7 +56,7 @@ C_D = (CD_max+CD_0)/2-(CD_max-CD_0)/2*cos(2*alpha);
 
 folder_name = 'Drake Model';
 % open_loop_test_file_name = strcat(folder_name, '/Open_loop_test_PBee_20230927.mat')
-open_loop_test_file_name = strcat(folder_name, '/system_id_sweep_results_20260714_191129.mat')
+open_loop_test_file_name = strcat(folder_name, '/system_id_sweep_results_20260716_232354.mat')
 loaded = load(open_loop_test_file_name);
 if isfield(loaded, 'openloop_data')
     openloop_data = loaded.openloop_data;   % system_id_sweep bundle (struct saved as one variable)
@@ -102,7 +102,7 @@ A2 = (openloop_data.a2_yaw)';
 
 Ft = (openloop_data.y_thrust_average)';
 Tr = (openloop_data.y_torque_x_average)';
-Tp = (openloop_data.y_torque_y_average)';
+Tp = -(openloop_data.y_torque_y_average)';
 Ty = (openloop_data.y_torque_z_average)';
 
 
@@ -378,7 +378,7 @@ params_opt.mu = mu;
 
 %% Save file
 
-optimal_fitting_parameter_save_file_name = strcat(folder_name, '/Optimal_fitting_parameter_155Hz_v2.mat')
+optimal_fitting_parameter_save_file_name = strcat(folder_name, '/Optimal_fitting_parameter_proper_signs2.mat')
 save(optimal_fitting_parameter_save_file_name, 'params_opt')
 
 
@@ -420,13 +420,14 @@ fprintf('  Yaw    (yaw camp)  : corr=%+.3f  RMS=%.3g Nm\n', ...
 %% Plot Results
 N=length(Ft);
 
-uNmm = 1e3;   % torque display scale: mN*mm -> uN*mm (1 mN*mm = 1000 uN*mm)
+N_to_mN = 1e3;
+Nm_to_mNmm = 1e6;   % 1 N*m = 10^6 mN*mm
 
 figure()
 subplot(2,4,1)
     hold on;
-    plot(experiment_valid_index,Ft, 'bo-');
-    plot(experiment_valid_index,Ft_est,'ro-');
+    plot(experiment_valid_index,N_to_mN*Ft, 'bo-');
+    plot(experiment_valid_index,N_to_mN*Ft_est,'ro-');
     title('F_T');
     legend('Measured','Estimated');
     xlabel('Trials'); ylabel('Thrust [mN]');
@@ -436,41 +437,41 @@ subplot(2,4,1)
         ax.FontSize = 16;
 subplot(2,4,2)
     hold on;
-    plot(experiment_valid_index,uNmm*Tr, 'bo-');
-    plot(experiment_valid_index,uNmm*Tr_est,'ro-');
+    plot(experiment_valid_index,Nm_to_mNmm*Tr, 'bo-');
+    plot(experiment_valid_index,Nm_to_mNmm*Tr_est,'ro-');
     title('\tau_R');
     legend('Measured','Estimated');
-    xlabel('Trials'); ylabel('Roll Torque [\muNmm]');
+    xlabel('Trials'); ylabel('Roll Torque [mNmm]');
     ax = gca;
 %         ax.XLim = [0 N];
         ax.FontName = 'Times New Roman';
         ax.FontSize = 16;
 subplot(2,4,3)
     hold on;
-    plot(experiment_valid_index,uNmm*Tp, 'bo-');
-    plot(experiment_valid_index,uNmm*Tp_est,'ro-');
+    plot(experiment_valid_index,Nm_to_mNmm*Tp, 'bo-');
+    plot(experiment_valid_index,Nm_to_mNmm*Tp_est,'ro-');
     title('\tau_P');
     legend('Measured','Estimated');
-    xlabel('Trials'); ylabel('Pitch Torque [\muNmm]');
+    xlabel('Trials'); ylabel('Pitch Torque [mNmm]');
     ax = gca;
 %         ax.XLim = [0 N];
         ax.FontName = 'Times New Roman';
         ax.FontSize = 16;
 subplot(2,4,4)
     hold on;
-    plot(experiment_valid_index,uNmm*Ty, 'bo-');
-    plot(experiment_valid_index,uNmm*Ty_est,'ro-');
+    plot(experiment_valid_index,Nm_to_mNmm*Ty, 'bo-');
+    plot(experiment_valid_index,Nm_to_mNmm*Ty_est,'ro-');
     title('\tau_Y');
     legend('Measured','Estimated');
-    xlabel('Trials'); ylabel('Yaw Torque [\muNmm]');
+    xlabel('Trials'); ylabel('Yaw Torque [mNmm]');
     ax = gca;
 %         ax.XLim = [0 N];
         ax.FontName = 'Times New Roman';
         ax.FontSize = 16;
 subplot(2,4,5)
     hold on;
-    plot(experiment_valid_index,Ft_est - Ft, 'bo-');
-    plot(experiment_valid_index,sqrt(sum((Ft_est-Ft).^2)/N).*ones(N,1),'ro-');
+    plot(experiment_valid_index,N_to_mN*(Ft_est - Ft), 'bo-');
+    plot(experiment_valid_index,N_to_mN*sqrt(sum((Ft_est-Ft).^2)/N).*ones(N,1),'ro-');
     legend('Error','RMS');
     title('F_T');
     xlabel('Trials'); ylabel('Thrust Error [mN]');
@@ -480,33 +481,33 @@ subplot(2,4,5)
         ax.FontSize = 16;
 subplot(2,4,6)
     hold on;
-    plot(experiment_valid_index,uNmm*(Tr_est - Tr), 'bo-');
-    plot(experiment_valid_index,uNmm*sqrt(sum((Tr_est-Tr).^2)/N).*ones(N,1),'ro-');
+    plot(experiment_valid_index,Nm_to_mNmm*(Tr_est - Tr), 'bo-');
+    plot(experiment_valid_index,Nm_to_mNmm*sqrt(sum((Tr_est-Tr).^2)/N).*ones(N,1),'ro-');
     legend('Error','RMS');
     title('\tau_R');
-    xlabel('Trials'); ylabel('Roll Torque Error [\muNmm]');
+    xlabel('Trials'); ylabel('Roll Torque Error [mNmm]');
     ax = gca;
 %         ax.XLim = [0 N];
         ax.FontName = 'Times New Roman';
         ax.FontSize = 16;
 subplot(2,4,7)
     hold on;
-    plot(experiment_valid_index,uNmm*(Tp_est - Tp), 'bo-');
-    plot(experiment_valid_index,uNmm*sqrt(sum((Tp_est-Tp).^2)/N).*ones(N,1),'ro-');
+    plot(experiment_valid_index,Nm_to_mNmm*(Tp_est - Tp), 'bo-');
+    plot(experiment_valid_index,Nm_to_mNmm*sqrt(sum((Tp_est-Tp).^2)/N).*ones(N,1),'ro-');
     legend('Error','RMS');
     title('\tau_P');
-    xlabel('Trials'); ylabel('Pitch Torque Error [\muNmm]');
+    xlabel('Trials'); ylabel('Pitch Torque Error [mNmm]');
     ax = gca;
 %         ax.XLim = [0 N];
         ax.FontName = 'Times New Roman';
         ax.FontSize = 16;
 subplot(2,4,8)
     hold on;
-    plot(experiment_valid_index,uNmm*(Ty_est - Ty), 'bo-');
-    plot(experiment_valid_index,uNmm*sqrt(sum((Ty_est-Ty).^2)/N)*ones(N,1),'ro-');
+    plot(experiment_valid_index,Nm_to_mNmm*(Ty_est - Ty), 'bo-');
+    plot(experiment_valid_index,Nm_to_mNmm*sqrt(sum((Ty_est-Ty).^2)/N)*ones(N,1),'ro-');
     legend('Error','RMS');
     title('\tau_Y');
-    xlabel('Trials'); ylabel('Yaw Torque Error [\muNmm]');
+    xlabel('Trials'); ylabel('Yaw Torque Error [mNmm]');
     ax = gca;
 %         ax.XLim = [0 N];
         ax.FontName = 'Times New Roman';
