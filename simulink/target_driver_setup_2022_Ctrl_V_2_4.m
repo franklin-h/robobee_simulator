@@ -21,12 +21,9 @@ landing_flag=0; % 0 : No landing, 1: landing on
 
 control_flag=2; %2 % 1: Openloop, 2: closed loop.
 adaptive_flag=1;					% 0: no-adaptive 1: adaptive
-adaptive_lateral_flag=0;	% 0:  -adaptive 1: adaptive
+adaptive_lateral_flag=1;	% 0:  -adaptive 1: adaptive
 autosim = 1; 
 controller="MPC"; % geometric or MPC, for error saturation. 
-replay_mode = 1; % 1 for control, 2 for replay. 
-replay_log_file = fullfile('RoboBee flight logs', ...
-    '20221217_PBee_OL_1.mat');
 %% Plant selection and start-up delays
 % Plant = 1 for vicon, 2 for Drake
 Plant = 2;
@@ -256,12 +253,12 @@ scale = 1e3;
 default_x = 0;
 default_y = 0;
 default_z = 0;
-jump_height = 0.60;
+jump_height = 0.10;
 % jump_height = 0.02;
 soft_landing_height = 0.012; % 3mm
 
 % Task transition and Landing control
-transition_rate = 3; %8; % 5 : 1 second from 0.1 to 0.9
+transition_rate = 3 %8; % 5 : 1 second from 0.1 to 0.9
 transition_time = 1.5;
 prelanding_time =1.5;
 landing_time = 3; %1.5;
@@ -339,26 +336,15 @@ b_1_d_desired = [1,0,0];
 % k_z = 20.0/scale;%0.2/scale;
 % k_vz = 0.25/scale;%0.25/scale;
 
-k_x = 2000;
-k_v = 100;
+k_x = 2500; 
+k_v = 100; 
+k_R = 100; 
+k_Rx = 400; 
+k_Omega = 0.04; 
+k_z = 4000; 
+k_vz = 10; 
 
-% Per-axis attitude gains (Q weights on e_R):  roll = k_Rx, pitch = k_R, yaw = k_R_yaw
-k_R      = 100;   % pitch attitude 100
-k_Rx     = 600;   % roll attitude 400 
-k_R_yaw  = 100;   % yaw attitude 100 
-
-% Per-axis angular-rate damping (Q weights on e_Omega): roll / pitch / yaw
-k_Omega       = 0.04;   % roll  rate  (index 4, unchanged)
-k_Omega_pitch = 0.04;   % pitch rate  (laggy weak axis -> more damping)
-k_Omega_yaw   = 0.04;   % yaw   rate
-
-k_z = 4000;
-k_vz = 10;
-
-% Layout consumed by mpc_fcn / Desired_Attitude (indices 1-7 preserved; 8-10 appended):
-% [k_x k_v k_R k_Omega k_z k_vz k_Rx | k_Omega_pitch k_Omega_yaw k_R_yaw]
-control_gain = [k_x, k_v, k_R, k_Omega, k_z, k_vz, k_Rx, ...
-                k_Omega_pitch, k_Omega_yaw, k_R_yaw];
+control_gain = [k_x,k_v, k_R, k_Omega, k_z, k_vz, k_Rx];
 
 % Altitude feed back saturation
 upp_bound_z = 0.1; % m
@@ -489,13 +475,7 @@ end
 mdl = 'updated_target_driver_2026_withVariants';
 set_param(mdl, 'SolverType', 'Fixed-step');
 set_param(mdl, 'Solver', 'FixedStepDiscrete');
-if replay_mode == 0
-    simulation_fixed_step = robobee_load_replay_data( ...
-        replay_log_file, 'sample_time');
-else
-    simulation_fixed_step = dt_s;
-end
-set_param(mdl, 'FixedStep', 'simulation_fixed_step');
+set_param(mdl, 'FixedStep', 'dt_s');
 set_param(mdl, 'StopTime', 'running_time');
 
 if autosim == 1
