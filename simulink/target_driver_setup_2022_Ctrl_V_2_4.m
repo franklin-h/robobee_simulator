@@ -336,13 +336,13 @@ b_1_d_desired = [1,0,0];
 % k_z = 20.0/scale;%0.2/scale;
 % k_vz = 0.25/scale;%0.25/scale;
 
-k_x = 300; 
-k_v = 300; 
-k_R = 20; 
+k_x = 2500; 
+k_v = 100; 
+k_R = 100; 
 k_Rx = 400; 
-k_Omega = 0.1; 
-k_z = 10000; 
-k_vz = 100; 
+k_Omega = 0.04; 
+k_z = 4000; 
+k_vz = 10; 
 
 control_gain = [k_x,k_v, k_R, k_Omega, k_z, k_vz, k_Rx];
 
@@ -371,7 +371,7 @@ low_bound_eR =-1.2; %-0.3 % attitude error
 %% Adaptive Control gain
 gamma_adaptive = 5e-8*upp_bound;
 adaptive_roll_limit = 0.3/(scale^2);%0.17/(scale^2);
-adaptive_pitch_limit = 0.6/(scale^2);%0.09/(scale^2);
+adaptive_pitch_limit = 0.1/(scale^2);%0.09/(scale^2);
 adaptive_yaw_limit = 0.035/(scale^2); %0.017/(scale^2);
 
 adaptive_roll_limit_low = -adaptive_roll_limit;
