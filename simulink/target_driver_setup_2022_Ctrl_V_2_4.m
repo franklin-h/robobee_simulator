@@ -20,9 +20,10 @@ reset_plant('updated_target_driver_2026_withVariants')
 landing_flag=0; % 0 : No landing, 1: landing on
 
 control_flag=2; %2 % 1: Openloop, 2: closed loop.
-adaptive_flag=0;					% 0: no-adaptive 1: adaptive
-adaptive_lateral_flag=0;	% 0:  -adaptive 1: adaptive
+adaptive_flag=1;					% 0: no-adaptive 1: adaptive
+adaptive_lateral_flag=1;	% 0:  -adaptive 1: adaptive
 autosim = 1; 
+controller="MPC"; % geometric or MPC, for error saturation. 
 %% Plant selection and start-up delays
 % Plant = 1 for vicon, 2 for Drake
 Plant = 2;
@@ -252,7 +253,7 @@ scale = 1e3;
 default_x = 0;
 default_y = 0;
 default_z = 0;
-jump_height = 0.05;
+jump_height = 0.10;
 % jump_height = 0.02;
 soft_landing_height = 0.012; % 3mm
 
@@ -308,18 +309,40 @@ xd_ddot = [0, 0, 0];
 % heading control
 b_1_d_desired = [1,0,0];
 
-%Lateral gain
-k_x = 1.5/scale; %0.5
-k_v = 0.5/scale; %0.05
+% %Lateral gain for geometric
+% k_x = 1.0/scale; %0.5
+% k_v = 0.5/scale; %0.05
+% 
+% %Attitude gain
+% k_R = 0.5/(scale^2);%0.5/(scale^2);		yaw pitch
+% k_Rx = 13/(scale^2);%0.6/(scale^2);		roll
+% k_Omega =  10.0/(scale^2);%0.25/(scale^2);
+% 
+% %Altitude gain
+% k_z = 1.2/scale;%0.2/scale;
+% k_vz = 0.25/scale;%0.25/scale;
 
-%Attitude gain
-k_R = 0.5/(scale^2);%0.5/(scale^2);		yaw pitch
-k_Rx = 13/(scale^2);%0.6/(scale^2);		roll
-k_Omega =  7.0/(scale^2);%0.25/(scale^2);
 
-%Altitude gain
-k_z = 1.2/scale;%0.2/scale;
-k_vz = 0.25/scale;%0.25/scale;
+%Lateral gain for MPC
+% k_x = 5.0/scale; %0.5
+% k_v = 0.5/scale; %0.05
+% 
+% %Attitude gain
+% k_R = 0.5/(scale^2);%0.5/(scale^2);		yaw pitch
+% k_Rx = 20/(scale^2);%0.6/(scale^2);		roll
+% k_Omega =  7.0/(scale^2);%0.25/(scale^2);
+% 
+% %Altitude gain
+% k_z = 20.0/scale;%0.2/scale;
+% k_vz = 0.25/scale;%0.25/scale;
+
+k_x = 300; 
+k_v = 300; 
+k_R = 20; 
+k_Rx = 400; 
+k_Omega = 0.1; 
+k_z = 10000; 
+k_vz = 100; 
 
 control_gain = [k_x,k_v, k_R, k_Omega, k_z, k_vz, k_Rx];
 
@@ -348,7 +371,7 @@ low_bound_eR =-1.2; %-0.3 % attitude error
 %% Adaptive Control gain
 gamma_adaptive = 5e-8*upp_bound;
 adaptive_roll_limit = 0.3/(scale^2);%0.17/(scale^2);
-adaptive_pitch_limit = 0.1/(scale^2);%0.09/(scale^2);
+adaptive_pitch_limit = 0.6/(scale^2);%0.09/(scale^2);
 adaptive_yaw_limit = 0.035/(scale^2); %0.017/(scale^2);
 
 adaptive_roll_limit_low = -adaptive_roll_limit;
