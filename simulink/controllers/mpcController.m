@@ -30,7 +30,7 @@ e_v = reshape(e_v, 3, 1);
 e_R = reshape(e_R, 3, 1);
 e_Omega = reshape(e_Omega, 3, 1);
 
-control_gain = reshape(control_gain, 7, 1);
+control_gain = reshape(control_gain, 10, 1);
 I_moment_vec = reshape(I_moment_vec, 3, 1);
 
 m = m(1);
@@ -53,16 +53,25 @@ N = 5;
 
 % Existing uprightmpc2 controllers in this project use a 5 ms prediction
 % step. The block can still be called faster; this is the MPC model step.
-dt = 5.0e-3;
+dt = 0.0065;
 
 thrust_min = 0.5e-3;
 thrust_max = 1.6e-3;
-roll_min = -0.6e-4;
-roll_max = 0.5e-4;
-pitch_min = -0.2e-6;
-pitch_max = 0.2e-6;
-yaw_min = -1.0e-7;
-yaw_max = 0.9e-7;
+% roll_min = -0.6e-4;
+% roll_max = 0.5e-4;
+% roll_min = -0.2e-6; 
+% roll_max = 0.2e-6; 
+roll_min = -1.5e-5; 
+roll_max = 1.5e-5; 
+% pitch_min = -0.125e-5; 
+% pitch_max = 0.125e-5; 
+pitch_min = -8e-7; 
+pitch_max = 8e-7; 
+% pitch_min = -0.2e-6;
+% pitch_max = 0.2e-6;
+% pitch_min = -0.6e-4; 
+yaw_min = -5e-7;
+yaw_max = 5e-7;
 
 % -------------------------------------------------------------------------
 % Reconstruct rotation matrices from row-major 9-element vectors
@@ -88,11 +97,14 @@ k_Omega = control_gain(4);
 k_z = control_gain(5);
 k_vz = control_gain(6);
 k_Rx = control_gain(7);
+k_Omega_pitch = control_gain(8);
+k_Omega_yaw   = control_gain(9);
+k_R_yaw       = control_gain(10);
 
 K_X = [k_x; k_x; k_z];
 K_V = [k_v; k_v; k_vz];
-K_R = [k_Rx; k_R; k_R];
-K_Omega = [k_Omega; k_Omega; k_Omega];
+K_R = [k_Rx; k_R; k_R_yaw];              % roll, pitch, yaw
+K_Omega = [k_Omega; k_Omega_pitch; k_Omega_yaw];  % roll, pitch, yaw
 
 Qdiag = [positive_weight(K_X(1)); positive_weight(K_X(2)); positive_weight(K_X(3)); ...
          positive_weight(K_V(1)); positive_weight(K_V(2)); positive_weight(K_V(3)); ...
@@ -102,7 +114,10 @@ Qfdiag = 4.0 .* Qdiag;
 
 % Same input-effort weights as target_driver_setup.m wmpc:
 % wthrust = 1e-1, wmom = 1e0.
-Rdiag = [1.0e-1; 1.0e0; 1.0e0; 1.0e0];
+% Rdiag = [1.0e-1; 1.0e0; 1.0e0; 1.0e0];
+% Rdiag = [1.0e-1; 1.0e9; 1.0e9; 1.0e10]; 
+Rdiag = [2.5e7;      1/(roll_max)^2;        1/(pitch_max)^2;     1/(yaw_max)^2];     % thrust, roll, pitch, yaw. must be 1/max^2 
+
 
 e_3 = [0; 0; 1];
 b_3 = Rot_cur * e_3;
@@ -151,7 +166,7 @@ B(12,4) = dt / I_moment(3,3);
 x0 = [e_x; e_v; e_R; e_Omega];
 
 force_feedback = -K_X.*e_x - K_V.*e_v;
-moment_feedback = -K_R.*e_R - k_Omega*e_Omega;
+moment_feedback = -K_R.*e_R - K_Omega.*e_Omega;
 u_feedback = [force_feedback' * b_3; ...
               moment_feedback(1); ...
               moment_feedback(2); ...
@@ -200,10 +215,10 @@ for k = 1:N
 end
 
 Uref = zeros(nu*N,1);
-for k = 1:N
-    base = (k-1)*nu;
-    Uref(base+1:base+nu) = u_feedback;
-end
+% for k = 1:N
+%     base = (k-1)*nu;
+%     Uref(base+1:base+nu) = u_feedback;
+% end
 
 H = Gamma' * Qbar * Gamma + Rbar;
 h = Gamma' * Qbar * Phi * x0 - Rbar * Uref;
