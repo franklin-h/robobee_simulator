@@ -346,15 +346,15 @@ b_1_d_desired = [1,0,0];
 
 %Try params for higher pitch bandwidth. 
 k_x = 600; 
-k_v = 100; 
+k_v = 200; 
 k_R      = 200;   % pitch attitude 100
 k_Rx     = 800;   % roll attitude 400 
 k_R_yaw  = 100;   % yaw attitude 100 
 k_Omega       = 0.015;   % roll  rate  (index 4, unchanged)
 k_Omega_pitch = 0.04;   % pitch rate  (laggy weak axis -> more damping)
 k_Omega_yaw   = 0.04;   % yaw   rate
-k_z = 4000; 
-k_vz = 10; 
+k_z = 8000; 
+k_vz = 30; 
 
 % Layout consumed by mpc_fcn / Desired_Attitude (indices 1-7 preserved; 8-10 appended):
 % [k_x k_v k_R k_Omega k_z k_vz k_Rx | k_Omega_pitch k_Omega_yaw k_R_yaw]
