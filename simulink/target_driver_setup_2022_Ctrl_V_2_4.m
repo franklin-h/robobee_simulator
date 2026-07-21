@@ -345,7 +345,7 @@ b_1_d_desired = [1,0,0];
 % control_gain = [2500, 100, 100, 400, 100, 0.04, 0.04, 0.04, 2000,10]. 
 
 %Try params for higher pitch bandwidth. 
-k_x = 2500; 
+k_x = 600; 
 k_v = 100; 
 k_R      = 200;   % pitch attitude 100
 k_Rx     = 800;   % roll attitude 400 
