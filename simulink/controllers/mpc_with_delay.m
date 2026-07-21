@@ -41,10 +41,14 @@ function [thrust_desired, roll_torque_desired, pitch_torque_desired, yaw_torque_
 % is exact: n_dead = pitch_dead_time_s / controller_dt.
 
 controller_dt     = 2.0e-4;    % block execution period [s]
-pitch_dead_time_s = 0.0e-3;    % transport dead time (~1 wingbeat) [s]
-pitch_lag_tau_s   = 12.0e-3;   % first-order actuation lag time constant [s]
+pitch_dead_time_s = 6.0e-3;    % transport dead time (~1 wingbeat) [s]
+pitch_lag_tau_s   = 6.0e-3;    % first-order actuation lag time constant [s]
 
-n_dead = 30;                   % = pitch_dead_time_s / controller_dt (6 ms / 0.2 ms)
+% Derived FIFO length. NOTE: this is the variable the prediction actually
+% uses -- editing pitch_dead_time_s now changes the model (previously n_dead
+% was hardcoded to 30, so setting pitch_dead_time_s = 0 silently kept a 6 ms
+% dead time). Kept >= 1 because the FIFO must hold at least one sample.
+n_dead = max(1, round(pitch_dead_time_s / controller_dt));
 
 persistent pitch_command_fifo pitch_applied_moment
 
@@ -176,6 +180,16 @@ A(3,6) = dt;
 A(7,10) = dt;
 A(8,11) = dt;
 A(9,12) = dt;
+
+% Tilt -> lateral acceleration coupling (small angle): tilting the thrust
+% vector accelerates the vehicle sideways. Without these terms the QP treats
+% attitude and translation as decoupled, so the real x<->pitch cascade
+% (x error -> desired tilt -> tilt -> x acceleration -> x error) is invisible
+% to the prediction; in flight it rings at ~9.8 Hz with coherence 1.0
+% (stable_acrobatic1-4). Signs verified empirically from stable_acrobatic4:
+% a_x = +g*pitch (phase ~0 deg at 9.8 Hz), a_y = -g*roll (phase ~180 deg).
+A(4,8) = dt * g;    % e_vx_dot += +g * e_R_pitch
+A(5,7) = -dt * g;   % e_vy_dot += -g * e_R_roll
 
 B = zeros(nx, nu);
 B(4,1) = dt * b_3(1) / max(abs(m), 1.0e-12);
