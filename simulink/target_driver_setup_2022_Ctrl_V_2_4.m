@@ -24,6 +24,9 @@ adaptive_flag=1;					% 0: no-adaptive 1: adaptive
 adaptive_lateral_flag=1;	% 0:  -adaptive 1: adaptive
 autosim = 1; 
 controller="MPC"; % geometric or MPC, for error saturation. 
+replay_mode = 1; % 1 for control, 2 for replay. 
+replay_log_file = fullfile('Robobee flight logs', ...
+    '20221217_PBee_OL_1.mat');
 %% Plant selection and start-up delays
 % Plant = 1 for vicon, 2 for Drake
 Plant = 2;
