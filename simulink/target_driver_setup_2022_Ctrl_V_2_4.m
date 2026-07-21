@@ -38,7 +38,7 @@ if Plant == 1
 else
     start_delay = 0.0;
     adaptive_delay = 0.0;
-    ramp_delay = 0.0;
+    ramp_delay = 0.3;
 end
 
 
@@ -256,7 +256,7 @@ scale = 1e3;
 default_x = 0;
 default_y = 0;
 default_z = 0;
-jump_height = 0.10;
+jump_height = 0.40;
 % jump_height = 0.02;
 soft_landing_height = 0.012; % 3mm
 
@@ -339,15 +339,27 @@ b_1_d_desired = [1,0,0];
 % k_z = 20.0/scale;%0.2/scale;
 % k_vz = 0.25/scale;%0.25/scale;
 
+% for somewhat stable flight, set 
+% max pitch to 1e-7 or so. 
+% default x, y, z to 0, 0, 0.5 or so. 
+% control_gain = [2500, 100, 100, 400, 100, 0.04, 0.04, 0.04, 2000,10]. 
+
+%Try params for higher pitch bandwidth. 
 k_x = 2500; 
 k_v = 100; 
-k_R = 100; 
-k_Rx = 400; 
-k_Omega = 0.04; 
+k_R      = 200;   % pitch attitude 100
+k_Rx     = 800;   % roll attitude 400 
+k_R_yaw  = 100;   % yaw attitude 100 
+k_Omega       = 0.015;   % roll  rate  (index 4, unchanged)
+k_Omega_pitch = 0.04;   % pitch rate  (laggy weak axis -> more damping)
+k_Omega_yaw   = 0.04;   % yaw   rate
 k_z = 4000; 
 k_vz = 10; 
 
-control_gain = [k_x,k_v, k_R, k_Omega, k_z, k_vz, k_Rx];
+% Layout consumed by mpc_fcn / Desired_Attitude (indices 1-7 preserved; 8-10 appended):
+% [k_x k_v k_R k_Omega k_z k_vz k_Rx | k_Omega_pitch k_Omega_yaw k_R_yaw]
+control_gain = [k_x, k_v, k_R, k_Omega, k_z, k_vz, k_Rx, ...
+                k_Omega_pitch, k_Omega_yaw, k_R_yaw];
 
 % Altitude feed back saturation
 upp_bound_z = 0.1; % m

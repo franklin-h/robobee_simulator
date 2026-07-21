@@ -3,6 +3,7 @@
 
 clear all;
 close all;
+christian_params = load('RoboBee_optimal_fitting_parameter_155Hz_2022_BBee_v2.mat'); 
 
 %% Timing and sampling rate
 dt_s = 2.0e-4;
@@ -19,9 +20,13 @@ reset_plant('updated_target_driver_2026_withVariants')
 landing_flag=0; % 0 : No landing, 1: landing on
 
 control_flag=2; %2 % 1: Openloop, 2: closed loop.
-adaptive_flag=0;					% 0: no-adaptive 1: adaptive
-adaptive_lateral_flag=0;	% 0:  -adaptive 1: adaptive
+adaptive_flag=1;					% 0: no-adaptive 1: adaptive
+adaptive_lateral_flag=1;	% 0:  -adaptive 1: adaptive
 autosim = 1; 
+controller="MPC"; % geometric or MPC, for error saturation. 
+replay_mode = 1; % 1 for control, 2 for replay. 
+replay_log_file = fullfile('Robobee flight logs', ...
+    '20221217_PBee_OL_1.mat');
 %% Plant selection and start-up delays
 % Plant = 1 for vicon, 2 for Drake
 Plant = 2;
@@ -45,7 +50,7 @@ start_delay_adaptive = start_delay + ramp_delay+adaptive_delay;
 f = 155; %170; %165
 f_int = f;					% initial frequency
 f_fin = f;					% final frequency
-T = 1;			% total time in seconds
+T = 0.3;			% total time in seconds
 
 
 %% Save settings
@@ -123,7 +128,7 @@ roll_offset_angle = 0; % New Vicon calibration
 % params = load('RoboBee_optimal_fitting_parameter_150Hz_2022_Apr.mat');
 
 % BBee System ID without the leg
-params = load('system id/Drake Model/virtualBee_loosehinge.mat');
+params = load('system id/Drake Model/Optimal_fitting_parameter_proper_signs2.mat');
 % BBee System ID with the rigid leg
 % params = load('RoboBee_optimal_fitting_parameter_155Hz_2022_BBee_rigid_leg_v1.mat');
 
@@ -152,7 +157,7 @@ params_vec = [params_opt.delta_1, params_opt.delta_2, params_opt.delta_3, params
 % params_vec = [4.615418611008412, 1.864800777306221, -0.003836409949443, 0.000000002617698, 0.002712888814185, 0.470047661467390, 1.252086811352254, -12.320534223706176, -0.106510851419032];
 
 Thurst_limit = 1.2*1e-3;        % 1.2   mN
-Torque_roll_limit = -0.35*1e-4;   % 0.2   mNmm;
+Torque_roll_limit = 0.35*1e-4;   % 0.2   mNmm;
 Torque_pitch_limit = 0.2*1e-6;  % 0.2   mNmm;
 Torque_yaw_limit = 0.2*1e-7;%0.2*1e-7;    % 0.02  mNmm;
 
@@ -231,11 +236,11 @@ drv_pch = drv_pitch_left;
 % Franklin Open Loop
 drv_amp = 180;
 % drv_roll = -1e-3;
-drv_roll = -4; 
+drv_roll = 20; 
 % drv_pitch_left = 6.95;
 % drv_pitch_right = 6.95;
-drv_pitch_left = 0; 
-drv_pitch_right = 0; 
+drv_pitch_left = 6.95; 
+drv_pitch_right = 6.95; 
 a2_openloop = 0;
 
 
@@ -251,7 +256,7 @@ scale = 1e3;
 default_x = 0;
 default_y = 0;
 default_z = 0;
-jump_height = 0.05;
+jump_height = 0.40;
 % jump_height = 0.02;
 soft_landing_height = 0.012; % 3mm
 
@@ -307,42 +312,76 @@ xd_ddot = [0, 0, 0];
 % heading control
 b_1_d_desired = [1,0,0];
 
-%Lateral gain
-k_x = 0.5/scale; %0.5
-k_v = 0.05/scale; %0.05
+% %Lateral gain for geometric
+% k_x = 1.0/scale; %0.5
+% k_v = 0.5/scale; %0.05
+% 
+% %Attitude gain
+% k_R = 0.5/(scale^2);%0.5/(scale^2);		yaw pitch
+% k_Rx = 13/(scale^2);%0.6/(scale^2);		roll
+% k_Omega =  10.0/(scale^2);%0.25/(scale^2);
+% 
+% %Altitude gain
+% k_z = 1.2/scale;%0.2/scale;
+% k_vz = 0.25/scale;%0.25/scale;
 
-%Attitude gain
-k_R = 0.5/(scale^2);%0.5/(scale^2);		yaw pitch
-k_Rx = 0.8/(scale^2);%0.6/(scale^2);		roll
-k_Omega =  0.2/(scale^2);%0.25/(scale^2);
 
-%Altitude gain
-k_z = 0.3/scale;%0.2/scale;
-k_vz = 0.25/scale;%0.25/scale;
+%Lateral gain for MPC
+% k_x = 5.0/scale; %0.5
+% k_v = 0.5/scale; %0.05
+% 
+% %Attitude gain
+% k_R = 0.5/(scale^2);%0.5/(scale^2);		yaw pitch
+% k_Rx = 20/(scale^2);%0.6/(scale^2);		roll
+% k_Omega =  7.0/(scale^2);%0.25/(scale^2);
+% 
+% %Altitude gain
+% k_z = 20.0/scale;%0.2/scale;
+% k_vz = 0.25/scale;%0.25/scale;
 
-control_gain = [k_x,k_v, k_R, k_Omega, k_z, k_vz, k_Rx];
+% for somewhat stable flight, set 
+% max pitch to 1e-7 or so. 
+% default x, y, z to 0, 0, 0.5 or so. 
+% control_gain = [2500, 100, 100, 400, 100, 0.04, 0.04, 0.04, 2000,10]. 
+
+%Try params for higher pitch bandwidth. 
+k_x = 2500; 
+k_v = 100; 
+k_R      = 100;   % pitch attitude 100
+k_Rx     = 400;   % roll attitude 400 
+k_R_yaw  = 100;   % yaw attitude 100 
+k_Omega       = 0.04;   % roll  rate  (index 4, unchanged)
+k_Omega_pitch = 0.04;   % pitch rate  (laggy weak axis -> more damping)
+k_Omega_yaw   = 0.04;   % yaw   rate
+k_z = 2000; 
+k_vz = 10; 
+
+% Layout consumed by mpc_fcn / Desired_Attitude (indices 1-7 preserved; 8-10 appended):
+% [k_x k_v k_R k_Omega k_z k_vz k_Rx | k_Omega_pitch k_Omega_yaw k_R_yaw]
+control_gain = [k_x, k_v, k_R, k_Omega, k_z, k_vz, k_Rx, ...
+                k_Omega_pitch, k_Omega_yaw, k_R_yaw];
 
 % Altitude feed back saturation
-upp_bound_z = 0.04; % m
-low_bound_z =-0.04; % m
+upp_bound_z = 0.1; % m
+low_bound_z =-0.1; % m
 upp_bound_vz = 0.5; % m/s
 low_bound_vz =-0.5; % m/s
 
-upp_bound_x = 0.06; % m
-low_bound_x =-0.06; % m
+upp_bound_x = 0.6; % m
+low_bound_x =-0.6; % m
 upp_bound_vx = 0.5; % m/s
 low_bound_vx =-0.5; % m/s
 
-upp_bound_y = 0.08; % m
-low_bound_y =-0.08; % m
+upp_bound_y = 0.6; % m
+low_bound_y =-0.6; % m
 upp_bound_vy = 0.5; % m/s
 low_bound_vy =-0.5; % m/s
 
 
 upp_bound =10; %4 % rad/s this helped a lot!! 
 low_bound =-10; %-4 % rad/s
-upp_bound_eR =0.9; %0.3   % attitude error
-low_bound_eR =-0.9; %-0.3 % attitude error
+upp_bound_eR =1.2; %0.3   % attitude error
+low_bound_eR =-1.2; %-0.3 % attitude error
 
 %% Adaptive Control gain
 gamma_adaptive = 5e-8*upp_bound;
