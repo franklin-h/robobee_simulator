@@ -102,7 +102,7 @@ A2 = (openloop_data.a2_yaw)';
 
 Ft = (openloop_data.y_thrust_average)';
 Tr = (openloop_data.y_torque_x_average)';
-Tp = -(openloop_data.y_torque_y_average)';
+Tp = (openloop_data.y_torque_y_average)';
 Ty = (openloop_data.y_torque_z_average)';
 
 

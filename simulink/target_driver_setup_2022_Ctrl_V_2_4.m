@@ -135,7 +135,7 @@ wvf_z   = 8.0e2;
 wthrust = 1.0e-1;   % specific-thrust-correction effort. higher wthrust means more "damping" 
 wmom    = 1.0e-1;    % torque effort 1e-2 
 wdmom_roll   = 1e-2; % 1e-3 
-wdmom_pitch = 1e-2; %1e-3 
+wdmom_pitch = 1e-1; %1e-3 
 
 % k_tau_roll = 1/3.0; 
 % k_tau_pitch = 10; 
@@ -265,8 +265,8 @@ drv_roll = -1e-3;
 % drv_pitch_right = 6.95;
 % drv_pitch_left = 6.95; 
 % drv_pitch_right = 6.95; 
-drv_pitch_left = 10; % the more positive, the more negative pitch torque. 
-drv_pitch_right = 10; 
+drv_pitch_left = 8; % the more positive, the more negative pitch torque. 
+drv_pitch_right = 8; 
 a2_openloop = 0;
 
 
