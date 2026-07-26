@@ -12,7 +12,8 @@
       "Bash(kill %1)",
       "Bash(pkill -f \"iname data_optimize\")",
       "Bash(python3 -m py_compile tools/plot_com_wrench_moving_avg.py)",
-      "Bash(grep -icE \"nan|inf|,,|^,|,$\" /tmp/robobee_com_wrench.csv)"
+      "Bash(grep -icE \"nan|inf|,,|^,|,$\" /tmp/robobee_com_wrench.csv)",
+      "Bash(python3 -)"
     ]
   }
 }

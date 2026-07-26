@@ -23,6 +23,8 @@
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/multibody/tree/joint_actuator.h"
 #include "drake/multibody/tree/prismatic_joint.h"
+#include "drake/multibody/tree/revolute_joint.h"
+#include "drake/multibody/tree/revolute_spring.h"
 #include "drake/multibody/tree/rigid_body.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/framework/basic_vector.h"
@@ -46,6 +48,7 @@ constexpr char kPackageName[] = "robobee_assembly";
 constexpr char kPackagePath[] = "models/robobee_assembly";
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kInitialFreeFlightHeightM = 7.0e-3;
+constexpr double kWingHingeNominalAngleRad = 0.0;
 
 #ifdef ROBOBEE_FREE_FLIGHT
 constexpr bool kFreeFlight = true;
@@ -206,6 +209,10 @@ class VoltageStrokeSource final : public drake::systems::LeafSystem<double> {
 struct WingAeroConfig {
   // Body name in the parsed URDF.
   std::string body_name;
+  // Revolute joint whose parent-to-child angle is the passive hinge
+  // deflection. Unlike a world-frame chord direction, this coordinate is
+  // invariant to rigid-body motion of the complete RoboBee.
+  std::string pitch_joint_name;
   // Per-wing geometric constants and blade stations.
   const robobee::AeromechanicalWingConstants<400>* constants{};
   // Unit axes expressed in the Drake body frame B. The aerodynamic frame A uses
@@ -218,9 +225,7 @@ struct WingAeroConfig {
   // Maps angular velocity/acceleration components from body frame B into the
   // aerodynamic component frame A.
   Eigen::Matrix3d X_AB{Eigen::Matrix3d::Identity()};
-  // Initial world-frame chord direction. This is the zero-pitch reference used
-  // to compute hinge restoring moment during the simulation.
-  Eigen::Vector3d reference_chord_axis_W{Eigen::Vector3d::Zero()};
+  const drake::multibody::RevoluteJoint<double>* pitch_joint{};
 };
 
 // History needed to estimate angular acceleration from consecutive angular
@@ -289,10 +294,26 @@ double ClampMoment(double moment_Nm,
   return std::min(std::max(moment_Nm, -limit), limit);
 }
 
+// Model each Kapton wing hinge as an internal joint spring. Drake applies the
+// restoring torque to the child and the equal-and-opposite reaction to the
+// parent, so it cannot introduce a spurious net external torque on the robot.
+void AddWingHingeSprings(
+    drake::multibody::MultibodyPlant<double>* plant) {
+  const robobee::AeromechanicalModelParameters params;
+  const double stiffness_Nm_per_rad =
+      robobee::HingeTorsionalStiffness(params);
+  for (const char* joint_name : {"revolute_1_2", "revolute_1"}) {
+    const auto& joint =
+        plant->GetJointByName<drake::multibody::RevoluteJoint>(joint_name);
+    plant->AddForceElement<drake::multibody::RevoluteSpring>(
+        joint, kWingHingeNominalAngleRad, stiffness_Nm_per_rad);
+  }
+}
+
 // Custom Drake system that reads the MultibodyPlant state and outputs one
 // ExternallyAppliedSpatialForce per wing. It performs a blade-element lift/drag
-// calculation in body-fixed aerodynamic axes and adds the non-translational
-// pitch moments from the aeromechanical model.
+// calculation in body-fixed aerodynamic axes and adds rotational damping. The
+// passive restoring torque is an internal RevoluteSpring in the plant.
 class WingAeromechanics final : public drake::systems::LeafSystem<double> {
  public:
   WingAeromechanics(const drake::multibody::MultibodyPlant<double>& plant,
@@ -305,6 +326,7 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
         angular_acceleration_filter_time_constant_s_(
             angular_acceleration_filter_time_constant_s),
         wings_({WingAeroConfig{"wing_membrane",
+                                "revolute_1_2",
                                 &robobee::kLeftWingAeromechanicalConstants,
                                 CalcAeroSpanAxisInBody(
                                     robobee::kLeftWingAeromechanicalConstants),
@@ -312,21 +334,21 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
                                     robobee::kLeftWingAeromechanicalConstants),
                                 Eigen::Vector3d::UnitZ(), 1.0},
                 WingAeroConfig{"wing_membrane_1",
+                                "revolute_1",
                                 &robobee::kRightWingAeromechanicalConstants,
                                 CalcAeroSpanAxisInBody(
                                     robobee::kRightWingAeromechanicalConstants),
                                 CalcAeroChordAxisInBody(
                                     robobee::kRightWingAeromechanicalConstants),
                                 Eigen::Vector3d::UnitZ(), 1.0}}) {
-    // Cache the aerodynamic component transform and the initial chord direction
-    // after the plant has loaded its default model configuration.
+    // Cache the aerodynamic component transform and actual pitch joint after
+    // the plant has loaded and finalized its model topology.
     for (WingAeroConfig& wing : wings_) {
-      const auto& body = plant_.GetBodyByName(wing.body_name);
-      const Eigen::Matrix3d R_WB0 =
-          body.EvalPoseInWorld(*plant_context_).rotation().matrix();
       wing.X_AB = CalcBodyToAeroComponentMatrix(
           wing.span_axis_B, wing.chord_axis_B, wing.normal_axis_B);
-      wing.reference_chord_axis_W = (R_WB0 * wing.chord_axis_B).normalized();
+      wing.pitch_joint =
+          &plant_.GetJointByName<drake::multibody::RevoluteJoint>(
+              wing.pitch_joint_name);
     }
     angular_histories_.resize(wings_.size());
     latest_moments_.resize(wings_.size());
@@ -347,26 +369,6 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
  private:
   static bool IsFinite(const Eigen::Vector3d& value) {
     return value.array().isFinite().all();
-  }
-
-  static double CalcPitchAngleAboutSpan(
-      const WingAeroConfig& wing, const Eigen::Vector3d& span_axis_W,
-      const Eigen::Vector3d& chord_axis_W) {
-    // Remove any component along the current span axis, then compare the
-    // projected initial and current chord directions with atan2 for a signed
-    // rotation about span.
-    const Eigen::Vector3d reference_chord_W =
-        wing.reference_chord_axis_W -
-        wing.reference_chord_axis_W.dot(span_axis_W) * span_axis_W;
-    const Eigen::Vector3d current_chord_W =
-        chord_axis_W - chord_axis_W.dot(span_axis_W) * span_axis_W;
-    if (reference_chord_W.norm() <= 1.0e-12 ||
-        current_chord_W.norm() <= 1.0e-12) {
-      return 0.0;
-    }
-    const Eigen::Vector3d e_ref = reference_chord_W.normalized();
-    const Eigen::Vector3d e_cur = current_chord_W.normalized();
-    return std::atan2(span_axis_W.dot(e_ref.cross(e_cur)), e_ref.dot(e_cur));
   }
 
   Eigen::Vector3d EstimateAngularAccelerationInBody(
@@ -491,7 +493,8 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     robobee::WingMomentInput moment_input;
     moment_input.station_flows.reserve(stations.size());
     const double pitch_angle_psi_rad =
-        CalcPitchAngleAboutSpan(wing, span_axis_W, chord_axis_W);
+        wing.pitch_joint->get_angle(*plant_context_) -
+        kWingHingeNominalAngleRad;
     moment_input.pitch_angle_psi_rad = pitch_angle_psi_rad;
     latest_pitch_angles_psi_rad_.at(wing_index) = pitch_angle_psi_rad;
     moment_input.omega_x_rad_s = omega_A.x();
@@ -675,17 +678,20 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     // distributed added-mass strip forces.
     moments.added_mass_Nm = force_scale * total_added_mass_pitch_moment_Nm;
 
-    // The translational aerodynamic and added-mass pitch moments are already
-    // represented by distributed strip forces above. Apply only the remaining
-    // scalar pitch moments, such as rotational damping and hinge restoring,
-    // about the span axis.
-    const double non_translational_pitch_moment_Nm = ClampMoment(
-        moments.rotational_damping_Nm + moments.hinge_Nm, params);
+    // Translational aerodynamic and added-mass moments are represented by the
+    // distributed strip forces. The hinge restoring moment is represented by
+    // the plant's internal RevoluteSpring, so only rotational damping belongs
+    // in this external spatial force.
+    const double rotational_pitch_moment_Nm =
+        ClampMoment(moments.rotational_damping_Nm, params);
 
-    // Log the span-axis moment that is actually sent to Drake.
+    // Log the total span-axis moment acting on the wing, including the internal
+    // spring term, even though only the damping term is sent through this
+    // system's external-force output.
     moments.applied_total_Nm =
         total_blade_moment_W.dot(span_axis_W) +
-        wing.moment_sign * non_translational_pitch_moment_Nm;
+        wing.moment_sign *
+            (rotational_pitch_moment_Nm + moments.hinge_Nm);
     if (!std::isfinite(moments.applied_total_Nm)) {
       moments.applied_total_Nm = 0.0;
     }
@@ -699,7 +705,7 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     force.p_BoBq_B = Eigen::Vector3d::Zero();
     force.F_Bq_W = drake::multibody::SpatialForce<double>(
         total_blade_moment_W +
-            wing.moment_sign * non_translational_pitch_moment_Nm * span_axis_W,
+            wing.moment_sign * rotational_pitch_moment_Nm * span_axis_W,
         total_blade_force_W);
     output->push_back(force);
   }
@@ -1211,6 +1217,7 @@ class RobobeeSimulationServer final {
     plant_->get_mutable_joint_actuator(left_slider_actuator.index())
         .set_controller_gains({kSliderKp, kSliderKd});
 
+    AddWingHingeSprings(plant_);
     AddRoboBeeBodyFrameTriadVisuals(plant_);
 
     plant_->Finalize();
@@ -1479,7 +1486,7 @@ int main(int argc, char** argv) {
   constexpr double kSliderLogFlushPeriod = kMomentLogFlushPeriod;
   constexpr double kPoseLogPeriod = kMomentLogPeriod;
   constexpr double kPoseLogFlushPeriod = kMomentLogFlushPeriod;
-  constexpr double kTargetRealtimeRate = 0.0;
+  constexpr double kTargetRealtimeRate = 0.02;
   constexpr char kMomentLogPath[] = "/tmp/aeromechanical_moments.csv";
   constexpr char kSliderLogPath[] = "/tmp/slider_positions.csv";
   constexpr char kPoseLogPath[] = "/tmp/robobee_pose.csv";
@@ -1552,6 +1559,7 @@ int main(int argc, char** argv) {
   plant.get_mutable_joint_actuator(left_slider_actuator.index())
       .set_controller_gains({kSliderKp, kSliderKd});
 
+  AddWingHingeSprings(&plant);
   AddRoboBeeBodyFrameTriadVisuals(&plant);
 
   // After Finalize the plant topology is fixed. The diagram can still connect

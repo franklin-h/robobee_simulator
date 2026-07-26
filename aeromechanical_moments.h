@@ -25,7 +25,7 @@ struct AeromechanicalModelParameters {
   double cl_max{1.8};
   double cd_max{3.4};
   double cd_0{0.4};
-  double rotational_damping_coefficient{2.0};
+  double rotational_damping_coefficient{4.0};
 
   double kapton_youngs_modulus_pa{2.5e9};
   double hinge_thickness_m{12.0e-6};

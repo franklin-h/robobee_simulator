@@ -22,6 +22,7 @@
 #include "drake/multibody/tree/joint_actuator.h"
 #include "drake/multibody/tree/prismatic_joint.h"
 #include "drake/multibody/tree/revolute_joint.h"
+#include "drake/multibody/tree/revolute_spring.h"
 #include "drake/multibody/tree/rigid_body.h"
 #include "drake/systems/analysis/simulator.h"
 #include "drake/systems/framework/basic_vector.h"
@@ -40,6 +41,7 @@ namespace {
 constexpr char kPackageName[] = "robobee_assembly";
 constexpr char kPackagePath[] = "models/robobee_assembly";
 constexpr double kPi = 3.14159265358979323846;
+constexpr double kWingHingeNominalAngleRad = 0.0;
 
 // TODO: Add a GUI for simulation parameters and a placeholder section for
 // RoboBee parameters.
@@ -78,6 +80,10 @@ class RootGripRotationSource final
 struct WingAeroConfig {
   // Body name in the parsed URDF.
   std::string body_name;
+  // Revolute joint whose parent-to-child angle is the passive hinge
+  // deflection. Unlike a world-frame chord direction, this coordinate is
+  // invariant to rigid-body motion of the complete RoboBee.
+  std::string pitch_joint_name;
   // Per-wing geometric constants and blade stations.
   const robobee::AeromechanicalWingConstants<400>* constants{};
   // Unit axes expressed in the Drake body frame B. The aerodynamic frame A uses
@@ -90,9 +96,7 @@ struct WingAeroConfig {
   // Maps angular velocity/acceleration components from body frame B into the
   // aerodynamic component frame A.
   Eigen::Matrix3d X_AB{Eigen::Matrix3d::Identity()};
-  // Initial world-frame chord direction. This is the zero-pitch reference used
-  // to compute hinge restoring moment during the simulation.
-  Eigen::Vector3d reference_chord_axis_W{Eigen::Vector3d::Zero()};
+  const drake::multibody::RevoluteJoint<double>* pitch_joint{};
 };
 
 // History needed to estimate angular acceleration from consecutive angular
@@ -161,10 +165,26 @@ double ClampMoment(double moment_Nm,
   return std::min(std::max(moment_Nm, -limit), limit);
 }
 
+// Model each Kapton wing hinge as an internal joint spring. Drake applies the
+// restoring torque to the child and the equal-and-opposite reaction to the
+// parent, so it cannot introduce a spurious net external torque on the robot.
+void AddWingHingeSprings(
+    drake::multibody::MultibodyPlant<double>* plant) {
+  const robobee::AeromechanicalModelParameters params;
+  const double stiffness_Nm_per_rad =
+      robobee::HingeTorsionalStiffness(params);
+  for (const char* joint_name : {"revolute_1_2", "revolute_1"}) {
+    const auto& joint =
+        plant->GetJointByName<drake::multibody::RevoluteJoint>(joint_name);
+    plant->AddForceElement<drake::multibody::RevoluteSpring>(
+        joint, kWingHingeNominalAngleRad, stiffness_Nm_per_rad);
+  }
+}
+
 // Custom Drake system that reads the MultibodyPlant state and outputs one
 // ExternallyAppliedSpatialForce per wing. It performs a blade-element lift/drag
-// calculation in body-fixed aerodynamic axes and adds the non-translational
-// pitch moments from the aeromechanical model.
+// calculation in body-fixed aerodynamic axes and adds rotational damping. The
+// passive restoring torque is an internal RevoluteSpring in the plant.
 class WingAeromechanics final : public drake::systems::LeafSystem<double> {
  public:
   WingAeromechanics(const drake::multibody::MultibodyPlant<double>& plant,
@@ -177,6 +197,7 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
         angular_acceleration_filter_time_constant_s_(
             angular_acceleration_filter_time_constant_s),
         wings_({WingAeroConfig{"wing_membrane",
+                                "revolute_1_2",
                                 &robobee::kLeftWingAeromechanicalConstants,
                                 CalcAeroSpanAxisInBody(
                                     robobee::kLeftWingAeromechanicalConstants),
@@ -184,24 +205,25 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
                                     robobee::kLeftWingAeromechanicalConstants),
                                 Eigen::Vector3d::UnitZ(), 1.0},
                 WingAeroConfig{"wing_membrane_1",
+                                "revolute_1",
                                 &robobee::kRightWingAeromechanicalConstants,
                                 CalcAeroSpanAxisInBody(
                                     robobee::kRightWingAeromechanicalConstants),
                                 CalcAeroChordAxisInBody(
                                     robobee::kRightWingAeromechanicalConstants),
                                 Eigen::Vector3d::UnitZ(), 1.0}}) {
-    // Cache the aerodynamic component transform and the initial chord direction
-    // after the plant has loaded its default model configuration.
+    // Cache the aerodynamic component transform and actual pitch joint after
+    // the plant has loaded and finalized its model topology.
     for (WingAeroConfig& wing : wings_) {
-      const auto& body = plant_.GetBodyByName(wing.body_name);
-      const Eigen::Matrix3d R_WB0 =
-          body.EvalPoseInWorld(*plant_context_).rotation().matrix();
       wing.X_AB = CalcBodyToAeroComponentMatrix(
           wing.span_axis_B, wing.chord_axis_B, wing.normal_axis_B);
-      wing.reference_chord_axis_W = (R_WB0 * wing.chord_axis_B).normalized();
+      wing.pitch_joint =
+          &plant_.GetJointByName<drake::multibody::RevoluteJoint>(
+              wing.pitch_joint_name);
     }
     angular_histories_.resize(wings_.size());
     latest_moments_.resize(wings_.size());
+    latest_pitch_angles_psi_rad_.resize(wings_.size(), 0.0);
     this->DeclareVectorInputPort("plant_state", plant.num_multibody_states());
     this->DeclareAbstractOutputPort("spatial_forces",
                                     &WingAeromechanics::CalcSpatialForces);
@@ -211,29 +233,13 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     return latest_moments_;
   }
 
+  const std::vector<double>& latest_pitch_angles_psi_rad() const {
+    return latest_pitch_angles_psi_rad_;
+  }
+
  private:
   static bool IsFinite(const Eigen::Vector3d& value) {
     return value.array().isFinite().all();
-  }
-
-  static double CalcPitchAngleAboutSpan(
-      const WingAeroConfig& wing, const Eigen::Vector3d& span_axis_W,
-      const Eigen::Vector3d& chord_axis_W) {
-    // Remove any component along the current span axis, then compare the
-    // projected initial and current chord directions with atan2 for a signed
-    // rotation about span.
-    const Eigen::Vector3d reference_chord_W =
-        wing.reference_chord_axis_W -
-        wing.reference_chord_axis_W.dot(span_axis_W) * span_axis_W;
-    const Eigen::Vector3d current_chord_W =
-        chord_axis_W - chord_axis_W.dot(span_axis_W) * span_axis_W;
-    if (reference_chord_W.norm() <= 1.0e-12 ||
-        current_chord_W.norm() <= 1.0e-12) {
-      return 0.0;
-    }
-    const Eigen::Vector3d e_ref = reference_chord_W.normalized();
-    const Eigen::Vector3d e_cur = current_chord_W.normalized();
-    return std::atan2(span_axis_W.dot(e_ref.cross(e_cur)), e_ref.dot(e_cur));
   }
 
   Eigen::Vector3d EstimateAngularAccelerationInBody(
@@ -307,6 +313,7 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     const auto& constants = *wing.constants;
     const auto& body = plant_.GetBodyByName(wing.body_name);
     latest_moments_.at(wing_index) = {};
+    latest_pitch_angles_psi_rad_.at(wing_index) = 0.0;
     const robobee::AeromechanicalModelParameters params;
 
     // Evaluate wing pose and spatial velocity in world frame W. Bad numeric
@@ -356,8 +363,11 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     // the Drake plant.
     robobee::WingMomentInput moment_input;
     moment_input.station_flows.reserve(stations.size());
-    moment_input.pitch_angle_psi_rad =
-        CalcPitchAngleAboutSpan(wing, span_axis_W, chord_axis_W);
+    const double pitch_angle_psi_rad =
+        wing.pitch_joint->get_angle(*plant_context_) -
+        kWingHingeNominalAngleRad;
+    moment_input.pitch_angle_psi_rad = pitch_angle_psi_rad;
+    latest_pitch_angles_psi_rad_.at(wing_index) = pitch_angle_psi_rad;
     moment_input.omega_x_rad_s = omega_A.x();
     moment_input.omega_y_rad_s = omega_A.y();
     moment_input.omega_z_rad_s = omega_A.z();
@@ -532,15 +542,15 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     moments.drag_N = force_scale * total_drag_N;
     moments.vertical_force_N = total_blade_force_W.z();
     moments.added_mass_Nm = force_scale * total_added_mass_pitch_moment_Nm;
-    // The translational aerodynamic and added-mass pitch moments are already
-    // represented by distributed strip forces above. Apply only rotational
-    // damping and hinge restoring as extra scalar moments about span.
-    const double non_translational_pitch_moment_Nm =
-        ClampMoment(moments.total_Nm - moments.aerodynamic_Nm - moments.added_mass_Nm, params);
+    // Translational aerodynamic and added-mass moments are represented by the
+    // distributed strip forces. The hinge restoring moment is represented by
+    // the plant's internal RevoluteSpring, so only rotational damping belongs
+    // in this external spatial force.
+    const double rotational_pitch_moment_Nm =
+        ClampMoment(moments.rotational_damping_Nm, params);
     moments.applied_total_Nm =
         force_scale * moments.aerodynamic_Nm + moments.added_mass_Nm +
-        non_translational_pitch_moment_Nm;
-        // the added_mass_Nm might be causng some jitter 
+        rotational_pitch_moment_Nm + moments.hinge_Nm;
     if (!std::isfinite(moments.applied_total_Nm)) {
       moments.applied_total_Nm = 0.0;
     }
@@ -554,7 +564,7 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
     force.p_BoBq_B = Eigen::Vector3d::Zero();
     force.F_Bq_W = drake::multibody::SpatialForce<double>(
         total_blade_moment_W +
-            wing.moment_sign * non_translational_pitch_moment_Nm * span_axis_W,
+            wing.moment_sign * rotational_pitch_moment_Nm * span_axis_W,
         total_blade_force_W);
     output->push_back(force);
   }
@@ -566,6 +576,7 @@ class WingAeromechanics final : public drake::systems::LeafSystem<double> {
   std::vector<WingAeroConfig> wings_;
   mutable std::vector<WingAngularHistory> angular_histories_;
   mutable std::vector<robobee::WingMomentComponents> latest_moments_;
+  mutable std::vector<double> latest_pitch_angles_psi_rad_;
 };
 
 void RegisterRoboBeePackage(drake::multibody::Parser* parser) {
@@ -722,9 +733,11 @@ void AddBodyFrameTriadVisual(drake::multibody::MultibodyPlant<double>* plant,
 void WriteMomentCsvHeader(std::ostream* output) {
   *output
       << "time_s,"
+      << "left_psi_rad,"
       << "left_alpha_rad,left_lift_N,left_drag_N,left_force_z_N,"
          "left_aero_Nm,left_rot_Nm,"
          "left_added_Nm,left_hinge_Nm,left_total_Nm,left_applied_Nm,"
+      << "right_psi_rad,"
       << "right_alpha_rad,right_lift_N,right_drag_N,right_force_z_N,"
          "right_aero_Nm,"
          "right_rot_Nm,right_added_Nm,right_hinge_Nm,right_total_Nm,"
@@ -733,20 +746,27 @@ void WriteMomentCsvHeader(std::ostream* output) {
 
 void WriteMomentCsvRow(
     std::ostream* output, double time_s,
-    const std::vector<robobee::WingMomentComponents>& moments) {
+    const std::vector<robobee::WingMomentComponents>& moments,
+    const std::vector<double>& pitch_angles_psi_rad) {
   const robobee::WingMomentComponents zero;
   const robobee::WingMomentComponents& left =
       moments.size() > 0 ? moments[0] : zero;
   const robobee::WingMomentComponents& right =
       moments.size() > 1 ? moments[1] : zero;
+  const double left_psi_rad =
+      pitch_angles_psi_rad.size() > 0 ? pitch_angles_psi_rad[0] : 0.0;
+  const double right_psi_rad =
+      pitch_angles_psi_rad.size() > 1 ? pitch_angles_psi_rad[1] : 0.0;
 
   *output << std::setprecision(17) << time_s << ','
+          << left_psi_rad << ','
           << left.angle_of_attack_alpha_rad << ','
           << left.lift_N << ',' << left.drag_N << ','
           << left.vertical_force_N << ','
           << left.aerodynamic_Nm << ',' << left.rotational_damping_Nm << ','
           << left.added_mass_Nm << ',' << left.hinge_Nm << ','
           << left.total_Nm << ',' << left.applied_total_Nm << ','
+          << right_psi_rad << ','
           << right.angle_of_attack_alpha_rad << ','
           << right.lift_N << ',' << right.drag_N << ','
           << right.vertical_force_N << ','
@@ -767,7 +787,9 @@ int main() {
   // Gripped-root rotation: root is constrained to one revolute DOF about
   // world +x and commanded to spin at this rate. Set to 0.0 to hold the root
   // angle fixed while still using the gripper joint.
-  constexpr double kRootGripRotationRateRadPerSec = 10 * kPi;
+
+  // spin rate 
+  constexpr double kRootGripRotationRateRadPerSec = 5 * kPi;
   constexpr double kPlantStepsPerDriveCycle = 60.0;
   constexpr double kVisualizerSamplesPerDriveCycle =
       kPlantStepsPerDriveCycle * 2;
@@ -787,7 +809,7 @@ int main() {
       kAngularAccelerationFilterCycles / kDriveFrequencyHz;
   constexpr double kCommandPeriod = kPlantTimeStep;
   constexpr double kMomentLogFlushPeriod = 5.0e-2;
-  constexpr double kTargetRealtimeRate = 0.08;
+  constexpr double kTargetRealtimeRate = 0.0;
   constexpr char kMomentLogPath[] = "/tmp/aeromechanical_moments.csv";
 
   // A discrete MultibodyPlant is used because the assembly has constraints and
@@ -851,6 +873,7 @@ int main() {
   plant.get_mutable_joint_actuator(root_grip_actuator.index())
       .set_controller_gains({kRootGripKp, kRootGripKd});
 
+  AddWingHingeSprings(&plant);
   AddBodyFrameTriadVisual(&plant, "wing_membrane", "left_wing_membrane_frame");
   AddBodyFrameTriadVisual(&plant, "wing_membrane_1",
                           "right_wing_membrane_frame");
@@ -955,7 +978,8 @@ int main() {
     next_time += kCommandPeriod;
     simulator.AdvanceTo(next_time);
     if (next_time + 0.5 * kCommandPeriod >= next_moment_log_time) {
-      WriteMomentCsvRow(&moment_log, next_time, wing_aero->latest_moments());
+      WriteMomentCsvRow(&moment_log, next_time, wing_aero->latest_moments(),
+                        wing_aero->latest_pitch_angles_psi_rad());
       next_moment_log_time += kMomentLogPeriod;
     }
     if (next_time + 0.5 * kCommandPeriod >= next_moment_log_flush_time) {

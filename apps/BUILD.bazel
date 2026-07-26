@@ -212,6 +212,7 @@ cc_binary(
         "robobee_assembly_loader.h",
         "visualize_robobee_spinning.cc",
     ],
+    copts = ["-O3"], 
     data = [
         "//models/robobee_assembly:files",
     ],

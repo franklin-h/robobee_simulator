@@ -56,7 +56,7 @@ C_D = (CD_max+CD_0)/2-(CD_max-CD_0)/2*cos(2*alpha);
 
 folder_name = 'Drake Model';
 % open_loop_test_file_name = strcat(folder_name, '/Open_loop_test_PBee_20230927.mat')
-open_loop_test_file_name = strcat(folder_name, '/system_id_sweep_results_20260716_232354.mat')
+open_loop_test_file_name = strcat(folder_name, '/system_id_sweep_results_20260724_144836.mat')
 loaded = load(open_loop_test_file_name);
 if isfield(loaded, 'openloop_data')
     openloop_data = loaded.openloop_data;   % system_id_sweep bundle (struct saved as one variable)
@@ -378,7 +378,7 @@ params_opt.mu = mu;
 
 %% Save file
 
-optimal_fitting_parameter_save_file_name = strcat(folder_name, '/Optimal_fitting_parameter_proper_signs2.mat')
+optimal_fitting_parameter_save_file_name = strcat(folder_name, '/Optimal_fitting_parameter_proper_signs3.mat')
 save(optimal_fitting_parameter_save_file_name, 'params_opt')
 
 

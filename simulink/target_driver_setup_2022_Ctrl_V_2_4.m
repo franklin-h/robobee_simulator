@@ -19,7 +19,7 @@ reset_plant('updated_target_driver_2026_withVariants')
 %% Control mode flags
 landing_flag=0; % 0 : No landing, 1: landing on
 
-control_flag=2; %2 % 1: Openloop, 2: closed loop.
+control_flag=2; %2 % 1: Open loop, 2: closed loop.
 adaptive_flag=1;					% 0: no-adaptive 1: adaptive
 adaptive_lateral_flag=1;	% 0:  -adaptive 1: adaptive
 autosim = 1; 
@@ -38,7 +38,7 @@ if Plant == 1
 else
     start_delay = 0.0;
     adaptive_delay = 0.0;
-    ramp_delay = 0.3;
+    ramp_delay = 0.0;
 end
 
 
@@ -72,7 +72,7 @@ save_file_name = '20221217_PBee_OL_1';
 
 %% Vehicle parameters
 g=9.8; % gravity
-m = 1.05e-4; %101e-6%90e-6;%86e-6; %86*1e-6%86*1e-6; % vehicle weight in kg (mg * 1e-6)
+m = 85.655e-6; %101e-6%90e-6;%86e-6; %86*1e-6%86*1e-6; % vehicle weight in kg (mg * 1e-6)
 %
 % Ixx = 1.42*1e-9; % Principal moment of inertia
 % Iyy = 1.34*1e-9%1.34*1e-9;
@@ -86,9 +86,9 @@ m = 1.05e-4; %101e-6%90e-6;%86e-6; %86*1e-6%86*1e-6; % vehicle weight in kg (mg 
 % Iyy = 1.34*1e-9;		%1.34*1e-9;
 % Izz = 0.45*1e-9;
 
-Ixx = 2.03e-9;
-Iyy = 2.30e-9;
-Izz = 0.31e-9;
+Ixx = 1.95e-9; % don't forget the order is different from onshape! Ixx should be larger than Iyy 
+Iyy = 1.69e-9;
+Izz = 0.3e-9;
 % Ixx = 3.8e-4;
 % Iyy = 6.1e-4;
 % Izz = 2.5e-4;
@@ -122,13 +122,37 @@ e3=[0;0;1];
 % roll_offset_angle = deg2rad(5);
 roll_offset_angle = 0; % New Vicon calibration
 
+%
+ws      = 1.0e3;    % running orientation-vector weight
+wds     = 1.0e3;    % running orientation-rate weight
+wpr_xy  = 1.0e1;      % running position weight
+wpr_z   = 1.0e-1; 
+wpf     = 3.0;      % final position weight
+wvr_xy  = 1.0e2;    % running velocity weight
+wvr_z   = 3.0e2; 
+wvf_xy  = 2.0e3;    % final velocity weight
+wvf_z   = 8.0e2; 
+wthrust = 1.0e-1;   % specific-thrust-correction effort. higher wthrust means more "damping" 
+wmom    = 1.0e-1;    % torque effort 1e-2 
+wdmom_roll   = 1e-2; % 1e-3 
+wdmom_pitch = 1e-2; %1e-3 
+
+% k_tau_roll = 1/3.0; 
+% k_tau_pitch = 10; 
+k_tau_roll = 1; 
+k_tau_pitch = 1; 
+weights_vec = [ws; wds; wpr_xy;wpr_z; wpf; wvr_xy; wvr_z; 
+    wvf_xy; wvf_z; wthrust; wmom;wdmom_roll;wdmom_pitch]; 
+
+k_tau_vec = [k_tau_roll;k_tau_pitch]; 
+
 %% Voltage to Force Mapping
 % params = load('RoboBee_optimal_fitting_parameter_150Hz.mat');
 % params = load('RoboBee_optimal_fitting_parameter_150Hz_2022.mat');
 % params = load('RoboBee_optimal_fitting_parameter_150Hz_2022_Apr.mat');
 
 % BBee System ID without the leg
-params = load('system id/Drake Model/Optimal_fitting_parameter_proper_signs2.mat');
+params = load('system id/Drake Model/Optimal_fitting_parameter_proper_signs3.mat');
 % BBee System ID with the rigid leg
 % params = load('RoboBee_optimal_fitting_parameter_155Hz_2022_BBee_rigid_leg_v1.mat');
 
@@ -236,11 +260,13 @@ drv_pch = drv_pitch_left;
 % Franklin Open Loop
 drv_amp = 180;
 % drv_roll = -1e-3;
-drv_roll = 20; 
+drv_roll = -1e-3; 
 % drv_pitch_left = 6.95;
 % drv_pitch_right = 6.95;
-drv_pitch_left = 6.95; 
-drv_pitch_right = 6.95; 
+% drv_pitch_left = 6.95; 
+% drv_pitch_right = 6.95; 
+drv_pitch_left = 10; % the more positive, the more negative pitch torque. 
+drv_pitch_right = 10; 
 a2_openloop = 0;
 
 
@@ -256,7 +282,7 @@ scale = 1e3;
 default_x = 0;
 default_y = 0;
 default_z = 0;
-jump_height = 0.40;
+jump_height = 0.05;
 % jump_height = 0.02;
 soft_landing_height = 0.012; % 3mm
 
@@ -270,8 +296,8 @@ desired_y_landing = 0.1058;
 desired_z_landing = 0.0456;
 
 landing_z_decrease = -(jump_height-soft_landing_height);%-(default_z+jump_height-desired_z_landing-soft_landing_height);%-0.03;
-landing_y_decrease = 0%-(default_y-desired_y_landing); %0; %-0.02;
-landing_x_decrease = 0%-(default_x-desired_x_landing); %0; %-0.02;
+landing_y_decrease = 0;%-(default_y-desired_y_landing); %0; %-0.02;
+landing_x_decrease = 0;%-(default_x-desired_x_landing); %0; %-0.02;
 
 rising_time = start_delay_control+transition_time;
 falling_time =rising_time + T;
@@ -406,7 +432,7 @@ adaptive_yaw_init = 0;%-0.029/(scale^2);
 gamma_lateral_adaptive = 9e-4*upp_bound_vx;
 adaptive_x_limit = 0.15/(scale);
 adaptive_y_limit = 0.15/(scale);
-adaptive_z_limit = 0.20/(scale);% 0.18/(scale);%0.015/(scale);
+adaptive_z_limit = 0.8/(scale);% 0.18/(scale);%0.015/(scale);
 
 adaptive_x_limit_low = -adaptive_x_limit;
 adaptive_y_limit_low = -adaptive_y_limit;
@@ -487,14 +513,14 @@ else % else, open loop
 end
 
 %% Model configuration (needs dt_s and running_time defined above)
-mdl = 'updated_target_driver_2026_withVariants';
+mdl = 'updated_target_driver_2026_withVariants_MPC';
 set_param(mdl, 'SolverType', 'Fixed-step');
 set_param(mdl, 'Solver', 'FixedStepDiscrete');
 set_param(mdl, 'FixedStep', 'dt_s');
 set_param(mdl, 'StopTime', 'running_time');
 
 if autosim == 1
-    sim('updated_target_driver_2026_withVariants'); 
+    sim('updated_target_driver_2026_withVariants_MPC'); 
 end 
 
 function reset_plant(mdl)
