@@ -11,6 +11,13 @@ dt_s = 2.0e-4;
 sampling_f = 1/dt_s;
 sampling_time = 1/sampling_f;
 
+%% Model configuration (needs dt_s and running_time defined above)
+mdl = 'updated_target_driver_2026_withVariants';
+set_param(mdl, 'SolverType', 'Fixed-step');
+set_param(mdl, 'Solver', 'FixedStepDiscrete');
+set_param(mdl, 'FixedStep', 'dt_s');
+set_param(mdl, 'StopTime', 'running_time');
+
 %% Network (target communication)
 host = "127.0.0.1";
 port = 4242;
@@ -20,10 +27,10 @@ reset_plant('updated_target_driver_2026_withVariants')
 landing_flag=0; % 0 : No landing, 1: landing on
 
 control_flag=2; %2 % 1: Open loop, 2: closed loop.
-adaptive_flag=1;					% 0: no-adaptive 1: adaptive
-adaptive_lateral_flag=1;	% 0:  -adaptive 1: adaptive
+adaptive_flag=1;					% 0: no-adaptive 1: adaptive. for uncertainty in torque 
+adaptive_lateral_flag=1;	% 0:  -adaptive 1: adaptive. position/velocity bias/disturbance. 
 autosim = 1; 
-controller="MPC"; % geometric or MPC, for error saturation. 
+controller="geometric"; % geometric or MPC, for error saturation. 
 replay_mode = 1; % 1 for control, 2 for replay. 
 replay_log_file = fullfile('Robobee flight logs', ...
     '20221217_PBee_OL_1.mat');
@@ -50,7 +57,7 @@ start_delay_adaptive = start_delay + ramp_delay+adaptive_delay;
 f = 155; %170; %165
 f_int = f;					% initial frequency
 f_fin = f;					% final frequency
-T = 0.3;			% total time in seconds
+T = 10;			% total time in seconds
 
 
 %% Save settings
@@ -122,29 +129,39 @@ e3=[0;0;1];
 % roll_offset_angle = deg2rad(5);
 roll_offset_angle = 0; % New Vicon calibration
 
-%
+%% MPC Params
 ws      = 1.0e3;    % running orientation-vector weight
 wds     = 1.0e3;    % running orientation-rate weight
 wpr_xy  = 1.0e1;      % running position weight
-wpr_z   = 1.0e-1; 
+wpr_z   = 1.0e-4; 
 wpf     = 3.0;      % final position weight
 wvr_xy  = 1.0e2;    % running velocity weight
 wvr_z   = 3.0e2; 
 wvf_xy  = 2.0e3;    % final velocity weight
 wvf_z   = 8.0e2; 
-wthrust = 1.0e-1;   % specific-thrust-correction effort. higher wthrust means more "damping" 
+wthrust = 1.0e1;   % specific-thrust-correction effort. higher wthrust means more "damping" 
 wmom    = 1.0e-1;    % torque effort 1e-2 
 wdmom_roll   = 1e-2; % 1e-3 
 wdmom_pitch = 1e-1; %1e-3 
+wdthrust = 1e1;
 
 % k_tau_roll = 1/3.0; 
 % k_tau_pitch = 10; 
 k_tau_roll = 1; 
 k_tau_pitch = 1; 
 weights_vec = [ws; wds; wpr_xy;wpr_z; wpf; wvr_xy; wvr_z; 
-    wvf_xy; wvf_z; wthrust; wmom;wdmom_roll;wdmom_pitch]; 
+    wvf_xy; wvf_z; wthrust; wmom;wdmom_roll;wdmom_pitch;wdthrust]; 
 
 k_tau_vec = [k_tau_roll;k_tau_pitch]; 
+
+ctrl_decim = 32;                 % controller ticks per ... 32*dt_s = 6.4 ms ~ 1 wingbeat
+ctrl_Ts    = ctrl_decim * dt_s;  % 6.4e-3 s
+
+blk = strcat(mdl, '/Geometric Controller/Geometric Controller');
+% set_param(blk, 'Sample time', 'ctrl_Ts');
+
+
+
 
 %% Voltage to Force Mapping
 % params = load('RoboBee_optimal_fitting_parameter_150Hz.mat');
@@ -258,15 +275,15 @@ drv_pch = drv_pitch_left;
 % a2_openloop = -0; %0.2;2
 
 % Franklin Open Loop
-drv_amp = 180;
+drv_amp = 150;
 % drv_roll = -1e-3;
 drv_roll = -1e-3; 
 % drv_pitch_left = 6.95;
 % drv_pitch_right = 6.95;
 % drv_pitch_left = 6.95; 
 % drv_pitch_right = 6.95; 
-drv_pitch_left = 8; % the more positive, the more negative pitch torque. 
-drv_pitch_right = 8; 
+drv_pitch_left = 9.05; % the more positive, the more negative pitch torque. 
+drv_pitch_right = 9.05; 
 a2_openloop = 0;
 
 
@@ -287,7 +304,7 @@ jump_height = 0.05;
 soft_landing_height = 0.012; % 3mm
 
 % Task transition and Landing control
-transition_rate = 3 %8; % 5 : 1 second from 0.1 to 0.9
+transition_rate = 3; %8; % 5 : 1 second from 0.1 to 0.9
 transition_time = 1.5;
 prelanding_time =1.5;
 landing_time = 3; %1.5;
@@ -371,48 +388,53 @@ b_1_d_desired = [1,0,0];
 % control_gain = [2500, 100, 100, 400, 100, 0.04, 0.04, 0.04, 2000,10]. 
 
 %Try params for higher pitch bandwidth. 
-k_x = 600; 
-k_v = 200; 
-k_R      = 200;   % pitch attitude 100
-k_Rx     = 800;   % roll attitude 400 
-k_R_yaw  = 100;   % yaw attitude 100 
-k_Omega       = 0.015;   % roll  rate  (index 4, unchanged)
-k_Omega_pitch = 0.04;   % pitch rate  (laggy weak axis -> more damping)
-k_Omega_yaw   = 0.04;   % yaw   rate
-k_z = 8000; 
-k_vz = 30; 
+%Lateral gain
+k_x = 0.75/scale;
+k_v = 0.25/scale;
+
+%Attitude gain
+k_R = 3/(scale^2);%0.5/(scale^2);		yaw pitch
+k_Rx = 12/(scale^2);%0.6/(scale^2);		roll
+k_Omega_pitch =  0.8/(scale^2);%0.25/(scale^2);
+k_Omega_roll = 0.01/(scale^2); 
+
+%Altitude gain 
+k_z = 0.5/scale; %0.2/scale;%0.2/scale;
+k_vz = 0.5/scale; %0.35/scale;%0.25/scale; (Damping coefficients on z direction)
+
 
 % Layout consumed by mpc_fcn / Desired_Attitude (indices 1-7 preserved; 8-10 appended):
 % [k_x k_v k_R k_Omega k_z k_vz k_Rx | k_Omega_pitch k_Omega_yaw k_R_yaw]
-control_gain = [k_x, k_v, k_R, k_Omega, k_z, k_vz, k_Rx, ...
-                k_Omega_pitch, k_Omega_yaw, k_R_yaw];
+% control_gain = [k_x, k_v, k_R, k_Omega, k_z, k_vz, k_Rx, ...
+%                 k_Omega_pitch, k_Omega_yaw, k_R_yaw];
+control_gain = [k_x,k_v,k_R,k_Omega_pitch,k_Omega_roll,k_z,k_vz,k_Rx]; 
 
 % Altitude feed back saturation
-upp_bound_z = 0.1; % m
-low_bound_z =-0.1; % m
+% Altitude feed back saturation
+upp_bound_z = 0.04; % m
+low_bound_z =-0.04; % m
 upp_bound_vz = 0.5; % m/s
 low_bound_vz =-0.5; % m/s
 
-upp_bound_x = 0.6; % m
-low_bound_x =-0.6; % m
+upp_bound_x = 0.1; % m
+low_bound_x =-0.1; % m
 upp_bound_vx = 0.5; % m/s
 low_bound_vx =-0.5; % m/s
 
-upp_bound_y = 0.6; % m
-low_bound_y =-0.6; % m
+upp_bound_y = 0.06; % m
+low_bound_y =-0.06; % m
 upp_bound_vy = 0.5; % m/s
 low_bound_vy =-0.5; % m/s
 
-
-upp_bound =10; %4 % rad/s this helped a lot!! 
-low_bound =-10; %-4 % rad/s
+upp_bound =5; %4 % rad/s this helped a lot!! 
+low_bound =-5; %-4 % rad/s
 upp_bound_eR =1.2; %0.3   % attitude error
 low_bound_eR =-1.2; %-0.3 % attitude error
 
 %% Adaptive Control gain
 gamma_adaptive = 5e-8*upp_bound;
 adaptive_roll_limit = 0.3/(scale^2);%0.17/(scale^2);
-adaptive_pitch_limit = 0.1/(scale^2);%0.09/(scale^2);
+adaptive_pitch_limit = 0.3/(scale^2);%0.09/(scale^2);
 adaptive_yaw_limit = 0.035/(scale^2); %0.017/(scale^2);
 
 adaptive_roll_limit_low = -adaptive_roll_limit;
@@ -429,22 +451,30 @@ adaptive_pitch_init =  0;%-0.02/(scale^2);%-0.05/(scale^2);
 adaptive_yaw_init = 0;%-0.029/(scale^2);
 
 % Lateral addaptive control
-gamma_lateral_adaptive = 9e-4*upp_bound_vx;
-adaptive_x_limit = 0.15/(scale);
-adaptive_y_limit = 0.15/(scale);
+% gamma_lateral_adaptive = 9e-4*upp_bound_vx;
+% adaptive_x_limit = 0.15/(scale);
+% adaptive_y_limit = 0.15/(scale);
+% adaptive_z_limit = 0.8/(scale);% 0.18/(scale);%0.015/(scale);
+% 
+% adaptive_x_limit_low = -adaptive_x_limit;
+% adaptive_y_limit_low = -adaptive_y_limit;
+% adaptive_z_limit_low = -adaptive_z_limit/1;
+gamma_lateral_adaptive = 0.25*9e-4*upp_bound_vx;
+
+adaptive_x_limit = 0.075/scale;
+adaptive_y_limit = 0.075/scale;
 adaptive_z_limit = 0.8/(scale);% 0.18/(scale);%0.015/(scale);
 
 adaptive_x_limit_low = -adaptive_x_limit;
 adaptive_y_limit_low = -adaptive_y_limit;
 adaptive_z_limit_low = -adaptive_z_limit/1;
-
-
 alpha_xx = 0.3;
 
 c1_upp_bound = min(4*(k_x/upp_bound_x*k_v/upp_bound_vx*(1-alpha_xx)^2)/((k_v/upp_bound_vx)^2*(1+alpha_xx)^2+4*m*k_x/upp_bound_x*(1-alpha_xx)), sqrt(k_x/upp_bound_x/m));
 c_1_adaptive=c1_upp_bound*upp_bound_x/upp_bound_vx;
 
-c_1_adaptive = c_1_adaptive*10;
+% c_1_adaptive = c_1_adaptive*10;
+c_1_adaptive = c_1_adaptive*2;
 
 adaptive_x_init = 0;%-0.0/(scale); %-0.045/(scale); %-0.12/(scale);
 adaptive_y_init = 0;%-0.07/(scale); %-0.1/(scale); %0;
@@ -512,15 +542,9 @@ else % else, open loop
 	running_time_control = start_delay_control+T+0.0;   %3.0+T+0.5 %11
 end
 
-%% Model configuration (needs dt_s and running_time defined above)
-mdl = 'updated_target_driver_2026_withVariants_MPC';
-set_param(mdl, 'SolverType', 'Fixed-step');
-set_param(mdl, 'Solver', 'FixedStepDiscrete');
-set_param(mdl, 'FixedStep', 'dt_s');
-set_param(mdl, 'StopTime', 'running_time');
 
 if autosim == 1
-    sim('updated_target_driver_2026_withVariants_MPC'); 
+    sim('updated_target_driver_2026_withVariants'); 
 end 
 
 function reset_plant(mdl)
