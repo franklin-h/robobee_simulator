@@ -90,7 +90,7 @@ e_v = v_cur - dpdes;
 % MPC constants (template units: mm, ms, mg)
 % -------------------------------------------------------------------------
 N = 10;         % horizon steps
-dt = 6.45*2;      % [ms] prediction step = TWO wingbeats at 155 Hz
+dt = 6.45;      % [ms] prediction step = TWO wingbeats at 155 Hz
                 % N*dt = 129 ms ~ 20 wingbeats of preview
 ny = 6;         %#ok<NASGU>
 nu = 3;
