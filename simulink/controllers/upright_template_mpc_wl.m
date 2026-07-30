@@ -1,7 +1,7 @@
 function [pdotdes, h0_wl, accdes, thrust_desired, roll_torque_desired, ...
     pitch_torque_desired, yaw_torque_desired] = upright_template_mpc_wl( ...
     R_cur, omega, p_cur, v_cur, pdes, dpdes, sdes_in, ...
-    I_moment_vec, m, g, cntrl_enable, weights_vec, k_tau, ctrl_Ts) %#ok<INUSD>
+    I_moment_vec, m, g, cntrl_enable, weights_vec, k_tau, ctrl_Ts, a_ref) %#ok<INUSD>
 %#codegen
 % Hierarchical variant of upright_template_mpc: same template QP, but the
 % I/O is restructured for the MPC -> WLQP cascade of robobee3d
@@ -79,6 +79,7 @@ k_tau = reshape(k_tau, 2, 1);
 m = m(1);
 g = g(1);
 cntrl_enable = cntrl_enable(1);
+a_ref = reshape(a_ref,3,1); 
 
 % Errors formed internally from the trajectory reference. The (pdes,
 % dpdes, sdes) triple carries no acceleration feed-forward, so xdd_des = 0.
@@ -238,7 +239,8 @@ x0 = [ex_t; es0; ev_t; ds0; tau_applied];
 
 % Affine drift in error coordinates (no trajectory accel feed-forward):
 % e_v_dot = T0*e_s + s0*utilde + (T0*sdes - g*e3)
-d_v = T0*sdes - [0;0;g_t];
+aref_t = a_ref * 1.0e-3; 
+d_v = T0*sdes - [0;0;g_t] - aref_t;
 
 % -------------------------------------------------------------------------
 % Discrete error dynamics  x_{k+1} = Ad*x_k + Bd*u_k + cd

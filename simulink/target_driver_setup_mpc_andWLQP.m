@@ -133,12 +133,12 @@ roll_offset_angle = 0; % New Vicon calibration
 %% MPC Params
 ws      = 1.0e3;    % running orientation-vector weight
 wds     = 1.0e3;    % running orientation-rate weight
-wpr_xy  = 3.0;      % running position weight
+wpr_xy  = 1.5;      % running position weight
 wpr_z   = 1.0e-4; 
 wpf     = 3.0;      % final position weight
 wvr_xy  = 1.0e2;    % running velocity weight
 wvr_z   = 3.0e2; 
-wvf_xy  = 3.0e2;    % final velocity weight
+wvf_xy  = 1.0e2;    % final velocity weight
 wvf_z   = 8.0e2; 
 wthrust = 1.0e1;   % specific-thrust-correction effort. higher wthrust means more "damping" 
 wmom    = 1.0e-1;    % torque effort 1e-2 
@@ -148,7 +148,7 @@ wdthrust = 1e4;
 
 % k_tau_roll = 1/3.0; 
 % k_tau_pitch = 10; 
-k_tau_roll = 0.15; 
+k_tau_roll = 0.5; 
 k_tau_pitch = 1; 
 weights_vec = [ws; wds; wpr_xy;wpr_z; wpf; wvr_xy; wvr_z; 
     wvf_xy; wvf_z; wthrust; wmom;wdmom_roll;wdmom_pitch;wdthrust]; 
@@ -301,8 +301,8 @@ scale = 1e3;
 % default_z = 0.1278;
 % default_z = 0.0855;%0.1535;
 
-default_x = 0.05;
-default_y = 0.05;
+default_x = 0.0;
+default_y = 0.0;
 default_z = 0;
 jump_height = 0.05;
 % jump_height = 0.02;
