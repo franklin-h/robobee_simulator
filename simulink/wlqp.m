@@ -1,4 +1,4 @@
-function [u, w0] = wlqp(u0, h0, pdotdes, popts, controlRate, umin, umax, dumax, Qdiag)
+function [u, w0] = wlqp(u0, pdotdes, h0, popts, controlRate, umin, umax, dumax, Qdiag)
 %#codegen
 %WLQP MATLAB translation of the wrench-linearized QP controller (WLQP).
 %
@@ -15,8 +15,8 @@ function [u, w0] = wlqp(u0, h0, pdotdes, popts, controlRate, umin, umax, dumax, 
 %   u0          4x1  previous input  [Vmean; uoffs; udiff; h2]
 %   h0          6x1  momentum-dynamics bias term (e.g. [Rb'*[0;0;m*g]; 0;0;0])
 %   pdotdes     6x1  desired momentum rate (wrench units)
-%   popts       90x1 quadratic wrench-map fit coefficients, row-major 6x15
-%                    (same vector passed to wlControllerUpdate / wltest.m)
+%   popts       90x1 optimal parameters. quadratic wrench-map fit coefficients, row-major 6x15
+%                    (same vector passed to wlControllerUpdate / wltest.m) 
 %   controlRate scalar, Hz. Sets the rate limit dumax = [5e3;10;10;10]/controlRate
 %   umin, umax  (optional) 4x1 absolute input limits.
 %                    Defaults [90;-0.5;-0.2;-0.1], [240;0.5;0.2;0.1] (wlqp.c).

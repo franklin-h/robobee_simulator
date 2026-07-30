@@ -15,7 +15,11 @@
       "Bash(grep -icE \"nan|inf|,,|^,|,$\" /tmp/robobee_com_wrench.csv)",
       "Bash(python3 -)",
       "Bash(lsof -iTCP:4242 -sTCP:LISTEN)",
-      "Bash(cat > *)"
+      "Bash(cat > *)",
+      "Bash(grep -n -A8 'popts\\\\s*\\\\[' __TRACKED_VAR__/c/main.c)",
+      "Bash(find \"/Users/franklinho/robobee_simulator/simulink/virtualBee flight logs\" -iname \"*too_much*\" -newer /dev/null 2>/dev/null; ls -lat \"/Users/franklinho/robobee_simulator/simulink/virtualBee flight logs/MPC_wlqp/\")",
+      "Read(//dev/**)",
+      "Bash(mdfind -name \"too_much_thrust\")"
     ],
     "additionalDirectories": [
       "/tmp"

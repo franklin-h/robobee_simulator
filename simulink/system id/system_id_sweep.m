@@ -29,8 +29,9 @@
 %
 %   The server continuously writes the net COM wrench to
 %   /tmp/robobee_com_wrench.csv (columns: time_s, thrust_z_N, roll_torque_Nm,
-%   pitch_torque_Nm, yaw_torque_Nm). Because a reconnect truncates that file,
-%   after each run the file contains exactly that run's wrench trace.
+%   pitch_torque_Nm, yaw_torque_Nm, force_x_N, force_y_N; the last two are in
+%   controller axes, +x forward / +y left). Because a reconnect truncates that
+%   file, after each run the file contains exactly that run's wrench trace.
 %
 % PREREQUISITES
 %   * MATLAB with the model on the path (this script adds the simulink folder).
@@ -534,7 +535,8 @@ function W = read_wrench_csv(csv_path)
 %READ_WRENCH_CSV Read the server COM-wrench log, polling briefly until its size
 % is stable (the server flushes on the client disconnect that reset_plant
 % triggers). Columns: time_s, thrust_z_N, roll_torque_Nm, pitch_torque_Nm,
-% yaw_torque_Nm.
+% yaw_torque_Nm, and (newer servers) force_x_N, force_y_N in controller axes
+% (+x forward, +y left).
     prev = -1; stable = 0;
     for k = 1:60
         d = dir(csv_path);

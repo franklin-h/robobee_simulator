@@ -25,6 +25,10 @@ CHANNELS = [
     ("roll_torque_Nm", "roll torque", "N·m", "tab:red"),
     ("pitch_torque_Nm", "pitch torque", "N·m", "tab:green"),
     ("yaw_torque_Nm", "yaw torque", "N·m", "tab:purple"),
+    # Controller axes: +x forward, +y left. Absent in CSVs recorded before
+    # force_x_N/force_y_N were added; these panels then show "(no data)".
+    ("force_x_N", "x-axis (fwd) force", "N", "tab:orange"),
+    ("force_y_N", "y-axis (left) force", "N", "tab:brown"),
 ]
 
 
@@ -210,7 +214,7 @@ def main():
             "matplotlib is required: python3 -m pip install matplotlib"
         ) from exc
 
-    fig, axes = plt.subplots(4, 1, sharex=True, figsize=(10, 9))
+    fig, axes = plt.subplots(len(CHANNELS), 1, sharex=True, figsize=(10, 12))
 
     if not args.live:
         if not path.exists():

@@ -43,6 +43,10 @@ CHANNELS = [
     ("roll_torque_Nm", "roll torque", "mN·mm", "tab:red", 1e6),
     ("pitch_torque_Nm", "pitch torque", "mN·mm", "tab:green", 1e6),
     ("yaw_torque_Nm", "yaw torque", "mN·mm", "tab:purple", 1e6),
+    # Controller axes: +x forward, +y left. Absent in CSVs recorded before
+    # force_x_N/force_y_N were added; these figures then show "(no data)".
+    ("force_x_N", "x-axis (fwd) force", "mN", "tab:orange", 1e3),
+    ("force_y_N", "y-axis (left) force", "mN", "tab:brown", 1e3),
 ]
 
 # Manual y-axis limits per channel, expressed in the DISPLAY units above
@@ -53,6 +57,8 @@ YLIMS = {
     "roll_torque_Nm": None,
     "pitch_torque_Nm": (-0.5, 0.8),
     "yaw_torque_Nm": None,
+    "force_x_N": None,
+    "force_y_N": None,
 }
 
 

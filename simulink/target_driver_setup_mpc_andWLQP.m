@@ -12,7 +12,7 @@ sampling_f = 1/dt_s;
 sampling_time = 1/sampling_f;
 
 %% Model configuration (needs dt_s and running_time defined above)
-mdl = 'updated_target_driver_2026_withVariants_MPC_andwlqp';
+mdl = 'updated_target_driver_2026_withVariants_MPC_andwlqp2';
 set_param(mdl, 'SolverType', 'Fixed-step');
 set_param(mdl, 'Solver', 'FixedStepDiscrete');
 set_param(mdl, 'FixedStep', 'dt_s');
@@ -22,7 +22,7 @@ set_param(mdl, 'StopTime', 'running_time');
 host = "127.0.0.1";
 port = 4242;
 
-reset_plant('updated_target_driver_2026_withVariants_MPC_andwlqp')
+reset_plant('updated_target_driver_2026_withVariants_MPC_andwlqp2')
 %% Control mode flags
 landing_flag=0; % 0 : No landing, 1: landing on
 
@@ -31,6 +31,7 @@ adaptive_flag=1;					% 0: no-adaptive 1: adaptive
 adaptive_lateral_flag=1;	% 0:  -adaptive 1: adaptive
 autosim = 1; 
 controller="MPC"; % geometric or MPC, for error saturation. 
+cntrl_enable = 1; 
 replay_mode = 1; % 1 for control, 2 for replay. 
 replay_log_file = fullfile('Robobee flight logs', ...
     '20221217_PBee_OL_1.mat');
@@ -78,7 +79,7 @@ save_flag = 1; %1;
 save_file_name = '20221217_PBee_OL_1';
 
 %% Vehicle parameters
-g=9.8; % gravity
+g=9.81; % gravity
 m = 85.655e-6; %101e-6%90e-6;%86e-6; %86*1e-6%86*1e-6; % vehicle weight in kg (mg * 1e-6)
 %
 % Ixx = 1.42*1e-9; % Principal moment of inertia
@@ -132,22 +133,22 @@ roll_offset_angle = 0; % New Vicon calibration
 %% MPC Params
 ws      = 1.0e3;    % running orientation-vector weight
 wds     = 1.0e3;    % running orientation-rate weight
-wpr_xy  = 1.0e1;      % running position weight
+wpr_xy  = 3.0;      % running position weight
 wpr_z   = 1.0e-4; 
 wpf     = 3.0;      % final position weight
 wvr_xy  = 1.0e2;    % running velocity weight
 wvr_z   = 3.0e2; 
-wvf_xy  = 2.0e3;    % final velocity weight
+wvf_xy  = 3.0e2;    % final velocity weight
 wvf_z   = 8.0e2; 
 wthrust = 1.0e1;   % specific-thrust-correction effort. higher wthrust means more "damping" 
 wmom    = 1.0e-1;    % torque effort 1e-2 
-wdmom_roll   = 1e-2; % 1e-3 
+wdmom_roll   = 1e-1; % 1e-3 
 wdmom_pitch = 1e-1; %1e-3 
 wdthrust = 1e4;
 
 % k_tau_roll = 1/3.0; 
 % k_tau_pitch = 10; 
-k_tau_roll = 1; 
+k_tau_roll = 0.15; 
 k_tau_pitch = 1; 
 weights_vec = [ws; wds; wpr_xy;wpr_z; wpf; wvr_xy; wvr_z; 
     wvf_xy; wvf_z; wthrust; wmom;wdmom_roll;wdmom_pitch;wdthrust]; 
@@ -222,6 +223,10 @@ drv_pitch_right_limit = V_offset_limit;
 
 closedloop_max_drv_bias = max(V_L_p2p_limit,V_R_p2p_limit) + abs(V_offset_limit);
 
+
+popts = load('popts_fit_20260729_193118.mat'); 
+popts_flattened = popts.popts; 
+% popts_flattened(46:60) = 0.15 * popts_flattened(46:60); 
 %% Open loop control set up (Wing Trajectory control)
 % v = 140;
 % v_roll_offset = 0; % Voltages
@@ -296,15 +301,15 @@ scale = 1e3;
 % default_z = 0.1278;
 % default_z = 0.0855;%0.1535;
 
-default_x = 0;
-default_y = 0;
+default_x = 0.05;
+default_y = 0.05;
 default_z = 0;
 jump_height = 0.05;
 % jump_height = 0.02;
 soft_landing_height = 0.012; % 3mm
 
 % Task transition and Landing control
-transition_rate = 3 %8; % 5 : 1 second from 0.1 to 0.9
+transition_rate = 3; %8; % 5 : 1 second from 0.1 to 0.9
 transition_time = 1.5;
 prelanding_time =1.5;
 landing_time = 3; %1.5;
@@ -531,7 +536,7 @@ end
 
 
 if autosim == 1
-    sim('updated_target_driver_2026_withVariants_MPC_andwlqp'); 
+    sim('updated_target_driver_2026_withVariants_MPC_andwlqp2'); 
 end 
 
 function reset_plant(mdl)

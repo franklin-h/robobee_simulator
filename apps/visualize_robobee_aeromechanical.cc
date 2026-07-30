@@ -1079,7 +1079,10 @@ void WritePoseCsvRow(std::ostream* output, double time_s,
 
 // Net aerodynamic wrench produced by both wings, reduced to the robot center of
 // mass and resolved in controller/robot axes: +x forward, +y left, and +z up.
-// Consequently, roll_torque_Nm is the positive moment about controller +x,
+// Consequently, force_x_N is the positive force along controller +x (the
+// direction the robot faces), force_y_N is the positive force along controller
+// +y (the robot's left), thrust_z_N is the positive force along controller +z
+// (up), roll_torque_Nm is the positive moment about controller +x,
 // pitch_torque_Nm is the positive moment about controller +y, and
 // yaw_torque_Nm is the positive moment about controller +z. The URDF root frame
 // uses +x toward the right wing and +y forward, so CalcAeroWrenchAboutCom
@@ -1090,6 +1093,8 @@ struct ComWrench {
   double roll_torque_Nm{};
   double pitch_torque_Nm{};
   double yaw_torque_Nm{};
+  double force_x_N{};
+  double force_y_N{};
 };
 
 // Reduce the per-wing ExternallyAppliedSpatialForce entries to a single spatial
@@ -1129,19 +1134,24 @@ ComWrench CalcAeroWrenchAboutCom(
   wrench.roll_torque_Nm = moment_C.x();
   wrench.pitch_torque_Nm = moment_C.y();
   wrench.yaw_torque_Nm = moment_C.z();
+  wrench.force_x_N = force_C.x();
+  wrench.force_y_N = force_C.y();
   return wrench;
 }
 
+// force_x_N/force_y_N are appended after the torques so existing readers that
+// index columns positionally (e.g. system_id_sweep.m's W(:, 2:5)) keep working.
 void WriteComWrenchCsvHeader(std::ostream* output) {
   *output << "time_s,thrust_z_N,roll_torque_Nm,pitch_torque_Nm,"
-             "yaw_torque_Nm\n";
+             "yaw_torque_Nm,force_x_N,force_y_N\n";
 }
 
 void WriteComWrenchCsvRow(std::ostream* output, double time_s,
                           const ComWrench& wrench) {
   *output << std::setprecision(17) << time_s << ',' << wrench.thrust_z_N << ','
           << wrench.roll_torque_Nm << ',' << wrench.pitch_torque_Nm << ','
-          << wrench.yaw_torque_Nm << '\n';
+          << wrench.yaw_torque_Nm << ',' << wrench.force_x_N << ','
+          << wrench.force_y_N << '\n';
 }
 
 #ifdef ROBOBEE_SIMULINK_SERVER
