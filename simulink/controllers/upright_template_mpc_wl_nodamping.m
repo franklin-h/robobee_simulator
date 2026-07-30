@@ -90,7 +90,7 @@ e_v = v_cur - dpdes;
 % MPC constants (template units: mm, ms, mg)
 % -------------------------------------------------------------------------
 N = 10;         % horizon steps
-dt = 12.9;      % [ms] prediction step = TWO wingbeats at 155 Hz
+dt = 6.45*2;      % [ms] prediction step = TWO wingbeats at 155 Hz
                 % N*dt = 129 ms ~ 20 wingbeats of preview
 ny = 6;         %#ok<NASGU>
 nu = 3;
@@ -125,7 +125,7 @@ wdthrust    = weights_vec(14); % commanded specific-thrust-change penalty
 thrust_min_N = 0.8e-3;   % [N]
 thrust_max_N = 1.6e-3;   % [N]
 roll_max_Nm  = 15e-6;    % [N*m]
-pitch_max_Nm = 5.0e-6;  % [N*m]
+pitch_max_Nm = 15.0e-6;  % [N*m]
 
 % -------------------------------------------------------------------------
 % Unit conversion to template units

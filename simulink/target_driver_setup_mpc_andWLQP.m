@@ -131,11 +131,11 @@ e3=[0;0;1];
 roll_offset_angle = 0; % New Vicon calibration
 
 %% MPC Params
-ws      = 1.0e3;    % running orientation-vector weight
-wds     = 1.0e3;    % running orientation-rate weight
-wpr_xy  = 1.5;      % running position weight
+ws      = 1.0e2;    % running orientation-vector weight
+wds     = 1.0e2;    % running orientation-rate weight
+wpr_xy  = 1.0;      % running position weight 1.5 
 wpr_z   = 1.0e-4; 
-wpf     = 3.0;      % final position weight
+wpf     = 2.0;      % final position weight 3.0 
 wvr_xy  = 1.0e2;    % running velocity weight
 wvr_z   = 3.0e2; 
 wvf_xy  = 1.0e2;    % final velocity weight
