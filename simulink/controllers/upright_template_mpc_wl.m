@@ -122,10 +122,20 @@ wdthrust    = weights_vec(14); % commanded specific-thrust-change penalty
 % clip the real actuators (wlqp.m has its own umin/umax/dumax on the
 % voltage-level inputs); here they bound the template model's inputs so
 % the QP only asks for accelerations the vehicle can plausibly deliver.
-thrust_min_N = 0.8e-3;   % [N]
+thrust_min_N = 0.7e-3;   % [N]
 thrust_max_N = 1.6e-3;   % [N]
-roll_max_Nm  = 15e-6;    % [N*m]
-pitch_max_Nm = 10.0e-6;  % [N*m]
+roll_max_Nm  = 4.5e-6;    % [N*m]
+pitch_max_Nm = 5.16e-6;  % [N*m]
+
+% Speed-dependent lift excess: once the body moves, the wings deliver
+%   F_physical = (1 + c_lift*|v|) * F_commanded
+% relative to the hover-calibrated wrench map (identified from
+% fast_forward_4.mat: ~1.21x at 0.55 m/s). Thrust stays in COMMANDED units
+% everywhere in this file -- including T0, the Tmin/Tmax box and the legacy
+% thrust_desired output -- and the gain L multiplies only where commanded
+% thrust becomes acceleration (the e_v rows below), so the QP's thrust
+% variable keeps its calibrated meaning. MUST match C_LIFT in desTraj.
+c_lift = 0.4;            % [s/m]
 
 % -------------------------------------------------------------------------
 % Unit conversion to template units
@@ -138,6 +148,11 @@ om_t = omega * 1.0e-3;           % rad/s   -> rad/ms
 dpdes_t = dpdes;                 % m/s == mm/ms
 v_t = v_cur;                     % m/s == mm/ms
 Ib_t = I_moment_vec * 1.0e12;    % kg*m^2  -> mg*mm^2
+
+% Lift gain at the current operating point. Recomputed every call (not just
+% on solves) from the live speed, so the WLQP discount below tracks speed
+% between held solves. v_t is mm/ms == m/s, so c_lift [s/m] needs no scaling.
+L_lift = 1.0 + c_lift * norm(v_t);
 
 Tmin_sp = thrust_min_N * 1.0e3 / max(m_t, 1.0e-9);  % specific thrust [mm/ms^2]
 Tmax_sp = thrust_max_N * 1.0e3 / max(m_t, 1.0e-9);
@@ -238,9 +253,10 @@ es0 = s0 - sdes;
 x0 = [ex_t; es0; ev_t; ds0; tau_applied];
 
 % Affine drift in error coordinates (no trajectory accel feed-forward):
-% e_v_dot = T0*e_s + s0*utilde + (T0*sdes - g*e3)
-aref_t = a_ref * 1.0e-3; 
-d_v = T0*sdes - [0;0;g_t] - aref_t;
+% e_v_dot = L*T0*e_s + L*s0*utilde + (L*T0*sdes - g*e3)
+% Every commanded-thrust term carries the lift gain L; gravity does not.
+aref_t = a_ref * 1.0e-3;
+d_v = L_lift*T0*sdes - [0;0;g_t] - aref_t;
 
 % -------------------------------------------------------------------------
 % Discrete error dynamics  x_{k+1} = Ad*x_k + Bd*u_k + cd
@@ -256,7 +272,7 @@ end
 %   pitch (omega_y):  b_pitch = -30   ANTI-damped -> unstable open-loop mode
 % Reduced-attitude swap (ds = -R*e3hat*omega): ds_x = omega_y (pitch) -> row 10,
 % ds_y = -omega_x (roll) -> row 11. So pitch damping goes on Ad(10,10).
-b_roll  =  30.0;
+b_roll  =  14.0;
 b_pitch = -30.0;
 decay_pitch = 1.0 - b_pitch * (dt*1.0e-3);   % ds_x / state 10  (= 1.387, >1)
 decay_roll  = 1.0 - b_roll  * (dt*1.0e-3);   % ds_y / state 11  (= 0.394)
@@ -269,7 +285,7 @@ Ad = eye(nx);
 for i = 1:3
     Ad(i, 6+i) = dt;                           % e_p += dt*e_v
     Ad(3+i, 9+i) = dt;                         % e_s += dt*e_ds
-    Ad(6+i, 3+i) = dt*T0;                      % e_v += dt*T0*e_s
+    Ad(6+i, 3+i) = dt*L_lift*T0;               % e_v += dt*L*T0*e_s
 end
 Ad(10,10) = decay_pitch;
 Ad(11,11) = decay_roll;
@@ -283,9 +299,9 @@ Ad(13, 13) = 1.0 - beta;
 Ad(14, 14) = 1.0 - beta;
 
 Bd = zeros(nx, nu);
-Bd(7, 1) = dt*s0(1);                           % thrust correction -> e_v
-Bd(8, 1) = dt*s0(2);
-Bd(9, 1) = dt*s0(3);
+Bd(7, 1) = dt*L_lift*s0(1);                    % thrust correction -> e_v
+Bd(8, 1) = dt*L_lift*s0(2);
+Bd(9, 1) = dt*L_lift*s0(3);
 Bd(13, 2) = beta;                              % tau commands -> lag states
 Bd(14, 3) = beta;
 
@@ -495,9 +511,18 @@ tau_applied(2) = tau_applied(2) + beta_c*(tau_cmd_prev(2) - tau_applied(2));
 pdotdes = pdotdes_hold;
 accdes = accdes_hold;
 
+% The WLQP wrench map (popts) is hover-calibrated: it converts a FORCE target
+% into wing commands assuming hover lift. At speed the wings over-deliver by
+% L = 1 + c_lift*|v|, so hand the map the commanded-units force (physical/L);
+% the plant then delivers the physical demand. Torque rows are untouched --
+% their calibration lives in k_tau / the popts fit. Uses the live L_lift so
+% the discount tracks speed between held solves.
+pdotdes(1:3) = pdotdes(1:3) / L_lift;
+
 % Gravity bias in body frame (cf. conn_MPC_WL / h0B = R'*h0W) -- cheap, so
-% it tracks the live attitude even between solves.
-h0_wl = [Rot' * [0; 0; m_t*g_t]; 0; 0; 0];
+% it tracks the live attitude even between solves. Same 1/L discount as
+% pdotdes: the WLQP sums these into one force target for the hover map.
+h0_wl = [(Rot' * [0; 0; m_t*g_t]) / L_lift; 0; 0; 0];
 
 % -------------------------------------------------------------------------
 % Legacy wrench outputs (SI) -- logging / running without the WLQP stage

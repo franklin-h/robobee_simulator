@@ -131,7 +131,7 @@ e3=[0;0;1];
 roll_offset_angle = 0; % New Vicon calibration
 
 %% MPC Params
-ws      = 1.0e2;    % running orientation-vector weight
+ws      = 5.0e2;    % running orientation-vector weight
 wds     = 1.0e2;    % running orientation-rate weight
 wpr_xy  = 2.0e-1;      % running position weight 1.5 
 wpr_z   = 1.0e-1; 
@@ -148,8 +148,8 @@ wdthrust = 1e4;
 
 % k_tau_roll = 1/3.0; 
 % k_tau_pitch = 10; 
-k_tau_roll = 0.25; 
-k_tau_pitch = 1; 
+k_tau_roll = 0.14; 
+k_tau_pitch = 0.4; 
 weights_vec = [ws; wds; wpr_xy;wpr_z; wpf; wvr_xy; wvr_z; 
     wvf_xy; wvf_z; wthrust; wmom;wdmom_roll;wdmom_pitch;wdthrust]; 
 
@@ -224,7 +224,7 @@ drv_pitch_right_limit = V_offset_limit;
 closedloop_max_drv_bias = max(V_L_p2p_limit,V_R_p2p_limit) + abs(V_offset_limit);
 
 
-popts = load('popts_fit_20260729_193118.mat'); 
+popts = load('popts_fit_20260820_160941.mat'); 
 popts_flattened = popts.popts; 
 % popts_flattened(46:60) = 0.15 * popts_flattened(46:60); 
 %% Open loop control set up (Wing Trajectory control)
