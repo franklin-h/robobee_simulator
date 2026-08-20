@@ -122,9 +122,9 @@ wdthrust    = weights_vec(14); % commanded specific-thrust-change penalty
 % clip the real actuators (wlqp.m has its own umin/umax/dumax on the
 % voltage-level inputs); here they bound the template model's inputs so
 % the QP only asks for accelerations the vehicle can plausibly deliver.
-thrust_min_N = 0.7e-3;   % [N]
+thrust_min_N = 0.6e-3;   % [N]
 thrust_max_N = 1.6e-3;   % [N]
-roll_max_Nm  = 4.5e-6;    % [N*m]
+roll_max_Nm  = 8.5e-6;    % [N*m]
 pitch_max_Nm = 5.16e-6;  % [N*m]
 
 % Speed-dependent lift excess: once the body moves, the wings deliver
@@ -231,8 +231,23 @@ Ibi = [1/max(Ib_t(1),1e-9), 0, 0; 0, 1/max(Ib_t(2),1e-9), 0; 0, 0, 1/max(Ib_t(3)
 
 k_tau_roll = k_tau(1);
 k_tau_pitch = k_tau(2);
+% Torque authority scales with wing-drive amplitude. The WLQP hands the
+% hover-calibrated wrench map a force target of ~T0/L (see the pdotdes
+% discount below); that input sets the stroke amplitude, and delivered
+% torque per commanded torque falls off roughly with its SQUARE (aero
+% moments ~ V^2). ff11 regression: delivered roll gain 0.03-0.08 vs the
+% modeled k_tau_roll = 0.14 while thrust rode the floor at 0.5 m/s (map
+% input 0.57e-3 N vs the m*g = 0.84e-3 hover calibration point ->
+% ratio^2 = 0.46, matching). k_tau_* is calibrated at hover amplitude
+% (map input = m*g <=> specific thrust g), so scale the model's delivery
+% gains by the live amplitude ratio: the QP then plans within the
+% authority it actually has when the thrust command rides low at speed,
+% instead of under-commanding, lagging, and pumping the slow lateral/roll
+% pendulum mode (fast_forward_11 departure).
+amp_ratio = thrust_cmd_prev_sp / max(L_lift * g_t, 1.0e-9);
+k_amp = clamp_scalar(amp_ratio * amp_ratio, 0.25, 1.3);
 BtauFull = -Rot * e3h * Ibi;
-Btau = BtauFull(:, 1:2) * diag([k_tau_roll, k_tau_pitch]);   % no yaw torque column
+Btau = BtauFull(:, 1:2) * diag([k_amp*k_tau_roll, k_amp*k_tau_pitch]);   % no yaw torque column
 
 ds0 = -Rot * e3h * om_t;                      % s-rate from body omega
 
@@ -272,7 +287,7 @@ end
 %   pitch (omega_y):  b_pitch = -30   ANTI-damped -> unstable open-loop mode
 % Reduced-attitude swap (ds = -R*e3hat*omega): ds_x = omega_y (pitch) -> row 10,
 % ds_y = -omega_x (roll) -> row 11. So pitch damping goes on Ad(10,10).
-b_roll  =  14.0;
+b_roll  =  7.0;
 b_pitch = -30.0;
 decay_pitch = 1.0 - b_pitch * (dt*1.0e-3);   % ds_x / state 10  (= 1.387, >1)
 decay_roll  = 1.0 - b_roll  * (dt*1.0e-3);   % ds_y / state 11  (= 0.394)
