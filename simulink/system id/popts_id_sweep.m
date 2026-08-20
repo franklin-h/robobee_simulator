@@ -87,8 +87,8 @@ FORCE_SERVER_RELAUNCH = false;
 % Driver-units sanity (via wlqp2driver): drv_pitch = Vmean*uoffs, so
 % uoffs 0.12 @ 165 V ~ 20 V pitch bias; drv_roll = Vmean*udiff/2, so
 % udiff 0.12 @ 165 V ~ 10 V differential. h2 == a2 directly.
-VMEAN_LIST = [110 130 150 170 190];                          % common amplitude [V]
-UOFFS_LIST = [-0.12 -0.09 -0.06 -0.03 0 0.03 0.06 0.09 0.12];   % pitch channel
+VMEAN_LIST = [90 110 130 150 170 190];                       % common amplitude [V]
+UOFFS_LIST = [-0.18 -0.14 -0.10 -0.05 0 0.05 0.10 0.14 0.18];   % pitch channel
 UDIFF_LIST = [-0.12 -0.09 -0.06 -0.03 0 0.03 0.06 0.09 0.12];   % roll channel
 H2_LIST    = [-0.25 -0.2 -0.15 -0.1 0 0.1 0.15 0.2 0.25];       % yaw channel
 
@@ -276,13 +276,27 @@ for i = 1:n_runs
     in = in.setVariable('drv_bias',        BIAS_V);
     in = in.setModelParameter('StopTime',  num2str(SYSID_DURATION, '%.6g'));
 
-    run_t0 = tic;
-    sim(in);                       % output is captured via the server wrench CSV
-    sim_seconds = toc(run_t0);
+    % Run + read, retrying once on a truncated wrench CSV. A short file means
+    % the steady-state "average" spans raw flap ripple (worst observed: 13
+    % samples -> phantom +/-15 mN*mm torque) and poisons the popts fit -- see
+    % the matching data-quality guard in fit_popts.m.
+    for attempt = 1:2
+        run_t0 = tic;
+        sim(in);                   % output is captured via the server wrench CSV
+        sim_seconds = toc(run_t0);
 
-    % ---- reset socket -> server flushes+closes this run's CSV ----
-    reset_plant(mdl);
-    W = read_wrench_csv6(COM_WRENCH_CSV);
+        % ---- reset socket -> server flushes+closes this run's CSV ----
+        reset_plant(mdl);
+        W = read_wrench_csv6(COM_WRENCH_CSV);
+        if W(end, 1) >= 0.95 * SYSID_DURATION, break; end
+        fprintf('  truncated CSV on run %d (t_end %.3f s < %.3f s) -- retrying\n', ...
+            i, W(end, 1), 0.95 * SYSID_DURATION);
+    end
+    if W(end, 1) < 0.95 * SYSID_DURATION
+        warning('popts_id_sweep:truncatedRun', ...
+            ['Run %d still truncated after retry (t_end %.3f s of %.3g s); ', ...
+             'fit_popts.m will drop it.'], i, W(end, 1), SYSID_DURATION)
+    end
 
     % ---- steady-state average over an integer number of flap cycles ----
     t = W(:, 1);
@@ -463,6 +477,14 @@ function W = read_wrench_csv6(csv_path)
         prev = d.bytes; pause(0.05);
     end
     W = readmatrix(csv_path);
+    % The server can cut the FINAL row mid-write in its last column (Fy),
+    % leaving a truncated float (e.g. "9.6814" for "9.6814e-05", ~1e5x off).
+    % The time column is intact so t_end checks pass, and one bad sample in
+    % the averaging window poisons the Fy mean (Fy R2 0.90 -> 0.04 on the
+    % 2026-08-19/20 sweeps). Always drop the last row; it costs one dt.
+    if size(W, 1) > 1
+        W = W(1:end-1, :);
+    end
     if isempty(W) || size(W, 2) < 7
         error('popts_id_sweep:badCsv', ...
             ['Wrench CSV %s has %d columns; the popts fit needs the 7-column ', ...

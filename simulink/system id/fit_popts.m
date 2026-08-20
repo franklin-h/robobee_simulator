@@ -83,6 +83,66 @@ end
 U  = S.U_fit;                 % n x 4  [Vmean uoffs udiff h2]
 W  = S.W_template_fit;        % n x 6  [Fx Fy Fz taux tauy tauz], template units
 cp = S.campaign_fit(:);
+
+% ---- data-quality repair: recompute means from traces, sans final row ----
+% The server CSV's final row can be cut mid-write in its LAST column (Fy),
+% leaving a truncated float (e.g. "9.6814" for "9.6814e-05", ~1e5x error).
+% The time column is intact so the t_end guard below passes, and one bad
+% sample in the averaging window poisons the Fy mean (Fy R2 0.90 -> 0.04 on
+% the 2026-08-19/20 sweeps; 12/198 runs hit). When traces were saved,
+% recompute every steady-state mean with the last row dropped.
+if isfield(S, 'results') && isfield(S, 'keep') && ...
+        isfield(S.results, 'wrench_trace') && ~isempty(S.results(1).wrench_trace)
+    scale = [1e3 1e3 1e3 1e6 1e6 1e6];        % SI -> template units
+    kidx = find(S.keep(:))';
+    n_repaired = 0;
+    for j = 1:numel(kidx)
+        T = S.results(kidx(j)).wrench_trace;
+        if isempty(T) || size(T, 1) < 10, continue; end
+        T = T(1:end-1, :);                    % drop possibly mid-write final row
+        per_cycle = 1 / (S.meta.freq_hz * median(diff(T(:, 1))));
+        window    = max(1, round(S.meta.avg_cycles * per_cycle));
+        start_idx = max(1, round(S.meta.transient_cycles * per_cycle) + 1);
+        lo  = max(start_idx, size(T, 1) - window + 1);
+        % CSV cols: 2=Fz 3=taux 4=tauy 5=tauz 6=Fx 7=Fy -> [Fx Fy Fz taux tauy tauz]
+        seg = T(lo:end, [6 7 2 3 4 5]);
+        w_new = mean(seg, 1) .* scale;
+        % count only material changes (the one-sample window shift moves every
+        % mean by ~ripple/window; a corrupt-row repair moves it by orders more)
+        if any(abs(w_new - W(j, :)) > 0.01 * max(abs(W(j, :)), 1e-6))
+            n_repaired = n_repaired + 1;
+        end
+        W(j, :) = w_new;
+        if isfield(S, 'W_std_fit'), S.W_std_fit(j, :) = std(seg, 0, 1); end
+    end
+    if n_repaired > 0
+        fprintf('Data-quality repair: recomputed %d/%d run means from traces (corrupt final CSV row).\n', ...
+            n_repaired, numel(kidx));
+    end
+end
+
+% ---- data-quality guard: drop truncated runs ----------------------------
+% Some sweep runs end early (server CSV truncated), so their "steady-state
+% average" spans a shortened, non-integer-cycle window of raw flap ripple.
+% Worst case observed: t_end = 0.041 s -> 13-sample average -> a phantom
+% +/-15 mN*mm roll/pitch torque at one corner of the u box that alone drags
+% R2(taux/tauy/tauz) from ~0.99 down to 0.92/0.78/0.64.
+if isfield(S, 'results') && isfield(S, 'keep')
+    MIN_T_END = 0.85 * S.meta.sysid_duration_s;   % require most of the run
+    t_end_fit = [S.results.t_end];
+    t_end_fit = t_end_fit(S.keep);
+    good = t_end_fit(:) > MIN_T_END;
+    if any(~good)
+        fprintf('Data-quality guard: dropping %d/%d truncated runs (t_end < %.3g s).\n', ...
+            nnz(~good), numel(good), MIN_T_END);
+        U = U(good, :);  W = W(good, :);  cp = cp(good);
+        if isfield(S, 'W_std_fit'), S.W_std_fit = S.W_std_fit(good, :); end
+    end
+else
+    warning(['No results/keep in %s -- cannot screen truncated runs; ', ...
+             'fit may be corrupted by short-window averages.'], DATA_FILE);
+end
+
 n  = size(U, 1);
 fprintf('Loaded %d points from %s\n', n, DATA_FILE);
 fprintf('  u box: [%s] .. [%s]\n', num2str(min(U), '%g '), num2str(max(U), '%g '));
