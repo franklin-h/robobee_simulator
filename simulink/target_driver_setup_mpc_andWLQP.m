@@ -224,7 +224,7 @@ drv_pitch_right_limit = V_offset_limit;
 closedloop_max_drv_bias = max(V_L_p2p_limit,V_R_p2p_limit) + abs(V_offset_limit);
 
 
-popts = load('popts_fit_20260729_193118.mat'); 
+popts = load('popts_fit_20260820_163410.mat'); 
 popts_flattened = popts.popts; 
 % popts_flattened(46:60) = 0.15 * popts_flattened(46:60); 
 %% Open loop control set up (Wing Trajectory control)
