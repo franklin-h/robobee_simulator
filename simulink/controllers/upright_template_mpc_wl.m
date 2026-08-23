@@ -122,10 +122,10 @@ wdthrust    = weights_vec(14); % commanded specific-thrust-change penalty
 % clip the real actuators (wlqp.m has its own umin/umax/dumax on the
 % voltage-level inputs); here they bound the template model's inputs so
 % the QP only asks for accelerations the vehicle can plausibly deliver.
-thrust_min_N = 0.8e-3;   % [N]
+thrust_min_N = 0.55e-3;   % [N]
 thrust_max_N = 1.6e-3;   % [N]
-roll_max_Nm  = 15e-6;    % [N*m]
-pitch_max_Nm = 5.0e-6;  % [N*m]
+roll_max_Nm  = 10e-6;    % [N*m] prev 15e-6
+pitch_max_Nm = 10e-6;  % [N*m] prev 5e-6
 
 % -------------------------------------------------------------------------
 % Unit conversion to template units
@@ -256,8 +256,8 @@ end
 %   pitch (omega_y):  b_pitch = -30   ANTI-damped -> unstable open-loop mode
 % Reduced-attitude swap (ds = -R*e3hat*omega): ds_x = omega_y (pitch) -> row 10,
 % ds_y = -omega_x (roll) -> row 11. So pitch damping goes on Ad(10,10).
-b_roll  =  0.0;
-b_pitch = -30.0;
+b_roll  =  -30.0;
+b_pitch = -50.0;
 decay_pitch = 1.0 - b_pitch * (dt*1.0e-3);   % ds_x / state 10  (= 1.387, >1)
 decay_roll  = 1.0 - b_roll  * (dt*1.0e-3);   % ds_y / state 11  (= 0.394)
 % CRITICAL: do NOT clamp the pitch value down to 1. The pitch mode really
