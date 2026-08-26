@@ -132,23 +132,23 @@ roll_offset_angle = 0; % New Vicon calibration
 
 %% MPC Params
 ws      = 1.0e3;    % running orientation-vector weight
-wds     = 1.0e2;    % running orientation-rate weight
-wpr_xy  = 1.5;      % running position weight 1.5 
-wpr_z   = 1.0e-1; 
-wpf     = 3.0;      % final position weight 3.0 
+wds     = 1.0e3;    % running orientation-rate weight
+wpr_xy  = 1.5;      % running position weight
+wpr_z   = 1.0e-4; 
+wpf     = 3.0;      % final position weight
 wvr_xy  = 1.0e2;    % running velocity weight
 wvr_z   = 3.0e2; 
 wvf_xy  = 1.0e2;    % final velocity weight
 wvf_z   = 8.0e2; 
 wthrust = 1.0e1;   % specific-thrust-correction effort. higher wthrust means more "damping" 
 wmom    = 1.0e-1;    % torque effort 1e-2 
-wdmom_roll   = 5e1; % 1e-3 
-wdmom_pitch = 1e1; %1e-3 
+wdmom_roll   = 1e-1; % 1e-3 
+wdmom_pitch = 1e-1; %1e-3 
 wdthrust = 1e4;
 
 % k_tau_roll = 1/3.0; 
 % k_tau_pitch = 10; 
-k_tau_roll = 0.14; 
+k_tau_roll = 0.1; 
 k_tau_pitch = 0.4; 
 weights_vec = [ws; wds; wpr_xy;wpr_z; wpf; wvr_xy; wvr_z; 
     wvf_xy; wvf_z; wthrust; wmom;wdmom_roll;wdmom_pitch;wdthrust]; 
@@ -224,7 +224,7 @@ drv_pitch_right_limit = V_offset_limit;
 closedloop_max_drv_bias = max(V_L_p2p_limit,V_R_p2p_limit) + abs(V_offset_limit);
 
 
-popts = load('popts_fit_20260820_160941.mat'); 
+popts = load('popts_fit_20260820_163410.mat'); 
 popts_flattened = popts.popts; 
 % popts_flattened(46:60) = 0.15 * popts_flattened(46:60); 
 %% Open loop control set up (Wing Trajectory control)
