@@ -98,7 +98,7 @@ nx = 2*6 + 2;   % [y_err; dy_err; tauX_applied; tauY_applied]
 nU = nu*N;
 
 controller_dt = 0.2;   % [ms] Simulink sample time of this block (2e-4 s)
-tau_lag = 16;          % [ms] moment actuation lag (system-id: dead+lag)
+tau_lag = 12.9 / (-log(0.05));          % [ms] moment actuation lag (system-id: dead+lag). was 16
 
 SOLVE_DECIM = 5;       % controller steps per QP solve (5 x 0.2 ms = 1 ms,
                        % the rate the robobee3d template MPC ran at)
