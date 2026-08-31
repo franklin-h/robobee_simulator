@@ -49,6 +49,16 @@ function [pdotdes, h0_wl, accdes, thrust_desired, roll_torque_desired, ...
 %                 world-frame linear part (for logging / non-WLQP consumers)
 %   thrust/roll/pitch/yaw_desired : legacy wrench outputs, SI (N, N*m)
 %
+% YAW
+%   The template state s = R*e3 is yaw-invariant by construction, so the QP
+%   cannot see heading (this is also why Btau drops its yaw column). Yaw is
+%   instead closed by a heading-hold PID appended to pdotdes(6) at the full
+%   controller rate -- see the yaw section near the bottom. At hover the yaw
+%   axis is decoupled from the position/tilt dynamics the QP reasons about,
+%   so folding it into the QP would only add states and solve time; the
+%   actuator-level coupling (h2 into Fz/Mx/My) is already handled where it
+%   belongs, in the downstream WLQP allocation.
+%
 % Inputs
 %   R_cur   (9x1) rotation matrix (body->world), row-major vectorized
 %   omega   (3x1) body angular velocity [rad/s]
@@ -61,7 +71,7 @@ function [pdotdes, h0_wl, accdes, thrust_desired, roll_torque_desired, ...
 %                 same as upright_template_mpc (ctrl_Ts kept for signature
 %                 compatibility; the internal rates below are hardcoded)
 %
-% No attitude cascade, yaw not controlled.
+% No attitude cascade. Roll/pitch from the QP, yaw from the PID below.
 
 % -------------------------------------------------------------------------
 % Fixed dimensions for Simulink codegen
@@ -126,6 +136,38 @@ thrust_min_N = 0.55e-3;   % [N]
 thrust_max_N = 1.6e-3;   % [N]
 roll_max_Nm  = 10e-6;    % [N*m] prev 15e-6
 pitch_max_Nm = 9e-6;  % [N*m] prev 5e-6
+yaw_max_Nm   = 0.8e-6;   % [N*m] the h2 channel spans about +-1.0e-6 N*m
+                         % across its +-0.25 box (popts Mz row, dMz/dh2 =
+                         % 4.1 uN*m/unit at hover); stay inside that.
+
+% Yaw heading-hold PD gains, template torque units [mg*mm^2/ms^2 = 1e-6 N*m].
+% Sized on Jz = 3e-10 kg*m^2 with NO aero yaw damping assumed (there is no
+% step-ID data for the yaw axis, cf. the Ad(12,12) = 1 comment below):
+%   wn    = sqrt(k_psi_yaw*1e-6/Jz)      ~ 8.2 rad/s
+%   zeta  = k_r_yaw*1e-6/(2*wn*Jz)       ~ 1.0
+% Deliberately slower than the roll/pitch loops (20-30 rad/s) so the two do
+% not compete through the shared WLQP allocation -- yaw only has to kill slow
+% heading drift. Authority is not the constraint here (the box above is ~40x
+% what this PD asks for at 1 rad of error), so if the measured delivered-
+% torque fraction on h2 comes back well below 1 (roll came in at 0.25, pitch
+% ~0.44), scale BOTH gains up by 1/fraction to keep wn and zeta as designed.
+k_psi_yaw = 0.1;    % [1e-6 N*m / rad]
+k_r_yaw   = 0.009;   % [1e-6 N*m / (rad/s)]
+
+% Integral gain and authority. The integrator exists because the popts Mz
+% row has a DC error of 0.03-0.08 uN*m near trim (sweep truth at
+% u=[90,0,0,0] is Mz ~ 0.000 where the map claims +0.027; at uoffs=+0.10 it
+% claims +0.076) -- the same order as EVERY yaw command in slow flight, so
+% the WLQP silently injects that much real, uncommanded yaw torque
+% (sideways_4: at t=0.33 s it held h2 at -0.003 = -0.03 uN*m real, starting
+% the drift). The h2 SLOPE is accurate (measured 12.4 vs map 12.5 at
+% Vmean=90), so an integrator on heading error finds the h2 offset that
+% actually holds heading, absorbing both the map bias and any standing
+% aero disturbance (~0.04 uN*m in sideways_4) with zero steady-state droop
+% -- a P-only loop droops dist/k_psi (0.38 rad = 22 deg there, as logged).
+% Zero at k_i/k_psi = 3 rad/s, a fifth of the ~15 rad/s crossover.
+k_i_yaw     = 0.3;   % [1e-6 N*m / (rad*s)]
+tau_int_max = 0.4;   % [1e-6 N*m] integral-contribution clamp (< tau_yaw_max)
 
 % -------------------------------------------------------------------------
 % Unit conversion to template units
@@ -143,6 +185,7 @@ Tmin_sp = thrust_min_N * 1.0e3 / max(m_t, 1.0e-9);  % specific thrust [mm/ms^2]
 Tmax_sp = thrust_max_N * 1.0e3 / max(m_t, 1.0e-9);
 tau_roll_max  = roll_max_Nm  * 1.0e6;   % N*m -> mg*mm^2/ms^2
 tau_pitch_max = pitch_max_Nm * 1.0e6;
+tau_yaw_max   = yaw_max_Nm   * 1.0e6;
 
 % -------------------------------------------------------------------------
 % Persistent controller state: thrust linearization point T0, the estimated
@@ -150,9 +193,18 @@ tau_pitch_max = pitch_max_Nm * 1.0e6;
 % solve-decimation counter, and the held WLQP outputs between solves.
 % -------------------------------------------------------------------------
 persistent T0 tau_applied thrust_cmd_prev_sp tau_cmd_prev U_prev ...
-    solve_tick pdotdes_hold accdes_hold
+    solve_tick pdotdes_hold accdes_hold psi_des_hold psi_latched yaw_int
 if isempty(T0)
     T0 = 0.0;
+end
+if isempty(psi_des_hold)
+    psi_des_hold = 0.0;
+end
+if isempty(psi_latched)
+    psi_latched = false;
+end
+if isempty(yaw_int)
+    yaw_int = 0.0;
 end
 if isempty(tau_applied)
     tau_applied = zeros(2,1);
@@ -195,6 +247,9 @@ if en < 0.01
     solve_tick = 0.0;
     pdotdes_hold = zeros(6,1);
     accdes_hold = zeros(6,1);
+    psi_latched = false;   % re-latch heading on the next engagement, so the
+                           % yaw loop always starts with zero heading error
+    yaw_int = 0.0;
 end
 T_ceiling = en * Tmax_sp;                      % thrust ceiling rides the ramp
 T_floor   = min(Tmin_sp, T_ceiling);           % floor engages once ceiling passes it
@@ -472,10 +527,13 @@ acc_lin_t = (v1des_t - v_t) / dt;     % [mm/ms^2] world frame
 % momentum rate the MPC wants IS its commanded moment -- pass it directly.
 acc_ang_t = [tau_x_t / max(Ib_t(1),1e-9); ...
              tau_y_t / max(Ib_t(2),1e-9); ...
-             0.0];                    % [rad/ms^2] body frame, yaw = 0
+             0.0];                    % [rad/ms^2] body frame; yaw row is
+                                      % filled in at the full rate below
 
 % Momentum rate for the WLQP, BODY frame (wrench map & h0 live there),
 % template units: [mg*mm/ms^2 (=1e-3 N); mg*mm^2/ms^2 (=1e-6 N*m)]
+% The yaw row stays 0 in the held value: it is not a QP product, so it is
+% overwritten every call rather than held across the decimation window.
 pdotdes_hold = [m_t * (Rot' * acc_lin_t); tau_x_t; tau_y_t; 0.0];
 
 % SI accdes for logging / non-WLQP consumers
@@ -492,8 +550,52 @@ beta_c = 1.0 - exp(-controller_dt / tau_lag);
 tau_applied(1) = tau_applied(1) + beta_c*(tau_cmd_prev(1) - tau_applied(1));
 tau_applied(2) = tau_applied(2) + beta_c*(tau_cmd_prev(2) - tau_applied(2));
 
+% -------------------------------------------------------------------------
+% Yaw heading-hold PID (see the YAW note in the header). Runs every call at
+% the full 5 kHz rather than at the decimated solve rate: it is cheap, and
+% skipping the 1 ms hold costs nothing.
+%
+% psi is the world heading of the body-x axis. The reference is latched to
+% the measured heading at engagement, so the loop holds whatever direction
+% the vehicle is pointing when control comes on and only fights subsequent
+% drift -- it does not slew to an absolute heading.
+%
+% omega(3) is used directly as the yaw-rate feedback. Strictly
+% dpsi/dt = (wy*sin(phi) + wz*cos(phi))/cos(theta); at the tilts this
+% controller operates at the difference is second order and irrelevant to a
+% damping term.
+% -------------------------------------------------------------------------
+psi = atan2(Rot(2,1), Rot(1,1));
+if ~psi_latched
+    psi_des_hold = psi;
+    psi_latched = true;
+end
+e_psi = atan2(sin(psi - psi_des_hold), cos(psi - psi_des_hold));   % wrapped
+
+% Scaling by the engagement ramp keeps the D term from kicking at en = 0 and
+% ramps the loop in smoothly (the P term starts at zero by construction).
+tau_pd = en * (-k_psi_yaw*e_psi - k_r_yaw*omega(3));
+
+% Integrator (see k_i_yaw comment). Anti-windup is conditional: hold the
+% state while the total command sits on the clamp AND this step would push
+% further into it; integrate freely otherwise (including steps that unwind).
+% The en factor stops accumulation while disengaged/ramping, and the state
+% is hard-limited so it can never contribute more than tau_int_max.
+yaw_int_step = -en * k_i_yaw * e_psi * (controller_dt * 1.0e-3);   % [uN*m]
+tau_pre = tau_pd + yaw_int;
+saturating = (tau_pre >  tau_yaw_max && yaw_int_step > 0.0) || ...
+             (tau_pre < -tau_yaw_max && yaw_int_step < 0.0);
+if ~saturating
+    yaw_int = clamp_scalar(yaw_int + yaw_int_step, -tau_int_max, tau_int_max);
+end
+
+tau_z_t = clamp_scalar(tau_pd + yaw_int, -tau_yaw_max, tau_yaw_max);
+
 pdotdes = pdotdes_hold;
+pdotdes(6) = tau_z_t;
+
 accdes = accdes_hold;
+accdes(6) = tau_z_t / max(Ib_t(3), 1e-9) * 1.0e6;   % rad/ms^2 -> rad/s^2
 
 % Gravity bias in body frame (cf. conn_MPC_WL / h0B = R'*h0W) -- cheap, so
 % it tracks the live attitude even between solves.
@@ -505,7 +607,7 @@ h0_wl = [Rot' * [0; 0; m_t*g_t]; 0; 0; 0];
 thrust_desired = m_t * T0 * 1.0e-3;            % mg*mm/ms^2 -> N
 roll_torque_desired  = tau_cmd_prev(1) * 1.0e-6;  % mg*mm^2/ms^2 -> N*m
 pitch_torque_desired = tau_cmd_prev(2) * 1.0e-6;
-yaw_torque_desired   = 0.0;                    % yaw not controlled
+yaw_torque_desired   = tau_z_t * 1.0e-6;       % already clamped above
 
 thrust_desired = clamp_scalar(thrust_desired, 0.0, thrust_max_N);
 roll_torque_desired = clamp_scalar(roll_torque_desired, -roll_max_Nm, roll_max_Nm);
