@@ -149,7 +149,7 @@ wdthrust = 1e4;
 % k_tau_roll = 1/3.0; 
 % k_tau_pitch = 10; 
 k_tau_roll = 0.1; 
-k_tau_pitch = 0.4; 
+k_tau_pitch = 0.3; 
 weights_vec = [ws; wds; wpr_xy;wpr_z; wpf; wvr_xy; wvr_z; 
     wvf_xy; wvf_z; wthrust; wmom;wdmom_roll;wdmom_pitch;wdthrust]; 
 
