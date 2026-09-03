@@ -1,4 +1,5 @@
-function [u, w0] = wlqp(u0, pdotdes, h0, popts, controlRate, umin, umax, dumax, Qdiag)
+function [u, w0] = wlqp(u0, pdotdes, h0, popts, controlRate, umin, umax, ...
+    dumax, Qdiag, wrenchBias)
 %#codegen
 %WLQP MATLAB translation of the wrench-linearized QP controller (WLQP).
 %
@@ -87,8 +88,8 @@ end
 % ----------------------------------------------------------------------
 % Build QP
 % ----------------------------------------------------------------------
-
-a0v = w0 - h0 - pdotdes;
+w0_corrected = w0 + wrenchBias; 
+a0v = w0_corrected - h0 - pdotdes;
 P = A1' * (Qdiag .* A1);        % A1'*diag(Qdiag)*A1
 q = A1' * (Qdiag .* a0v);
 
