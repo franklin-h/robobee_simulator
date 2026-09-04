@@ -61,6 +61,10 @@ RIDGE_LAMBDA      = 0;       % ridge on non-intercept coeffs (normalized space);
 USE_NOISE_WEIGHTS = false;   % weight rows by 1/std from the sweep window. The
                              %   window std is flap RIPPLE, not estimator noise,
                              %   so this is off by default.
+DROP_CLIPPED      = true;    % drop sweep points whose driver rail need exceeds
+                             %   meta.bias_v (voltage-clipped, saturated wrench)
+CLIP_MARGIN       = 0.0;     % fractional slack on the rail before dropping
+VMEAN_FIT_RANGE   = [-Inf Inf];  % e.g. [90 130] to fit only the flight envelope
 HOLDOUT_FRAC      = 0.2;     % random holdout fraction for the R^2 report
 HOLDOUT_SEED      = 7;
 M_KG              = 1.0e-4;  % vehicle mass for the hover-trim check [kg]
@@ -143,6 +147,36 @@ else
              'fit may be corrupted by short-window averages.'], DATA_FILE);
 end
 
+% ---- driver-saturation guard: drop points past the HV rail -----------------
+% wlqp2driver needs drv_bias = max(vl,vr) + 2*|Vmean*uoffs| of rail headroom.
+% Where that exceeds the sweep's bias_v the drive is clipped, the wrench
+% saturates (My plateaus, Fz collapses at Vmean>=130, uoffs<=-0.4 on the
+% 2026-09-03 sweep) and a global quadratic cannot represent it -- it bends
+% the whole My/Fz surface, including the unclipped 90-110 V flight envelope.
+if DROP_CLIPPED
+    rail_v = S.meta.bias_v;
+    need_v = zeros(size(U, 1), 1);
+    for j = 1:size(U, 1)
+        [~, ~, ~, ~, ~, need_v(j)] = wlqp2driver(U(j, :)', [1; 1; 1]);
+    end
+    clipped = need_v > rail_v * (1 + CLIP_MARGIN);
+    if any(clipped)
+        fprintf('Driver-saturation guard: dropping %d/%d points with rail need > %.0f V.\n', ...
+            nnz(clipped), numel(clipped), rail_v * (1 + CLIP_MARGIN));
+        U = U(~clipped, :);  W = W(~clipped, :);  cp = cp(~clipped);
+        if isfield(S, 'W_std_fit'), S.W_std_fit = S.W_std_fit(~clipped, :); end
+    end
+end
+
+% ---- optional Vmean envelope: fit only where the vehicle flies -------------
+in_env = U(:, 1) >= VMEAN_FIT_RANGE(1) & U(:, 1) <= VMEAN_FIT_RANGE(2);
+if any(~in_env)
+    fprintf('Vmean envelope: dropping %d/%d points outside [%g %g] V.\n', ...
+        nnz(~in_env), numel(in_env), VMEAN_FIT_RANGE);
+    U = U(in_env, :);  W = W(in_env, :);  cp = cp(in_env);
+    if isfield(S, 'W_std_fit'), S.W_std_fit = S.W_std_fit(in_env, :); end
+end
+
 n  = size(U, 1);
 fprintf('Loaded %d points from %s\n', n, DATA_FILE);
 fprintf('  u box: [%s] .. [%s]\n', num2str(min(U), '%g '), num2str(max(U), '%g '));
@@ -223,7 +257,8 @@ popts = reshape(Popts', [], 1);        % row-major 6x15 -> 90x1 (wlqp.m layout)
 % -------------------------------------------------------------------------
 max_rt = 0;
 for k = round(linspace(1, n, min(n, 25)))
-    [~, w0] = wlqp(U(k, :)', zeros(6, 1), zeros(6, 1), popts, CONTROL_RATE_HZ, nan(4,1));
+    [~, w0] = wlqp(U(k, :)', zeros(6, 1), zeros(6, 1), popts, CONTROL_RATE_HZ, ...
+                   nan(4,1), nan(4,1), [], [], zeros(6, 1));
     w_here = eval_quad(Popts, U(k, :)');
     max_rt = max(max_rt, max(abs(w0 - w_here)));
 end
@@ -249,7 +284,8 @@ h0 = [0; 0; mg_template; 0; 0; 0];
 u_trim = u_hover;
 for k = 1:3000
     u_prev = u_trim;
-    u_trim = wlqp(u_trim, zeros(6, 1), h0, popts, CONTROL_RATE_HZ);
+    u_trim = wlqp(u_trim, zeros(6, 1), h0, popts, CONTROL_RATE_HZ, ...
+                  [], [], [], [], zeros(6, 1));
     if max(abs(u_trim - u_prev)) < 1e-9, break; end
 end
 w_trim = eval_quad(Popts, u_trim);

@@ -295,7 +295,26 @@ x0 = [ex_t; es0; ev_t; ds0; tau_applied];
 % Affine drift in error coordinates (no trajectory accel feed-forward):
 % e_v_dot = T0*e_s + s0*utilde + (T0*sdes - g*e3)
 aref_t = a_ref * 1.0e-3; 
-d_v = T0*sdes - [0;0;g_t] - aref_t;
+
+b1 = Rot(:,1); 
+b3 = s0; 
+v_air_t = v_t; 
+
+cx_hat = 0.70e-3; 
+Kdrag_t = (cx_hat / max(m,1.0e-12)) * 1.0e-3;  % [1/ms]
+vxB0 = b1' * v_air_t;
+
+aD0 = -Kdrag_t * vxB0 * b1;
+
+% Partial derivative with respect to world velocity
+A_Dv = -Kdrag_t * (b1*b1');
+
+% Reduced-attitude derivative, assuming no yaw perturbation
+A_Ds = Kdrag_t * ((b3'*v_air_t)*b1 + vxB0*b3) * b1';
+
+% Since model states are e_s=s-sdes and e_v=v-dpdes
+aD_aff = aD0 - A_Ds*es0 - A_Dv*ev_t;
+d_v = T0*sdes - [0;0;g_t] - aref_t + aD_aff;
 
 % -------------------------------------------------------------------------
 % Discrete error dynamics  x_{k+1} = Ad*x_k + Bd*u_k + cd
@@ -326,6 +345,10 @@ for i = 1:3
     Ad(3+i, 9+i) = dt;                         % e_s += dt*e_ds
     Ad(6+i, 3+i) = dt*T0;                      % e_v += dt*T0*e_s
 end
+% Drag sensitivities
+% Ad(7:9,4:6) = Ad(7:9,4:6) + dt*A_Ds;
+Ad(7:9,7:9) = Ad(7:9,7:9) + dt*A_Dv;
+
 Ad(10,10) = decay_pitch;
 Ad(11,11) = decay_roll;
 Ad(12,12) = 1.0;          % ds_z ~ 0 at hover; no ID data, leave undamped
@@ -509,7 +532,7 @@ tau_cmd_prev(2) = tau_y_t;
 % computed at the solve rate and held between solves.
 % -------------------------------------------------------------------------
 % Absolute desired velocity at step 1: error state + reference
-v1des_t = x1(7:9) + dpdes_t;       % [mm/ms]  world frame
+v1des_t = x1(7:9) + dpdes_t + dt*aref_t;       % [mm/ms]  world frame
 ds1des_t = x1(10:12);              % [1/ms]   ds reference is 0, error = absolute
 
 % Lift template s-rate to body angular velocity: omega_des = e3h*R'*ds_des

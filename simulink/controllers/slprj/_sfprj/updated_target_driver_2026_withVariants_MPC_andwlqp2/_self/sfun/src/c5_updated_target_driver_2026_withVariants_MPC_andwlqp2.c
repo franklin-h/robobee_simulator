@@ -146,7 +146,7 @@ static void
   sfSetAnimationVectors(chartInstance->S, &chartInstance->c5_JITStateAnimation[0],
                         &chartInstance->c5_JITTransitionAnimation[0]);
   covrtCreateStateflowInstanceData(chartInstance->c5_covrtInstance, 1U, 0U, 1U,
-    242U);
+    243U);
   covrtChartInitFcn(chartInstance->c5_covrtInstance, 0U, false, false, false);
   covrtStateInitFcn(chartInstance->c5_covrtInstance, 0U, 0U, false, false, false,
                     0U, &c5_decisionTxtStartIdx, &c5_decisionTxtEndIdx);
