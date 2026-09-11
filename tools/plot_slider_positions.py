@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Live plot slider actual and desired positions from the simulator."""
 
+""" 
+If matplotlib error: 
+source .venv/bin/activate
+python tools/plot_slider_positions.py
+
+"""
 import argparse
 import csv
 import math
@@ -102,7 +108,14 @@ def main():
         default=0.1,
         help="Refresh period in real seconds.",
     )
+    parser.add_argument(
+        "--side",
+        choices=("left", "right", "both"),
+        default="both",
+        help="Which slider side(s) to plot.",
+    )
     args = parser.parse_args()
+    show_side = lambda label: args.side == "both" or label.startswith(args.side)
 
     try:
         import matplotlib.pyplot as plt
@@ -153,6 +166,8 @@ def main():
             (("left_actual_displacement_m", "left_actual_m"),
              "left actual", "tab:orange", "-"),
         ]:
+            if not show_side(label):
+                continue
             x_values, y_values = xy_series(rows_window, keys, scale=1.0e3)
             if y_values:
                 position_values.extend(y_values)
@@ -173,6 +188,8 @@ def main():
             (("right_error_m",), "right actual - desired", "tab:blue"),
             (("left_error_m",), "left actual - desired", "tab:orange"),
         ]:
+            if not show_side(label):
+                continue
             x_values, y_values = xy_series(rows_window, keys, scale=1.0e6)
             if y_values:
                 error_values.extend(y_values)

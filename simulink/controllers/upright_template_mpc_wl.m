@@ -1,7 +1,7 @@
 function [pdotdes, h0_wl, accdes, thrust_desired, roll_torque_desired, ...
     pitch_torque_desired, yaw_torque_desired] = upright_template_mpc_wl( ...
     R_cur, omega, p_cur, v_cur, pdes, dpdes, sdes_in, ...
-    I_moment_vec, m, g, cntrl_enable, weights_vec, k_tau, ctrl_Ts, a_ref) %#ok<INUSD>
+    I_moment_vec, m, g, cntrl_enable, weights_vec, k_tau, ctrl_Ts, a_ref, yaw_ref) %#ok<INUSD>
 %#codegen
 % Hierarchical variant of upright_template_mpc: same template QP, but the
 % I/O is restructured for the MPC -> WLQP cascade of robobee3d
@@ -89,7 +89,13 @@ k_tau = reshape(k_tau, 2, 1);
 m = m(1);
 g = g(1);
 cntrl_enable = cntrl_enable(1);
-a_ref = reshape(a_ref,3,1); 
+a_ref = reshape(a_ref,3,1);
+% yaw_ref = [psi_des; dpsi_des; valid] from desTraj (see HEADING_FOLLOW).
+% Optional so older callers with 15 arguments keep the latched behaviour.
+if nargin < 16
+    yaw_ref = [0.0; 0.0; 0.0];
+end
+yaw_ref = reshape(yaw_ref, 3, 1);
 
 % Errors formed internally from the trajectory reference. The (pdes,
 % dpdes, sdes) triple carries no acceleration feed-forward, so xdd_des = 0.
@@ -168,6 +174,34 @@ k_r_yaw   = 0.009;   % [1e-6 N*m / (rad/s)]
 % Zero at k_i/k_psi = 3 rad/s, a fifth of the ~15 rad/s crossover.
 k_i_yaw     = 0.3;   % [1e-6 N*m / (rad*s)]
 tau_int_max = 0.4;   % [1e-6 N*m] integral-contribution clamp (< tau_yaw_max)
+
+% Heading reference. HEADING_FOLLOW = false reproduces the old behaviour:
+% psi_des is latched to the measured heading at engagement and never moves.
+% HEADING_FOLLOW = true tracks the desTraj heading reference
+% yaw_ref = [psi_des; dpsi_des; valid] whenever valid > 0.5 (desTraj sets
+% it from the velocity tangent in modes 1/3 and from the spin schedule in
+% mode 4; valid = 0 means hold). Why the tangent: with a latched heading,
+% an orbit (desTraj MODE 1) or a lateral transit makes body-x airspeed go
+% negative, and the nose-up pitch trim that needs (uoffs ~ 0.066 - 0.42*vx_b)
+% exceeds the +0.18 uoffs box/sweep limit at ~0.27 m/s backward; the WLQP
+% then sacrifices the Fz row to chase pitch torque, thrust pins at the
+% floor and Vmean gets conscripted (failed_ellipse1: tumble at 3.64 s).
+% Forward flight has 4x the pitch-trim headroom (box to -0.40).
+%   * The reference is slew-limited (PSI_SLEW_MAX) so switching from the
+%     latched heading to psi_des, or a reference discontinuity, is a ramp
+%     the ~3 Hz yaw loop can follow rather than a step.
+%   * The rate feed-forward psi_dot_ref (dpsi_des while caught up, the
+%     slew rate while slewing) goes into the D term as
+%     (omega_z - psi_dot_ref) so damping does not fight a commanded turn;
+%     the integrator absorbs the steady aero yaw damping torque of a
+%     constant-rate turn (a 0.5 Hz orbit is pi rad/s of yaw).
+%   * valid = 0 (hover, ramp-in, vertical transit): the reference holds.
+HEADING_FOLLOW = true;
+PSI_SLEW_MAX   = 6.0;   % [rad/s] max slew of the heading reference. Must
+                        % exceed the trajectory's peak heading rate (2*pi*f
+                        % for an orbit: pi at 0.5 Hz; SPIN_RATE for mode 4)
+                        % or the reference never catches psi_des and the
+                        % integrator winds up.
 
 % -------------------------------------------------------------------------
 % Unit conversion to template units
@@ -578,10 +612,10 @@ tau_applied(2) = tau_applied(2) + beta_c*(tau_cmd_prev(2) - tau_applied(2));
 % the full 5 kHz rather than at the decimated solve rate: it is cheap, and
 % skipping the 1 ms hold costs nothing.
 %
-% psi is the world heading of the body-x axis. The reference is latched to
-% the measured heading at engagement, so the loop holds whatever direction
-% the vehicle is pointing when control comes on and only fights subsequent
-% drift -- it does not slew to an absolute heading.
+% psi is the world heading of the body-x axis. The reference starts latched
+% to the measured heading at engagement (so the loop begins with zero
+% error) and, with HEADING_FOLLOW, slews toward the horizontal tangent of
+% dpdes once the reference speed exceeds V_HEAD_MIN; otherwise it holds.
 %
 % omega(3) is used directly as the yaw-rate feedback. Strictly
 % dpsi/dt = (wy*sin(phi) + wz*cos(phi))/cos(theta); at the tilts this
@@ -593,11 +627,33 @@ if ~psi_latched
     psi_des_hold = psi;
     psi_latched = true;
 end
+
+% Heading reference update (see HEADING_FOLLOW above). psi_des_hold is the
+% slew-limited reference; psi_dot_ref its rate, fed forward to the D term.
+psi_dot_ref = 0.0;
+dt_s = controller_dt * 1.0e-3;                  % [s] per call
+if HEADING_FOLLOW && yaw_ref(3) > 0.5
+    psi_tgt  = yaw_ref(1);                      % commanded heading [rad]
+    d_psi    = atan2(sin(psi_tgt - psi_des_hold), cos(psi_tgt - psi_des_hold));
+    step_max = PSI_SLEW_MAX * dt_s;
+    if d_psi > step_max
+        psi_des_hold = psi_des_hold + step_max;
+        psi_dot_ref  = PSI_SLEW_MAX;
+    elseif d_psi < -step_max
+        psi_des_hold = psi_des_hold - step_max;
+        psi_dot_ref  = -PSI_SLEW_MAX;
+    else
+        psi_des_hold = psi_tgt;                 % caught up: track exactly
+        psi_dot_ref  = yaw_ref(2);              % commanded rate [rad/s]
+    end
+    psi_des_hold = atan2(sin(psi_des_hold), cos(psi_des_hold));   % keep wrapped
+end
 e_psi = atan2(sin(psi - psi_des_hold), cos(psi - psi_des_hold));   % wrapped
 
 % Scaling by the engagement ramp keeps the D term from kicking at en = 0 and
 % ramps the loop in smoothly (the P term starts at zero by construction).
-tau_pd = en * (-k_psi_yaw*e_psi - k_r_yaw*omega(3));
+% The D term acts on the rate ERROR so it does not resist a commanded turn.
+tau_pd = en * (-k_psi_yaw*e_psi - k_r_yaw*(omega(3) - psi_dot_ref));
 
 % Integrator (see k_i_yaw comment). Anti-windup is conditional: hold the
 % state while the total command sits on the clamp AND this step would push

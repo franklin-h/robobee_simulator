@@ -1,7 +1,7 @@
 % io %% Geometric Adaptive control
 %% Geometric Adaptive Control
 
-clear all;
+clear;
 close all;
 christian_params = load('RoboBee_optimal_fitting_parameter_155Hz_2022_BBee_v2.mat'); 
 
@@ -26,10 +26,10 @@ reset_plant('updated_target_driver_2026_withVariants')
 %% Control mode flags
 landing_flag=0; % 0 : No landing, 1: landing on
 
-control_flag=2; %2 % 1: Open loop, 2: closed loop.
-adaptive_flag=1;					% 0: no-adaptive 1: adaptive. for uncertainty in torque 
-adaptive_lateral_flag=1;	% 0:  -adaptive 1: adaptive. position/velocity bias/disturbance. 
-autosim = 0; 
+control_flag=1; %2 % 1: Open loop, 2: closed loop.
+adaptive_flag=0;					% 0: no-adaptive 1: adaptive. for uncertainty in torque 
+adaptive_lateral_flag=0;	% 0:  -adaptive 1: adaptive. position/velocity bias/disturbance. 
+autosim = 1; 
 controller="geometric"; % geometric or MPC, for error saturation. 
 replay_mode = 1; % 1 for control, 2 for replay. 
 replay_log_file = fullfile('Robobee flight logs', ...
@@ -275,7 +275,7 @@ drv_pch = drv_pitch_left;
 % a2_openloop = -0; %0.2;2
 
 % Franklin Open Loop
-drv_amp = 150;
+drv_amp = 110;
 % drv_roll = -1e-3;
 drv_roll = -1e-3; 
 % drv_pitch_left = 6.95;
@@ -284,7 +284,7 @@ drv_roll = -1e-3;
 % drv_pitch_right = 6.95; 
 drv_pitch_left = 9.05; % the more positive, the more negative pitch torque. 
 drv_pitch_right = 9.05; 
-a2_openloop = 0;
+a2_openloop = 0.2;
 
 
 %% Feedback Control paramter (Force Control)

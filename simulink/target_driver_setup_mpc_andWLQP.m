@@ -1,7 +1,7 @@
 % io %% Geometric Adaptive control
 %% Geometric Adaptive Control
 
-clear all;
+clear;
 close all;
 christian_params = load('RoboBee_optimal_fitting_parameter_155Hz_2022_BBee_v2.mat'); 
 
