@@ -364,8 +364,8 @@ end
 %   pitch (omega_y):  b_pitch = -30   ANTI-damped -> unstable open-loop mode
 % Reduced-attitude swap (ds = -R*e3hat*omega): ds_x = omega_y (pitch) -> row 10,
 % ds_y = -omega_x (roll) -> row 11. So pitch damping goes on Ad(10,10).
-b_roll  =  -30.0;
-b_pitch = -50.0;
+b_roll  =  0.0; % up for debate 
+b_pitch = 0.0;
 decay_pitch = 1.0 - b_pitch * (dt*1.0e-3);   % ds_x / state 10  (= 1.387, >1)
 decay_roll  = 1.0 - b_roll  * (dt*1.0e-3);   % ds_y / state 11  (= 0.394)
 % CRITICAL: do NOT clamp the pitch value down to 1. The pitch mode really
@@ -379,8 +379,9 @@ for i = 1:3
     Ad(3+i, 9+i) = dt;                         % e_s += dt*e_ds
     Ad(6+i, 3+i) = dt*T0;                      % e_v += dt*T0*e_s
 end
+
 % Drag sensitivities
-% Ad(7:9,4:6) = Ad(7:9,4:6) + dt*A_Ds;
+Ad(7:9,4:6) = Ad(7:9,4:6) + dt*A_Ds;
 Ad(7:9,7:9) = Ad(7:9,7:9) + dt*A_Dv;
 
 Ad(10,10) = decay_pitch;

@@ -277,6 +277,7 @@ drv_pch = drv_pitch_left;
 % Franklin Open Loop
 drv_amp = 110;
 % drv_roll = -1e-3;
+% drv_roll = -1e-3; 
 drv_roll = -1e-3; 
 % drv_pitch_left = 6.95;
 % drv_pitch_right = 6.95;
@@ -284,7 +285,7 @@ drv_roll = -1e-3;
 % drv_pitch_right = 6.95; 
 drv_pitch_left = 9.05; % the more positive, the more negative pitch torque. 
 drv_pitch_right = 9.05; 
-a2_openloop = 0.2;
+a2_openloop = 0.6;
 
 
 %% Feedback Control paramter (Force Control)

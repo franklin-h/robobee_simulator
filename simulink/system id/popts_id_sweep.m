@@ -90,7 +90,7 @@ FORCE_SERVER_RELAUNCH = false;
 VMEAN_LIST = [90 110 130 150 170 190];                       % common amplitude [V]
 UOFFS_LIST = [-0.50 -0.40 -0.23 -0.18 -0.14 -0.10 -0.05 0 0.05 0.10 0.14 0.18];   % pitch channel
 UDIFF_LIST = [-0.12 -0.09 -0.06 -0.03 0 0.03 0.06 0.09 0.12];   % roll channel
-H2_LIST    = [-0.25 -0.2 -0.15 -0.1 0 0.1 0.15 0.2 0.25];       % yaw channel
+H2_LIST    = [-0.4 -0.3 -0.2 -0.1 0 0.1 0.2 0.3 0.4];       % yaw channel
 
 % Cross-term campaign: space-filling points over the FULL 4-D box. These are
 % what make the 3 off-axis quadratic cross-terms identifiable.

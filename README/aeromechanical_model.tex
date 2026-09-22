@@ -822,7 +822,7 @@ where
 \section{Lumped-Parameter Actuation Dynamics and Stroke Frequency Response}
 \label{sec:lumped_actuation}
 
-Everything above treats the stroke angle \(\phi(t)\) as given. In the current code it effectively is: the wing voltage maps algebraically to a slider displacement (\(2.5\,\mu\mathrm{m/V}\) about a \(100\,\mathrm{V}\) rest point) and a stiff PD joint actuator (\(K_p = 10^4\), \(K_d = 50\), effort limit \(10^9\,\mathrm{N}\)) forces the slider to track it. The stroke is therefore kinematically prescribed, and a frequency sweep of the present model would measure the tracking bandwidth of that servo rather than any physics. This section records how the transmission and actuator are modeled as a lumped second-order system in the literature, which of those lumped terms Drake already reproduces implicitly, and what has to be added so that the simulator can produce a stroke-amplitude frequency response \(|\Phi/V_{pp}|(\omega)\) of the kind shown in Steinmeyer et al., ``Yaw Torque Authority for a Flapping-Wing Micro-Aerial Vehicle'' (ICRA 2019), Fig.~3.
+Everything above treats the stroke angle \(\phi(t)\) as given. In the original code it effectively was: the wing voltage mapped algebraically to a slider displacement (\(2.5\,\mu\mathrm{m/V}\) about a \(100\,\mathrm{V}\) rest point) and a stiff PD joint actuator forced the slider to track it, so the stroke was kinematically prescribed and a frequency sweep would have measured the tracking bandwidth of that servo rather than any physics. Both builds now use the lumped force-driven actuator described below; this section is kept as the record of what was added and why. This section records how the transmission and actuator are modeled as a lumped second-order system in the literature, which of those lumped terms Drake already reproduces implicitly, and what has to be added so that the simulator can produce a stroke-amplitude frequency response \(|\Phi/V_{pp}|(\omega)\) of the kind shown in Steinmeyer et al., ``Yaw Torque Authority for a Flapping-Wing Micro-Aerial Vehicle'' (ICRA 2019), Fig.~3.
 
 \subsection{Reference lumped model}
 Following Finio et al. (2011) and Jafferis et al. (2016), Steinmeyer et al. model the actuator, transmission, and wing as one spring--mass--damper written on the actuator (slider) side. With actuator effective mass \(m_a\), actuator stiffness \(k_a\), transmission ratio \(T\) (rad of stroke per metre of slider travel), transmission flexure stiffness \(k_t\), wing moment of inertia about the stroke axis \(J_\phi\), and a linearized aerodynamic damping coefficient \(b\) acting at radius \(r_{cp}\),
@@ -852,10 +852,10 @@ Lumped term & Drake representation & Status \\
 \(T\) (transmission ratio) & Emergent from four-bar linkage kinematics & Done \\
 \(J_\phi\) (wing inertia) & Rigid-body inertia of hinge/frame/membrane bodies & Done \\
 \(b\) (aero damping) & Blade-element drag reacting through linkage & Done \\
-\(m_a\) (actuator mass) & Reflected inertia on slider actuator & To do \\
-\(k_a\) (actuator stiffness) & \texttt{PrismaticSpring} on slider joint & To do \\
-\(A_H V\) (voltage force) & Pure force on slider actuation input & To do \\
-\(k_t\) (flexure stiffness) & \texttt{RevoluteSpring} on stroke joint(s) & To do \\
+\(m_a\) (actuator mass) & Reflected inertia on slider actuator & Done (standalone app and Simulink server) \\
+\(k_a\) (actuator stiffness) & \texttt{PrismaticSpring} on slider joint & Done (standalone app and Simulink server) \\
+\(A_H V\) (voltage force) & Pure force on slider actuation input & Done (standalone app and Simulink server) \\
+\(k_t\) (flexure stiffness) & \texttt{RevoluteSpring} on each of 6 flexure joints & Done (standalone app and Simulink server) \\
 \hline
 \end{tabular}
 \caption{Correspondence between the Steinmeyer et al. lumped parameters and the Drake plant.}
@@ -891,35 +891,109 @@ The URDF value is \(10\%\) above the paper's, which by itself would move the pre
 The blade-element wrench is applied as a full six-component spatial force on the wing body, so its stroke-axis moment reacts back through the linkage to the slider and is exactly the load the actuator must overcome. This is the physical origin of \(b\). Two caveats. First, the only explicitly authored rotational damping term \(M_{x,\mathrm{rd}}\) acts about the span (pitch) axis, not the stroke axis; stroke damping comes purely from the drag moments \(\sum_i \mathbf{r}_{cp,i}\times\D\mathbf{F}_i\). Second, drag scales with \(\dot{\phi}|\dot{\phi}|\) whereas the lumped \(b\) is a linearization. The simulated frequency response is therefore amplitude-dependent: the resonance peak will be taller and narrower at small \(V_{pp}\) and flatter at flight voltage. The comparison with Eq.~\eqref{eq:lumped_tf} holds at one amplitude only, and the sweep should be run at several.
 
 \subsubsection{Actuator mass (to do)}
-The piezo bimorph layers in the URDF are welded to the airframe and never move; the slider link that stands in for the actuator tip weighs \(0.3\,\mathrm{mg}\), not the \(25\,\mathrm{mg}\) effective modal mass of the cantilever. The cleanest fix is Drake's actuator reflected inertia: \texttt{JointActuator::set\_default\_rotor\_inertia} and \texttt{set\_default\_gear\_ratio} add \(I_{rotor}\,n^2\) to the joint degree of freedom, which for a prismatic joint has units of mass. Setting \(I_{rotor} = 25\times 10^{-6}\,\mathrm{kg}\) and \(n = 1\) on each slider actuator adds exactly \(m_a\) without altering gravity loads, centre of mass, or the loop-closure geometry. The alternative of raising the \texttt{transmission\_link\_1} mass in the URDF also works but shifts the body COM. Since \(m_a\) is only \(6\%\) of \(m_{eq}\), omitting it costs about \(3\%\) in \(f_n\); it is included for completeness rather than because it moves the answer.
+The piezo bimorph layers in the URDF are welded to the airframe and never move; the slider link that stands in for the actuator tip weighs \(0.3\,\mathrm{mg}\), not the \(25\,\mathrm{mg}\) that Steinmeyer et al.\ use for \(m_a\). Their Table~I labels this simply ``actuator mass''. The URDF gives each actuator two PZT layers of \(10.4\,\mathrm{mg}\) plus an unmodeled carbon-fibre core, so \(25\,\mathrm{mg}\) is evidently the physical mass of the bimorph rather than a tip-referred effective mass. For a uniform cantilever the tip-referred value is \(33/140 \approx 0.24\) of the physical mass, i.e.\ roughly \(6\,\mathrm{mg}\); the tapered RoboBee actuator with its rigid tip extension will differ from that fraction but remain well below one. Using the physical mass therefore overestimates \(m_a\) by three to four times, which moves \(f_n\) by only about \(2.5\%\) because \(m_a\) is a small share of \(m_{eq}\). Use \(25\,\mathrm{mg}\) when reproducing the paper's curve and treat \(\sim 6\,\mathrm{mg}\) as the physically defensible value. The cleanest fix is Drake's actuator reflected inertia: \texttt{JointActuator::set\_default\_rotor\_inertia} and \texttt{set\_default\_gear\_ratio} add \(I_{rotor}\,n^2\) to the joint degree of freedom, which for a prismatic joint has units of mass. Setting \(I_{rotor} = 25\times 10^{-6}\,\mathrm{kg}\) and \(n = 1\) on each slider actuator adds exactly \(m_a\) without altering gravity loads, centre of mass, or the loop-closure geometry. The alternative of raising the \texttt{transmission\_link\_1} mass in the URDF also works but shifts the body COM. Since \(m_a\) is only \(6\%\) of \(m_{eq}\), omitting it costs about \(3\%\) in \(f_n\); it is included for completeness rather than because it moves the answer.
 
 \subsubsection{Actuator stiffness and voltage force (to do)}
 The standard lumped description of a piezo bending actuator is a spring to ground whose equilibrium shifts with voltage,
 \begin{equation}
     F_{tip} = k_a\bigl(\delta_{free}(V) - x\bigr), \qquad \delta_{free}(V) = c_V\,(V - V_{rest}),
 \end{equation}
-with \(c_V = 2.5\times 10^{-6}\,\mathrm{m/V}\) and \(V_{rest} = 100\,\mathrm{V}\) as currently coded. This is not a series arrangement; it decomposes into two elements acting in parallel on the same slider degree of freedom:
+where \(x\) is the actual slider displacement from its rest position (the loaded actuator tip deflection), \(\delta_{free}\) is the unloaded tip deflection the voltage would produce, and \(c_V = 2.5\times 10^{-6}\,\mathrm{m/V}\), \(V_{rest} = 100\,\mathrm{V}\) as currently coded. So, a spring in parallel with a force source. At \(x = 0\) the actuator exerts its blocking force \(k_a\delta_{free}\); at \(x = \delta_{free}\) it exerts none. Under load the slider settles where \(F_{tip}\) balances the reflected transmission and aerodynamic forces, which is why \(x_{ss}/\delta_{free} = k_a/k_{eq}\) in Section~\ref{sec:lumped_validation}. This is not a series arrangement; it decomposes into two elements acting in parallel on the same slider degree of freedom:
 \begin{itemize}
     \item a \texttt{PrismaticSpring} force element on each slider joint with stiffness \(k_a = 300\,\mathrm{N/m}\) and nominal position equal to the slider rest position read from the default context after \texttt{Finalize};
     \item a pure force input \(u = k_a c_V (V - V_{rest})\) fed to the plant's actuation input port.
 \end{itemize}
 Concretely, the existing slider \texttt{JointActuator}s are kept but \texttt{set\_controller\_gains} is no longer called, so they become pure force actuators, and the effort limit is set to the blocking force \(k_a\,c_V\,\Delta V_{max} \approx 300 \times 0.25\times 10^{-3} \approx 75\,\mathrm{mN}\) instead of \(10^9\,\mathrm{N}\). \texttt{VoltageStrokeSource} changes from emitting a four-vector desired state \([q_1, q_2, v_1, v_2]\) to emitting a two-vector of forces, and is connected to \texttt{get\_actuation\_input\_port()} instead of the desired-state port. The voltage-derivative inputs it currently consumes become unnecessary. The commented-out \(0.1\,\mathrm{N}\) effort limit already present in the source suggests this direction was anticipated.
 
-\subsubsection{Transmission flexure stiffness (to do)}
-The lumped \(k_t\) is one torsional stiffness at the output angle; physically the four-bar has a flexure at every joint. Two passes are planned:
-\begin{enumerate}
-    \item \textbf{Matching the paper.} One \texttt{RevoluteSpring} on each stroke output joint, \texttt{revolute\_1\_3} and \texttt{revolute\_1\_4}, with \(k_t = 28.2\,\mu\mathrm{N\,m/rad}\), following the pattern of \texttt{AddWingHingeSprings}. The nominal angle must be the stroke angle at slider rest, read from the default context, not assumed zero. This is the apples-to-apples comparison with Eq.~\eqref{eq:lumped_tf}.
-    \item \textbf{Distributed flexures.} Assign each revolute joint in the linkage chain its own stiffness from the same Kapton flexure formula used for the wing hinge, \(\kappa = E t^3 w / 12L\), with that flexure's geometry. The loop-closure joints are modeled as ball constraints rather than joints and cannot carry springs, so the stiffness must be placed on the revolute joints only. With this pass \(k_t\) becomes emergent in the same way \(T\) already is.
-\end{enumerate}
+\subsubsection{Transmission flexure stiffness (done, distributed)}
+The lumped \(k_t\) is one torsional stiffness at the output angle; physically the four-bar has a flexure at every joint. Rather than a single lumped spring, each flexure is modeled individually so that \(k_t\) becomes emergent in the same way \(T\) already is. Each transmission flexure is a Kapton layer with the same stiffness formula as the wing hinge,
+\begin{equation}
+    \kappa_i = \frac{E t^3 w}{12 L_i}, \qquad E = 2.5\,\mathrm{GPa},\; t = 25\,\mu\mathrm{m},\; w = 0.6\,\mathrm{mm},
+\end{equation}
+with three flexures per side. In the URDF these are real revolute joints, so each carries a \texttt{RevoluteSpring} anchored at the joint's default (CAD rest) angle:
+\begin{table}[H]
+\centering
+\begin{tabular}{l l r r}
+\hline
+Flexure & Joint (left / right) & \(L\) (mm) & \(\kappa\) (\(\mu\)N\,m/rad) \\
+\hline
+base \(\to\) hinge (stroke output \(\phi\)) & \texttt{revolute\_1\_3} / \texttt{revolute\_1\_4} & 0.20 & 9.77 \\
+hinge \(\to\) link\_2 & \texttt{revolute\_2} / \texttt{revolute\_2\_1} & 0.20 & 9.77 \\
+link\_1 \(\to\) link\_2 & \texttt{revolute\_3\_loop\_closure} / \texttt{\_1} & 0.14 & 13.95 \\
+\hline
+\end{tabular}
+\caption{Transmission flexure springs added by \texttt{AddTransmissionFlexureSprings}.}
+\label{tab:transmission_flexures}
+\end{table}
+The link\_1 \(\to\) link\_2 pivot is the one the URDF opened into a loop-closure helper body; that helper is welded back onto link\_2 by constraint, so a spring on that joint acts between link\_1 and link\_2 through the constraint. The effective output stiffness is \(k_t^{\mathrm{eff}} = \sum_i \kappa_i (\partial\theta_i/\partial\phi)^2\), which depends on the linkage geometry; the naive sum of the three is \(33.5\,\mu\mathrm{N\,m/rad}\), the same order as the paper's lumped \(28.2\). The static validation of Section~\ref{sec:lumped_validation} measures \(k_t^{\mathrm{eff}}\) directly; it came out at only \(11\)--\(17\,\mu\mathrm{N\,m/rad}\), about half the paper's lumped value. Since 2026-09-16 a lumped trim spring \(k_t^{\mathrm{trim}}\) (\texttt{kTransmissionOutputStiffnessTrimNmPerRad}, currently \(40\,\mu\mathrm{N\,m/rad}\)) is therefore added on each stroke output joint (\texttt{revolute\_1\_3} / \texttt{revolute\_1\_4}) in parallel with the geometric flexure springs, in both builds; setting it to zero recovers the purely geometric model. Its size was chosen from the sweep so that the stroke-amplitude peak at the \(131\,\mathrm{V_{pp}}\) hover drive sits at \(155\,\mathrm{Hz}\), the resonance of the current hardware (Section~\ref{sec:stroke_bode}), not from flexure geometry.
+
 No damping is authored on the transmission or slider. The real actuator has some material damping; a small slider joint damping may also be needed for numerical reasons once the PD gains that currently stiffen the loop-closure constraints are removed (see Section~\ref{sec:lumped_validation}).
 
-\subsection{Sweep infrastructure (to do)}
-Three things are required before any frequency response can be plotted:
+\subsection{Sweep infrastructure (done 2026-09-16)}
 \begin{itemize}
-    \item \(f_{drive}\) is a compile-time constant (\texttt{kDriveFrequencyHz = 180}) in two places in \texttt{visualize\_robobee\_aeromechanical.cc}, and the plant time step is derived from it as \(1/(100 f_{drive})\). Promote the frequency to a runtime flag and fix the time step independently, at roughly \(2\times 10^{-5}\,\mathrm{s}\) so the highest swept frequency (\(400\,\mathrm{Hz}\)) still has \(\sim 50\) steps per cycle.
-    \item Nothing logs \(\phi\). Add the stroke angles from \texttt{revolute\_1\_3} and \texttt{revolute\_1\_4} to the slider CSV alongside slider position and voltage. The Simulink TCP response packet also carries no wing joint state, so the sweep should be driven from the standalone app, not over TCP.
-    \item A driver script that runs the sweep over \(50\)--\(400\,\mathrm{Hz}\) in \(5\)--\(10\,\mathrm{Hz}\) steps at fixed \(V_{pp}\), discards \(\sim 20\) cycles of transient, fits the amplitude at the drive frequency, and plots \(|\Phi/V_{pp}|\) against frequency with the analytic curve from \texttt{get\_transfer\_function.m} overlaid. Repeat at two or three values of \(V_{pp}\) to expose the amplitude dependence of the quadratic damping.
+    \item The standalone app takes \texttt{--drive\_frequency=HZ}, \texttt{--duration=S}, \texttt{--realtime\_rate=X} (0 = as fast as possible) and \texttt{--slider\_log=PATH}. The plant time step is still derived from the drive frequency as \(1/(100 f_{drive})\), so every swept point has 100 steps per cycle but a different discretization; decoupling the step is left as a follow-up.
+    \item The slider CSV (both builds) now carries \texttt{right\_stroke\_angle\_rad} and \texttt{left\_stroke\_angle\_rad}: the angles of \texttt{revolute\_1\_4} and \texttt{revolute\_1\_3} relative to their CAD rest angle. The two joints have mirrored positive directions in the URDF, and the right one runs opposite to positive slider displacement.
+    \item \texttt{tools/stroke\_frequency\_sweep.py} runs the welded standalone binary once per \((V_{pp}, f)\), discards 30 cycles, least-squares fits \(c + a\sin\omega t + b\cos\omega t\) to the stroke angle, slider displacement and voltage over the last 10 cycles, and plots gain \(|\Phi|/|V|\) (deg/V) and phase against frequency. \texttt{--from-csv} redraws the plot from a saved sweep without re-simulating. Each run takes about \(0.7\,\mathrm{s}\); 99 runs with \texttt{--jobs 4} take about 75 s.
 \end{itemize}
+
+\subsection{Measured frequency response} 
+Fig.~\ref{fig:stroke_bode} shows the result over \(40\)--\(400\,\mathrm{Hz}\) in \(5\,\mathrm{Hz}\) steps at \(50\), \(100\), \(131\) and \(200\,\mathrm{V_{pp}}\) (actuator side); the data are in \texttt{README/stroke\_sweep\_20260916.csv}.
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.85\textwidth]{stroke_bode_20260916.png}
+    \caption{Simulated stroke-angle frequency response with the root welded, at four actuator drive amplitudes; the gain axis is in rad/V with a \(10^{-3}\) multiplier. The Table~I lumped model is compared numerically in the text rather than drawn.}
+    \label{fig:stroke_bode}
+\end{figure}
+
+\begin{figure}[h!] 
+    \centering
+    \includegraphics[width=0.85\textwidth]{which_peak.png}
+    \caption{Frequency plots for various flight parameters, ran at 131 Vpp (rough amplitude needed for hover).}
+    \label{fig:stroke_bode_trim}
+\end{figure}
+
+\begin{figure}[h] 
+    \centering
+    \includegraphics[width=0.85\textwidth]{steinmeyer_freq_response.png}
+    \caption{Freq. response plot from Steinmeyer's paper.}
+    \label{fig:stroke_bode_trim}
+\end{figure}
+\begin{figure}[h] 
+    \centering
+    \includegraphics[width=0.85\textwidth]{voltage_vs_stroke.png}
+    \caption{Input actuator voltage and resultant wing stroke angle.}
+    \label{fig:voltage_v_stroke}
+\end{figure}
+% \begin{itemize}
+%     \item The \(-90^\circ\) phase crossing sits near \(145\,\mathrm{Hz}\) at \(50\,\mathrm{V_{pp}}\), \(150\,\mathrm{Hz}\) at \(100\,\mathrm{V_{pp}}\) and \(155\,\mathrm{Hz}\) at \(200\,\mathrm{V_{pp}}\), against \(181\,\mathrm{Hz}\) for the lumped model.
+%     \item Peak gain falls with amplitude: \(0.52\,\mathrm{deg/V}\) at \(125\,\mathrm{Hz}\) (\(50\,\mathrm{V_{pp}}\)), \(0.41\) at \(110\,\mathrm{Hz}\) (\(100\,\mathrm{V_{pp}}\)), \(0.33\) at \(100\,\mathrm{Hz}\) (\(200\,\mathrm{V_{pp}}\)). This is the quadratic drag flattening the resonance, as anticipated above; the lumped curve with linear \(b_{eq}\) is amplitude independent.
+%     \item At the nominal \(180\,\mathrm{Hz}\), \(200\,\mathrm{V_{pp}}\) drive the stroke amplitude is \(22.3^\circ\) with the slider at \(0.156\,\mathrm{mm}\) and a phase lag of \(110^\circ\), i.e. the plant is driven above its resonance.
+%     \item Below \(60\,\mathrm{Hz}\) the gain is flat at \(0.28\)--\(0.29\,\mathrm{deg/V}\) with near-zero phase, against \(0.23\,\mathrm{deg/V}\) for the lumped model: the static gain \(T A_H / k_{eq}\) is higher because \(k_{eq}\) is lower (next item). Above resonance the response rolls off as a single second-order system, with the phase reaching \(-175^\circ\) to \(-180^\circ\) by \(400\,\mathrm{Hz}\) and no additional mode visible in the swept band; the three amplitudes converge above \(250\,\mathrm{Hz}\) where the stroke is small and drag damping stops mattering.
+%     \item The quasi-static points (Section~\ref{sec:lumped_validation}) attribute the frequency shift to stiffness, not inertia: the emergent \(k_t^{\mathrm{eff}}\) is about half the paper's lumped value, and with the paper's \(m_{eq}\) that alone predicts \(f_n \approx 158\,\mathrm{Hz}\). Matching the paper's \(181\,\mathrm{Hz}\) therefore means raising the transmission flexure stiffness by roughly \(2\times\) (or revisiting the flexure geometry constants), not changing wing inertia.
+% \end{itemize}
+\label{sec:stroke_bode}
+
+We should be careful with figuring out which resonant peak we want to define as the operating frequency. 
+
+TODO 
+
+In the plots, we can see resonance (\(\omega_r\)) occur at around 155 Hz for 131 \(V_{pp}\) (roughly the voltage for hovering), while the natural frequency (\(\omega_d\), the \(-90^\circ\) phase crossing) is located around 188 Hz or so (these are the values with the current \(40\,\mu\mathrm{N\,m/rad}\) trim; with the earlier \(30\,\mu\mathrm{N\,m/rad}\) trim they were 145 and 180 Hz). Recall that resonant frequency is forced steady-state vibration where the system absorbs maximum energy, while natural frequency is how fast the system oscillates as its own energy dissipates.  
+
+With the geometric flexures alone the stroke-amplitude peak at flight drive came out at \(100\)--\(125\,\mathrm{Hz}\), well below the \(\sim 155\,\mathrm{Hz}\) resonance of the current hardware (the \(181\,\mathrm{Hz}\) natural frequency implied by Steinmeyer's Table~I belongs to an older design and is not the target). We therefore add a lumped trim stiffness \(k_t^{\mathrm{trim}}\) on the stroke output joint of each side only (\texttt{revolute\_1\_3} on the left, \texttt{revolute\_1\_4} on the right), not on the two coupler flexures. That joint's angle is \(\phi\) itself, so a spring there adds to the output stiffness one for one and the code constant is directly comparable to the paper's lumped \(k_t\); a spring on a coupler joint would contribute only \(\kappa\,(\partial\theta_i/\partial\phi)^2\), a geometric fraction that was not measured. The three geometric flexure springs per side are left unchanged.
+
+\paragraph{Sizing the trim.} With the geometric flexures alone the \(-90^\circ\) phase crossing sat at \(148\)--\(155\,\mathrm{Hz}\) and the quasi-static \(k_{eq}\) at \(385\,\mathrm{N/m}\). Two experiments located the deficit: doubling all six flexure springs doubled \(k_t^{\mathrm{eff}}\) exactly (\(k_{eq}\) \(385 \to 465\,\mathrm{N/m}\), crossing \(148 \to 165\,\mathrm{Hz}\)), so the loop-closure constraints are not softening the linkage; doubling only the output flexure gave \(k_{eq} = 433\,\mathrm{N/m}\) and \(158\,\mathrm{Hz}\), so the output flexure carries about \(60\%\) of \(k_t^{\mathrm{eff}}\) and the two coupler flexures \(40\%\). The effective slider-side mass implied by the crossings is \(m_{eq} \approx 0.44\,\mathrm{g}\), above the paper's \(0.388\,\mathrm{g}\) because the blade-element model adds aerodynamic added mass. Wing inertia was deliberately not changed.
+
+The target is the stroke-amplitude peak at the \(131\,\mathrm{V_{pp}}\) hover drive, which on the hardware sits near \(155\,\mathrm{Hz}\). Because the drag damping at flight amplitude is heavy (fitted \(\zeta \approx 0.4\), against \(0.22\) for Steinmeyer's linearized \(b_{eq}\)), the amplitude peak sits about \(20\%\) below the \(-90^\circ\) natural frequency here, so matching a \(155\,\mathrm{Hz}\) peak requires a natural frequency near \(188\,\mathrm{Hz}\). A first trim of \(30\,\mu\mathrm{N\,m/rad}\) (2026-09-16) put the peak at \(145\,\mathrm{Hz}\); raising it to \(40\,\mu\mathrm{N\,m/rad}\) (2026-09-17) put it at \(155.4\,\mathrm{Hz}\). The sensitivity is about \(+10\,\mathrm{Hz}\) of amplitude peak and \(+8\,\mathrm{Hz}\) of natural frequency per \(10\,\mu\mathrm{N\,m/rad}\). If the hardware's damping is closer to Steinmeyer's, its natural frequency is only about \(5\%\) above its amplitude peak, so the two plants then differ in damping rather than stiffness; that discrepancy is left open.
+
+\paragraph{Result with the \(40\,\mu\mathrm{N\,m/rad}\) trim (Fig.~\ref{fig:stroke_bode}).}
+\begin{itemize}
+    \item Quasi-static: \(x_{ss}/\delta_{free} = 0.50\), \(k_{eq} \approx 600\,\mathrm{N/m}\), \(k_t^{\mathrm{eff}} \approx 53\)--\(63\,\mu\mathrm{N\,m/rad}\); low-frequency gain \(0.17\,\mathrm{deg/V}\) (\(3.0\times 10^{-3}\,\mathrm{rad/V}\)).
+    \item Stroke-amplitude peak at \(155.4\,\mathrm{Hz}\) for \(131\,\mathrm{V_{pp}}\) (the target), \(156\,\mathrm{Hz}\) for \(100\,\mathrm{V_{pp}}\), \(155\,\mathrm{Hz}\) for \(200\,\mathrm{V_{pp}}\) and \(173\,\mathrm{Hz}\) for \(50\,\mathrm{V_{pp}}\). Peak gains \(0.40\,\mathrm{deg/V}\) (\(7.0\times 10^{-3}\,\mathrm{rad/V}\)), \(0.31\) (\(5.4\times 10^{-3}\)), \(0.28\) (\(4.9\times 10^{-3}\)) and \(0.25\) (\(4.3\times 10^{-3}\)) for \(50\), \(100\), \(131\) and \(200\,\mathrm{V_{pp}}\).
+    \item \(-90^\circ\) phase crossing at \(186\,\mathrm{Hz}\) (\(100\,\mathrm{V_{pp}}\)), \(188\,\mathrm{Hz}\) (\(131\,\mathrm{V_{pp}}\)) and \(193\,\mathrm{Hz}\) (\(200\,\mathrm{V_{pp}}\)); the \(50\,\mathrm{V_{pp}}\) curve has a small kink near \(180\,\mathrm{Hz}\) that makes its crossing ill-defined (about \(182\,\mathrm{Hz}\)).
+    \item At the \(155\,\mathrm{Hz}\), \(131\,\mathrm{V_{pp}}\) hover point: stroke amplitude \(18.3^\circ\), slider \(0.129\,\mathrm{mm}\), phase \(-57^\circ\). At \(180\,\mathrm{Hz}\), \(131\,\mathrm{V_{pp}}\): \(17.5^\circ\), phase \(-81^\circ\).
+    \item Above the peak the roll-off is a single second-order slope with the phase reaching \(-175^\circ\) to \(-180^\circ\) by \(400\,\mathrm{Hz}\); the amplitudes converge above \(280\,\mathrm{Hz}\). The \(50\,\mathrm{V_{pp}}\) points above \(280\,\mathrm{Hz}\) again have up to \(25\%\) fit residual from wing-pitch harmonics at very small stroke; the other three curves stay below \(2.5\%\).
+\end{itemize}
+Because the voltage-to-stroke gain and phase at the operating frequency changed again, the wing force maps used by the MPC must be re-identified against this plant. All four binaries (welded and flying standalone apps, both Simulink servers) were rebuilt with the \(40\,\mu\mathrm{N\,m/rad}\) trim on 2026-09-17.
 
 \subsection{Validation before sweeping}
 \label{sec:lumped_validation}
@@ -930,17 +1004,24 @@ Apply a static voltage step and record the steady-state slider displacement \(x_
 \end{align}
 If either is far off, the spring nominal positions or the loop-closure constraint compliance are wrong and a frequency sweep would be meaningless. This test also reveals whether the SAP solver remains well behaved through the loop-closure constraints once the stiff PD gains are removed; constraint chatter at this stage is the signal to add slider damping.
 
+\paragraph{Result (2026-09-16, geometric flexures only, before the output trim).} Measured with the sweep tool at \(20\) and \(40\,\mathrm{Hz}\), where dynamic amplification is under 2\%:
+\begin{itemize}
+    \item \(x_{ss}/\delta_{free} = 0.76\)--\(0.82\) (predicted 0.60), so \(k_{eq} \approx 365\)--\(395\,\mathrm{N/m}\) rather than \(500\), and \(k_t^{\mathrm{eff}} = (k_{eq} - k_a)/T^2 \approx 11\)--\(17\,\mu\mathrm{N\,m/rad}\) against the paper's lumped \(28.2\). The distributed flexures weighted by \((\partial\theta_i/\partial\phi)^2\) are about half as stiff at the output as the lumped value.
+    \item \(T = \phi/x \approx 2490\,\mathrm{rad/m}\) at flight strokes (\(2390\) at very small stroke), against \(2666\) in the paper.
+    \item No constraint chatter: the sinusoid-fit residual is \(1\)--\(5\%\) of the fundamental at \(100\)--\(200\,\mathrm{V_{pp}}\) and no slider damping was needed. The \(50\,\mathrm{V_{pp}}\) residual rises to \(\sim 18\%\) above \(190\,\mathrm{Hz}\) and \(20\)--\(50\%\) above \(280\,\mathrm{Hz}\), where the stroke is only \(1\)--\(6^\circ\) and harmonic content from the wing-pitch hinge dominates; those small-amplitude high-frequency points are the least trustworthy in Fig.~\ref{fig:stroke_bode}.
+\end{itemize}
+
 Once the sweep matches the analytic reference at small amplitude, the simulated \(H(\omega)\) can be used to reproduce the split-cycle filtering result (Steinmeyer et al.\ Fig.~4) directly, by driving the second-harmonic waveform \(V(t) = V_{amp}[a_1\sin\omega t \pm a_2\sin 2\omega t + a_3 \sin 3\omega t]\) and comparing the resulting \(\phi(t)\) upstroke and downstroke speeds.
 
 \subsection{Order of work}
 \begin{enumerate}
     \item Analytic reference curve from \texttt{get\_transfer\_function.m} over \(50\)--\(400\,\mathrm{Hz}\).
-    \item Plant changes in the standalone app: reflected inertia, \texttt{PrismaticSpring}, single \texttt{RevoluteSpring} per stroke joint, pure-force slider actuation.
-    \item Static validation of \(T\) and \(k_a/k_{eq}\).
-    \item Frequency flag, \(\phi\) logging, sweep driver, Bode plot against the reference.
-    \item Amplitude dependence, then distributed flexure stiffness, then the split-cycle waveform test.
+    \item Plant changes (done, in both the standalone app and the Simulink TCP server as of 2026-09-16): reflected inertia, \texttt{PrismaticSpring}, pure-force slider actuation, and a \texttt{RevoluteSpring} on each of the six transmission flexures (Table~\ref{tab:transmission_flexures}). Before that date the Simulink server still used a PD joint servo (\(K_p = 1000\), \(K_d = 0.5\)) tracking a prescribed slider displacement, so every closed-loop flight run over TCP prior to it used a kinematically prescribed stroke.
+    \item Static validation of \(T\), \(k_a/k_{eq}\), and the emergent \(k_t^{\mathrm{eff}}\) (done 2026-09-16, Section~\ref{sec:lumped_validation}).
+    \item Frequency flag, \(\phi\) logging, sweep driver, Bode plot against the reference (done 2026-09-16, \texttt{tools/stroke\_frequency\_sweep.py}, Fig.~\ref{fig:stroke_bode}).
+    \item Amplitude dependence (done, same figure), then the split-cycle waveform test.
+    \item Raise the transmission output stiffness so the simulated stroke-amplitude peak at hover drive matches the hardware's \(\sim 155\,\mathrm{Hz}\) (done 2026-09-17: \(40\,\mu\mathrm{N\,m/rad}\) lumped trim on each stroke output joint, Section~\ref{sec:stroke_bode}; all binaries rebuilt), then re-identify the wing force maps used by the MPC, since the Simulink server runs this plant (to do).
 \end{enumerate}
-The TCP server path used by Simulink stays on the position servo until the standalone version validates.
 
 \section{Conclusion and Open Questions}
 

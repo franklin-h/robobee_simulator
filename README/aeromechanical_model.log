@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.3.8)  10 SEP 2026 18:39
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.3.8)  17 SEP 2026 18:36
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -191,7 +191,11 @@ Package: wrapfig 2003/01/31  v 3.6
 File: l3backend-pdftex.def 2024-05-08 L3 backend support: PDF output (pdfTeX)
 \l__color_backend_stack_int=\count302
 \l__pdf_internal_box=\box58
-) (./aeromechanical_model.aux)
+) (./aeromechanical_model.aux
+
+LaTeX Warning: Label `fig:stroke_bode_trim' multiply defined.
+
+)
 \openout1 = `aeromechanical_model.aux'.
 
 LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 19.
@@ -325,41 +329,89 @@ Package wrapfig Warning: Stationary wrapfigure forced to float on input line 634
 [8]
 
 [9]
-
-[10]
-
-[11]
-Overfull \hbox (41.0292pt too wide) in paragraph at lines 919--920
-[]$\OML/cmm/m/it/10 f[]$ \OT1/cmr/m/n/10 is a compile-time con-stant (\OT1/cmtt/m/n/10 kDriveFrequencyHz = 180\OT1/cmr/m/n/10 ) in two places in \OT1/cmtt/m/n/10 visualize[]robobee[]aeromechanical.cc\OT1/cmr/m/n/10 ,
+Overfull \hbox (46.76042pt too wide) in paragraph at lines 848--861
+ [][] 
  []
 
 
 
+[10]
+
+[11]
+
 [12]
+<Figs/stroke_bode_20260916.png, id=58, 650.43pt x 505.89pt>
+File: Figs/stroke_bode_20260916.png Graphic file (type png)
+<use Figs/stroke_bode_20260916.png>
+Package pdftex.def Info: Figs/stroke_bode_20260916.png  used on input line 943.
+(pdftex.def)             Requested size: 430.00958pt x 334.45964pt.
+<Figs/which_peak.png, id=59, 578.16pt x 614.295pt>
+File: Figs/which_peak.png Graphic file (type png)
+<use Figs/which_peak.png>
+Package pdftex.def Info: Figs/which_peak.png  used on input line 950.
+(pdftex.def)             Requested size: 430.00958pt x 456.8864pt.
 
-[13]
 
-[14]
+LaTeX Warning: `!h' float specifier changed to `!ht'.
 
-[15] (./aeromechanical_model.aux)
+<Figs/steinmeyer_freq_response.png, id=60, 637.38126pt x 490.83376pt>
+File: Figs/steinmeyer_freq_response.png Graphic file (type png)
+<use Figs/steinmeyer_freq_response.png>
+Package pdftex.def Info: Figs/steinmeyer_freq_response.png  used on input line 957.
+(pdftex.def)             Requested size: 430.00958pt x 331.1412pt.
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
+<Figs/voltage_vs_stroke.png, id=61, 993.7125pt x 367.3725pt>
+File: Figs/voltage_vs_stroke.png Graphic file (type png)
+<use Figs/voltage_vs_stroke.png>
+Package pdftex.def Info: Figs/voltage_vs_stroke.png  used on input line 963.
+(pdftex.def)             Requested size: 430.00958pt x 158.9761pt.
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
+
+
+[13 <./Figs/stroke_bode_20260916.png>]
+
+[14 <./Figs/which_peak.png>]
+
+[15 <./Figs/steinmeyer_freq_response.png>]
+
+[16 <./Figs/voltage_vs_stroke.png>]
+Overfull \hbox (65.18318pt too wide) in paragraph at lines 1021--1022
+[]\OT1/cmr/m/n/10 Frequency flag, $\OML/cmm/m/it/10 ^^^$ \OT1/cmr/m/n/10 log-ging, sweep driver, Bode plot against the ref-er-ence (done 2026-09-16, \OT1/cmtt/m/n/10 tools/stroke[]frequency[]sweep.py\OT1/cmr/m/n/10 ,
+ []
+
+
+
+[17]
+
+[18]
+
+[19] (./aeromechanical_model.aux)
  ***********
 LaTeX2e <2024-11-01> patch level 2
 L3 programming layer <2025-01-18>
  ***********
+
+
+LaTeX Warning: There were multiply-defined labels.
+
  ) 
 Here is how much of TeX's memory you used:
- 3445 strings out of 473190
- 52739 string characters out of 5715801
- 470002 words of memory out of 5000000
- 26652 multiletter control sequences out of 15000+600000
+ 3488 strings out of 473190
+ 54063 string characters out of 5715801
+ 471157 words of memory out of 5000000
+ 26695 multiletter control sequences out of 15000+600000
  569988 words of font info for 79 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 57i,17n,65p,1046b,272s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 57i,17n,65p,1863b,272s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi5.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmib10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr17.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy5.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfrm1000.pfb>
-Output written on aeromechanical_model.pdf (15 pages, 547374 bytes).
+Output written on aeromechanical_model.pdf (19 pages, 1533753 bytes).
 PDF statistics:
- 133 PDF objects out of 1000 (max. 8388607)
- 82 compressed objects within 1 object stream
+ 154 PDF objects out of 1000 (max. 8388607)
+ 91 compressed objects within 1 object stream
  0 named destinations out of 1000 (max. 500000)
- 11 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 31 words of extra memory for PDF output out of 10000 (max. 10000000)
 

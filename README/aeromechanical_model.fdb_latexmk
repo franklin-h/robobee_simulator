@@ -1,6 +1,6 @@
 # Fdb version 4
-["pdflatex"] 1789079957.89767 "/Users/franklinho/robobee_simulator/README/aeromechanical_model.tex" "aeromechanical_model.pdf" "aeromechanical_model" 1789079958.53121 0
-  "/Users/franklinho/robobee_simulator/README/aeromechanical_model.tex" 1789079957.62864 51134 a9d9c538a3d36fba51a6044aeab69720 ""
+["pdflatex"] 1789684560.7461 "/Users/franklinho/robobee_simulator/README/aeromechanical_model.tex" "aeromechanical_model.pdf" "aeromechanical_model" 1789684561.8167 0
+  "/Users/franklinho/robobee_simulator/README/aeromechanical_model.tex" 1789684554.4985 65469 6430ad2054495c2db9b23b4934de38fc ""
   "/usr/local/texlive/2025/texmf-dist/fonts/enc/dvips/cm-super/cm-super-ts1.enc" 1136849721 2900 1537cc8184ad1792082cd229ecc269f4 ""
   "/usr/local/texlive/2025/texmf-dist/fonts/map/fontname/texfonts.map" 1577235249 3524 cb3e574dea2d1052e39280babc910dc8 ""
   "/usr/local/texlive/2025/texmf-dist/fonts/tfm/jknappen/ec/tcrm1000.tfm" 1136768653 1536 e07581a4bb3136ece9eeb4c3ffab8233 ""
@@ -85,9 +85,13 @@
   "/usr/local/texlive/2025/texmf-var/web2c/pdftex/pdflatex.fmt" 1741450574 3345740 46b66fdb0378f7bf5921b5eabf1762b8 ""
   "/usr/local/texlive/2025/texmf.cnf" 1741450484 577 418a7058ec8e006d8704f60ecd22c938 ""
   "Figs/planiform.png" 1781156999.42173 77659 d471dbbb08fed76a3a259828f9a0084e ""
+  "Figs/steinmeyer_freq_response.png" 1789662099.67797 567668 ab52df130940bdd527ff4e69c5ff3fa8 ""
+  "Figs/stroke_bode_20260916.png" 1789684434.04695 142942 f5f5d899693cfddd0773d7ee13167d79 ""
+  "Figs/voltage_vs_stroke.png" 1789618028.89439 747781 06d550d7f2ce358f7e914107bab33b48 ""
+  "Figs/which_peak.png" 1789680863.77305 113823 9fbc03dfa6636205920edb3d0eedef6d ""
   "Figs/wing_coordinates.jpeg" 1781561807.49142 253353 b9e9d2a50bf9b43630cdc42dd8b6ea8c ""
-  "aeromechanical_model.aux" 1789079958.44799 5561 ff649c18b7c6e2d9851d85ae312736d8 "pdflatex"
-  "aeromechanical_model.tex" 1789079957.62864 51134 a9d9c538a3d36fba51a6044aeab69720 ""
+  "aeromechanical_model.aux" 1789684561.76418 7455 5f3de875e2bf229240c2e5ae96864124 "pdflatex"
+  "aeromechanical_model.tex" 1789684554.4985 65469 6430ad2054495c2db9b23b4934de38fc ""
   (generated)
   "aeromechanical_model.aux"
   "aeromechanical_model.log"

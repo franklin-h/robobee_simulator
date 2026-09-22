@@ -34,6 +34,11 @@
 %
 % Author: generated for the RoboBee simulator WLQP/popts workflow.
 
+% Notes on fits 
+% The below is for fits with the updated transmission spring equivalence
+% and transmission mass incorporated. 
+% popts_fit_20260917_010524 taken at 155 Hz, but resonance at 145 Hz.
+% popts_fit_20260918_005015 taken at 155 Hz, resonance at 145 Hz. 
 clc; close all;
 
 %% ------------------------------------------------------------------------

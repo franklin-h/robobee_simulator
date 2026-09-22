@@ -149,7 +149,7 @@ wdthrust = 1e4;
 % k_tau_roll = 1/3.0; 
 % k_tau_pitch = 10; 
 k_tau_roll = 0.1; 
-k_tau_pitch = 0.3; 
+k_tau_pitch = 1.0; 
 weights_vec = [ws; wds; wpr_xy;wpr_z; wpf; wvr_xy; wvr_z; 
     wvf_xy; wvf_z; wthrust; wmom;wdmom_roll;wdmom_pitch;wdthrust]; 
 
@@ -224,8 +224,9 @@ drv_pitch_right_limit = V_offset_limit;
 closedloop_max_drv_bias = max(V_L_p2p_limit,V_R_p2p_limit) + abs(V_offset_limit);
 
 
-% popts = load('popts_fit_20260820_163410.mat'); 
-popts = load('popts_fit_20260904_001700.mat'); 
+% ` = load('popts_fit_20260820_163410.mat'); 
+% popts = load('popts_fit_20260917_010524.mat'); 
+popts = load('popts_fit_20260918_005015.mat'); 
 popts_flattened = popts.popts; 
 
 c_vertical = 0.70e-3; % [N/(m/s)] 

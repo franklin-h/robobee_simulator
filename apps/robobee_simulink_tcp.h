@@ -7,9 +7,12 @@ struct StepRequest {
   // Voltage fields are pre-amplifier commands. The Drake server applies its
   // configured voltage amplifier gain before using them as actuator voltages.
   // left_voltage_v and right_voltage_v are per-wing waveform samples. After
-  // amplification, Drake maps (wing_voltage_v - 100 V) to slider stroke using
-  // 200 V peak-to-peak -> 0.6 mm peak-to-peak. bias_voltage_v is logged as the
-  // actuator bias/upper-rail command but is not used to reject wing voltages.
+  // amplification, Drake converts (wing_voltage_v - 100 V) to the lumped piezo
+  // tip force k_a * c_V * (V - 100 V) with c_V = 2.5 um/V and k_a = 300 N/m,
+  // applied to a force-driven slider in parallel with a k_a spring; the stroke
+  // is the resonant response of the actuator/transmission/wing, not a
+  // prescribed displacement. bias_voltage_v is logged as the actuator
+  // bias/upper-rail command but is not used to reject wing voltages.
   double dt_s{};
   double left_voltage_v{};
   double right_voltage_v{};

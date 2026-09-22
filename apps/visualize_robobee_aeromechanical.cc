@@ -6,6 +6,7 @@
 #include <iostream>
 #include <memory>
 #include <stdexcept>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -23,6 +24,7 @@
 #include "drake/multibody/plant/multibody_plant.h"
 #include "drake/multibody/tree/joint_actuator.h"
 #include "drake/multibody/tree/prismatic_joint.h"
+#include "drake/multibody/tree/prismatic_spring.h"
 #include "drake/multibody/tree/revolute_joint.h"
 #include "drake/multibody/tree/revolute_spring.h"
 #include "drake/multibody/tree/rigid_body.h"
@@ -66,10 +68,42 @@ constexpr double kNominalStrokePeakToPeakM = 0.5e-3;
 constexpr double kVoltageToStrokeMetersPerVolt =
     kNominalStrokePeakToPeakM / kNominalVoltagePeakToPeakV;
 
+// Lumped actuator mass m_a carried by each slider (actuator tip) DOF. The
+// piezo bimorph bodies in the URDF are welded to the airframe and do not move
+// with the slider, so their inertia must be added here. 25 mg is the value
+// Steinmeyer et al. (ICRA 2019, Table I) use in m_eq = m_a + T^2 J_phi; it
+// matches the physical mass of the two PZT layers in the URDF (2 x 10.4 mg)
+// rather than a tip-referred effective mass (~0.24x for a uniform cantilever).
+// See README/aeromechanical_model.tex, "Actuator mass".
+constexpr double kActuatorMassKg = 25.0e-6;
+
+// Lumped piezo bimorph model, tip-referred (Steinmeyer et al. 2019, Table I;
+// README/aeromechanical_model.tex, "Actuator stiffness and voltage force"):
+//   F_tip = k_a * (delta_free(V) - x),  delta_free(V) = c_V * (V - V_rest),
+// where x is the actual slider displacement from rest. This is realized as two
+// parallel elements on the slider DOF: a PrismaticSpring of stiffness k_a about
+// the rest position, and a pure actuation force k_a * delta_free(V). The
+// blocking force k_a * delta_free is what the actuator exerts when the slider
+// is held at rest.
+constexpr double kActuatorStiffnessNPerM = 300.0;
+// Effort limit for the slider force actuators. The commanded force is already
+// bounded by the voltage command, so this only guards against out-of-range
+// voltages: it is the blocking force at a 200 V excursion from rest (300 V
+// absolute, the maximum Steinmeyer et al. tested).
+constexpr double kSliderEffortLimitN =
+    kActuatorStiffnessNPerM * kVoltageToStrokeMetersPerVolt * 200.0;
+
 struct SimulationConfig {
   double voltage_bias_v{kNominalBiasVoltageV};
   double voltage_peak_to_peak_v{kNominalVoltagePeakToPeakV};
   int server_port{4242};
+  // Standalone-only knobs. The plant time step is derived from the drive
+  // frequency (fixed steps per wingbeat), so changing the frequency also
+  // changes the discretization. duration_s = +inf runs until Ctrl-C.
+  double drive_frequency_hz{180.0};
+  double duration_s{std::numeric_limits<double>::infinity()};
+  double realtime_rate{0.02};
+  std::string slider_log_path{"/tmp/slider_positions.csv"};
 };
 
 double CalcStrokeDisplacementFromVoltage(double wing_voltage_v) {
@@ -78,6 +112,12 @@ double CalcStrokeDisplacementFromVoltage(double wing_voltage_v) {
   }
   return kVoltageToStrokeMetersPerVolt *
          (wing_voltage_v - kActuatorRestVoltageV);
+}
+
+// Voltage-induced tip force of the lumped bimorph: k_a * delta_free(V).
+double CalcActuatorForceFromVoltage(double wing_voltage_v) {
+  return kActuatorStiffnessNPerM *
+         CalcStrokeDisplacementFromVoltage(wing_voltage_v);
 }
 
 void ValidateVoltageCommand(double right_voltage_v, double left_voltage_v,
@@ -122,14 +162,30 @@ SimulationConfig ParseSimulationConfig(int argc, char** argv) {
         throw std::runtime_error("--server_port must be an integer in [1, 65535].");
       }
       config.server_port = static_cast<int>(port);
+    } else if (arg.rfind("--drive_frequency=", 0) == 0) {
+      config.drive_frequency_hz = ParseDoubleFlag(arg, "drive_frequency");
+    } else if (arg.rfind("--duration=", 0) == 0) {
+      config.duration_s = ParseDoubleFlag(arg, "duration");
+    } else if (arg.rfind("--realtime_rate=", 0) == 0) {
+      config.realtime_rate = ParseDoubleFlag(arg, "realtime_rate");
+    } else if (arg.rfind("--slider_log=", 0) == 0) {
+      config.slider_log_path = arg.substr(std::string("--slider_log=").size());
+      if (config.slider_log_path.empty()) {
+        throw std::runtime_error("--slider_log must name a file.");
+      }
     } else if (arg == "--help") {
       std::cout
           << "Usage: visualize_robobee_aeromechanical "
              "[--voltage_bias=V] [--voltage_peak_to_peak=V] "
-             "[--server_port=PORT]\n"
+             "[--server_port=PORT] [--drive_frequency=HZ] [--duration=S] "
+             "[--realtime_rate=X] [--slider_log=PATH]\n"
           << "  voltage_bias: upper voltage rail in volts; 100 V maps to zero stroke\n"
           << "  voltage_peak_to_peak: standalone demo voltage swing in volts\n"
-          << "  server_port: TCP port used by robobee_simulink_server\n";
+          << "  server_port: TCP port used by robobee_simulink_server\n"
+          << "  drive_frequency: standalone sine drive frequency in Hz (default 180)\n"
+          << "  duration: standalone simulated seconds before exit (default: run forever)\n"
+          << "  realtime_rate: standalone target realtime rate; 0 = as fast as possible (default 0.02)\n"
+          << "  slider_log: standalone slider/stroke CSV path (default /tmp/slider_positions.csv)\n";
       std::exit(0);
     } else {
       throw std::runtime_error("Unknown argument: " + arg);
@@ -142,6 +198,16 @@ SimulationConfig ParseSimulationConfig(int argc, char** argv) {
       config.voltage_peak_to_peak_v < 0.0) {
     throw std::runtime_error(
         "--voltage_peak_to_peak must be finite and non-negative.");
+  }
+  if (!std::isfinite(config.drive_frequency_hz) ||
+      config.drive_frequency_hz <= 0.0) {
+    throw std::runtime_error("--drive_frequency must be finite and positive.");
+  }
+  if (std::isnan(config.duration_s) || config.duration_s <= 0.0) {
+    throw std::runtime_error("--duration must be positive.");
+  }
+  if (!std::isfinite(config.realtime_rate) || config.realtime_rate < 0.0) {
+    throw std::runtime_error("--realtime_rate must be finite and non-negative.");
   }
   return config;
 }
@@ -309,6 +375,144 @@ void AddWingHingeSprings(
         joint, kWingHingeNominalAngleRad, stiffness_Nm_per_rad);
   }
 }
+
+// Attach the lumped actuator mass to a slider actuator as reflected inertia.
+// For a prismatic joint Drake's reflected inertia (rotor_inertia * gear_ratio^2)
+// has units of kg and is added directly to that DOF's entry in the mass matrix,
+// which is exactly the m_a term of the lumped actuator model. It adds no
+// gravity load and no reaction force on the airframe; use a body mass on the
+// slider link instead if that reaction matters (free flight).
+void SetSliderActuatorMass(drake::multibody::MultibodyPlant<double>* plant,
+                           drake::multibody::JointActuatorIndex index,
+                           double mass_kg) {
+  auto& actuator = plant->get_mutable_joint_actuator(index);
+  actuator.set_default_gear_ratio(1.0);
+  actuator.set_default_rotor_inertia(mass_kg);
+}
+
+// Kapton flexure geometry of the transmission four-bar hinges. All six share
+// the same layer thickness and width; the link_1 <-> link_2 pivot is shorter
+// than the other two. Stiffness follows the same kappa = E t^3 w / (12 L)
+// formula as the wing pitch hinge (HingeTorsionalStiffness), with Kapton E
+// taken from AeromechanicalModelParameters. Values: L = 0.14 mm gives
+// 13.95 uN*m/rad, L = 0.20 mm gives 9.77 uN*m/rad. Compare the lumped output
+// stiffness k_t = 28.2 uN*m/rad in Steinmeyer et al. 2019, Table I.
+constexpr double kTransmissionFlexureThicknessM = 25.0e-6;
+constexpr double kTransmissionFlexureWidthM = 0.6e-3;
+constexpr double kTransmissionFlexureLengthLink1Link2M = 0.14e-3;
+constexpr double kTransmissionFlexureLengthOtherM = 0.20e-3;
+
+struct TransmissionFlexure {
+  const char* joint_name;
+  double length_m;
+};
+
+// Per side: base -> hinge (stroke output), hinge -> link_2, and the
+// link_1 -> link_2 pivot that the URDF opened into the loop-closure helper
+// body. The helper is welded back onto link_2 by constraint, so a spring on
+// that joint acts between link_1 and link_2.
+constexpr TransmissionFlexure kTransmissionFlexures[] = {
+    {"revolute_1_3", kTransmissionFlexureLengthOtherM},
+    {"revolute_2", kTransmissionFlexureLengthOtherM},
+    {"revolute_3_loop_closure", kTransmissionFlexureLengthLink1Link2M},
+    {"revolute_1_4", kTransmissionFlexureLengthOtherM},
+    {"revolute_2_1", kTransmissionFlexureLengthOtherM},
+    {"revolute_3_loop_closure_1", kTransmissionFlexureLengthLink1Link2M},
+};
+
+double TransmissionFlexureStiffness(double length_m) {
+  robobee::AeromechanicalModelParameters params;
+  params.hinge_thickness_m = kTransmissionFlexureThicknessM;
+  params.hinge_width_m = kTransmissionFlexureWidthM;
+  params.hinge_length_m = length_m;
+  return robobee::HingeTorsionalStiffness(params);
+}
+
+// Lumped stiffness trim on each stroke output joint (base -> hinge, i.e. the
+// joint whose angle is phi), added on top of the geometric flexure springs.
+// The six Kapton flexures above give an emergent output stiffness of only
+// ~14 uN*m/rad (measured quasi-statically 2026-09-16), which put the stroke
+// resonance at ~148 Hz against the ~181 Hz of Steinmeyer et al. 2019. With the
+// Drake wing's effective slider-side mass (~0.44 g including aero added mass)
+// the resonance needs k_eq ~570 N/m, i.e. ~30 uN*m/rad more at the output.
+// Set to zero to recover the purely geometric flexure model. See
+// README/aeromechanical_model.tex, "Measured frequency response".
+constexpr double kTransmissionOutputStiffnessTrimNmPerRad = 40.0e-6;
+constexpr const char* kStrokeOutputJoints[] = {"revolute_1_3", "revolute_1_4"};
+
+// Model each transmission flexure as a torsional spring on its revolute joint,
+// unstressed at the joint's default (CAD rest) angle, then add the lumped
+// output trim above. Must be called before Finalize. Drake applies the torque
+// to the child and the reaction to the parent, so this is internal to the
+// robot. See README/aeromechanical_model.tex, "Transmission flexure stiffness".
+void AddTransmissionFlexureSprings(
+    drake::multibody::MultibodyPlant<double>* plant) {
+  for (const TransmissionFlexure& flexure : kTransmissionFlexures) {
+    const auto& joint = plant->GetJointByName<drake::multibody::RevoluteJoint>(
+        flexure.joint_name);
+    plant->AddForceElement<drake::multibody::RevoluteSpring>(
+        joint, joint.get_default_angle(),
+        TransmissionFlexureStiffness(flexure.length_m));
+  }
+  if (kTransmissionOutputStiffnessTrimNmPerRad > 0.0) {
+    for (const char* joint_name : kStrokeOutputJoints) {
+      const auto& joint =
+          plant->GetJointByName<drake::multibody::RevoluteJoint>(joint_name);
+      plant->AddForceElement<drake::multibody::RevoluteSpring>(
+          joint, joint.get_default_angle(),
+          kTransmissionOutputStiffnessTrimNmPerRad);
+    }
+  }
+}
+
+// Add the actuator's own elastic stiffness k_a as a linear spring on each
+// slider joint, anchored at the joint's default (rest) translation. Must be
+// called before Finalize. The joint default translation equals the rest
+// position that CalcSliderRestPositions reads from the default context.
+void AddActuatorSprings(drake::multibody::MultibodyPlant<double>* plant) {
+  for (const char* joint_name : {"slider_1", "slider_2"}) {
+    const auto& joint =
+        plant->GetJointByName<drake::multibody::PrismaticJoint>(joint_name);
+    plant->AddForceElement<drake::multibody::PrismaticSpring>(
+        joint, joint.get_default_translation(), kActuatorStiffnessNPerM);
+  }
+}
+
+// Leaf system that converts the 5-vector voltage command (same layout as
+// VoltageStrokeSource's input) into the 2-vector of slider actuation forces
+// [F_right, F_left] = k_a * delta_free(V) for the plant's actuation input port.
+// The voltage derivatives in the command are accepted but unused.
+class VoltageForceSource final : public drake::systems::LeafSystem<double> {
+ public:
+  VoltageForceSource() {
+    voltage_input_port_ =
+        this->DeclareVectorInputPort("voltage_command", 5).get_index();
+    this->DeclareVectorOutputPort("slider_actuation_force", 2,
+                                  &VoltageForceSource::CalcActuationForce);
+  }
+
+  const drake::systems::InputPort<double>& voltage_input_port() const {
+    return this->get_input_port(voltage_input_port_);
+  }
+
+ private:
+  void CalcActuationForce(const drake::systems::Context<double>& context,
+                          drake::systems::BasicVector<double>* output) const {
+    const Eigen::VectorXd& voltage_command =
+        this->EvalVectorInput(context, voltage_input_port_)->get_value();
+    const double right_voltage_v = voltage_command[0];
+    const double left_voltage_v = voltage_command[1];
+    const double bias_voltage_v = voltage_command[2];
+    ValidateVoltageCommand(right_voltage_v, left_voltage_v, bias_voltage_v);
+    // Actuation port order follows JointActuatorIndex: slider_1 (right) was
+    // added first, then slider_2 (left).
+    Eigen::VectorBlock<Eigen::VectorXd> y = output->get_mutable_value();
+    y << CalcActuatorForceFromVoltage(right_voltage_v),
+        CalcActuatorForceFromVoltage(left_voltage_v);
+  }
+
+  drake::systems::InputPortIndex voltage_input_port_{};
+};
 
 // Custom Drake system that reads the MultibodyPlant state and outputs one
 // ExternallyAppliedSpatialForce per wing. It performs a blade-element lift/drag
@@ -1023,11 +1227,36 @@ Eigen::Matrix<double, 5, 1> MakeVoltageCommandVector(
   return voltage_command;
 }
 
+// Stroke angle phi of each wing, measured at the transmission output joint
+// (base -> hinge flexure) relative to its CAD rest angle, which is also the
+// unstressed angle of the flexure spring. Right wing = slider_1 / revolute_1_4,
+// left wing = slider_2 / revolute_1_3. This is the angle the slider CSV logs as
+// *_stroke_angle_rad; it is an algebraic function of slider position through
+// the closed four-bar (transmission ratio ~2666 rad/m near rest), not an
+// independent dynamic state.
+struct StrokeJoints {
+  const drake::multibody::RevoluteJoint<double>* right{};
+  const drake::multibody::RevoluteJoint<double>* left{};
+};
+
+StrokeJoints GetStrokeJoints(const drake::multibody::MultibodyPlant<double>& plant) {
+  return StrokeJoints{
+      &plant.GetJointByName<drake::multibody::RevoluteJoint>("revolute_1_4"),
+      &plant.GetJointByName<drake::multibody::RevoluteJoint>("revolute_1_3")};
+}
+
+double CalcStrokeAngleFromRest(
+    const drake::multibody::RevoluteJoint<double>& joint,
+    const drake::systems::Context<double>& plant_context) {
+  return joint.get_angle(plant_context) - joint.get_default_angle();
+}
+
 void WriteSliderCsvHeader(std::ostream* output) {
   *output << "time_s,right_actual_displacement_m,left_actual_displacement_m,"
              "right_desired_displacement_m,left_desired_displacement_m,"
              "right_error_m,left_error_m,"
-             "right_voltage_v,left_voltage_v,bias_voltage_v\n";
+             "right_voltage_v,left_voltage_v,bias_voltage_v,"
+             "right_stroke_angle_rad,left_stroke_angle_rad\n";
 }
 
 void WriteSliderCsvRow(std::ostream* output, double time_s,
@@ -1036,7 +1265,8 @@ void WriteSliderCsvRow(std::ostream* output, double time_s,
                        double right_desired_displacement_m,
                        double left_desired_displacement_m,
                        double right_voltage_v, double left_voltage_v,
-                       double bias_voltage_v) {
+                       double bias_voltage_v, double right_stroke_angle_rad,
+                       double left_stroke_angle_rad) {
   *output << std::setprecision(17) << time_s << ','
           << right_actual_displacement_m << ','
           << left_actual_displacement_m << ','
@@ -1045,7 +1275,8 @@ void WriteSliderCsvRow(std::ostream* output, double time_s,
           << right_actual_displacement_m - right_desired_displacement_m << ','
           << left_actual_displacement_m - left_desired_displacement_m << ','
           << right_voltage_v << ',' << left_voltage_v << ','
-          << bias_voltage_v << '\n';
+          << bias_voltage_v << ',' << right_stroke_angle_rad << ','
+          << left_stroke_angle_rad << '\n';
 }
 
 struct RobotPose {
@@ -1211,22 +1442,26 @@ class RobobeeSimulationServer final {
                                   "transmission_right_link_1",
                                   "transmission_right_link_2");
 
-    constexpr double kSliderEffortLimitN = 100000.0;
-    constexpr double kSliderKp = 1000.0;
-    constexpr double kSliderKd = 5.0e-1;
-
+    // Lumped piezo actuator on each slider joint, identical to the standalone
+    // build: a pure force actuator (no PD gains) carrying the actuator mass as
+    // reflected inertia, in parallel with the k_a PrismaticSpring added by
+    // AddActuatorSprings, plus a RevoluteSpring on each transmission flexure.
+    // The stroke is the response of the actuator/transmission/wing system to
+    // the voltage force k_a * delta_free(V), not a servo-tracked command.
     const auto& right_slider_actuator = plant_->AddJointActuator(
         "right_slider_drive", plant_->GetJointByName("slider_1"),
         kSliderEffortLimitN);
-    plant_->get_mutable_joint_actuator(right_slider_actuator.index())
-        .set_controller_gains({kSliderKp, kSliderKd});
+    SetSliderActuatorMass(plant_, right_slider_actuator.index(),
+                          kActuatorMassKg);
 
     const auto& left_slider_actuator = plant_->AddJointActuator(
         "left_slider_drive", plant_->GetJointByName("slider_2"),
         kSliderEffortLimitN);
-    plant_->get_mutable_joint_actuator(left_slider_actuator.index())
-        .set_controller_gains({kSliderKp, kSliderKd});
+    SetSliderActuatorMass(plant_, left_slider_actuator.index(),
+                          kActuatorMassKg);
 
+    AddActuatorSprings(plant_);
+    AddTransmissionFlexureSprings(plant_);
     AddWingHingeSprings(plant_);
     AddRoboBeeBodyFrameTriadVisuals(plant_);
 
@@ -1237,10 +1472,10 @@ class RobobeeSimulationServer final {
         &plant_->GetJointByName<drake::multibody::PrismaticJoint>("slider_1");
     left_slider_ =
         &plant_->GetJointByName<drake::multibody::PrismaticJoint>("slider_2");
-    slider_source_ =
-        builder_.AddSystem<VoltageStrokeSource>(slider_rest_positions_);
+    stroke_joints_ = GetStrokeJoints(*plant_);
+    slider_source_ = builder_.AddSystem<VoltageForceSource>();
     builder_.Connect(slider_source_->get_output_port(),
-                     plant_->get_desired_state_input_port(model_instance));
+                     plant_->get_actuation_input_port(model_instance));
 
     wing_aero_ = builder_.AddSystem<WingAeromechanics>(
         *plant_, kAngularAccelerationSamplePeriod,
@@ -1345,8 +1580,10 @@ class RobobeeSimulationServer final {
       next_com_wrench_flush_time_ = time_s_ + kComWrenchLogFlushPeriod;
     }
 
-    // Log slider tracking against the desired stroke implied by the commanded
-    // actuator voltages (the same mapping VoltageStrokeSource applies).
+    // Log the actual slider displacement against the unloaded free deflection
+    // delta_free(V) implied by the commanded actuator voltages. With the
+    // force-driven actuator the two differ by design (x_ss/delta_free =
+    // k_a/k_eq statically, plus the resonant response near 180 Hz).
     const double right_desired_displacement_m =
         CalcStrokeDisplacementFromVoltage(right_actuator_voltage_v);
     const double left_desired_displacement_m =
@@ -1360,7 +1597,11 @@ class RobobeeSimulationServer final {
     WriteSliderCsvRow(&slider_log_, time_s_, right_actual_displacement_m,
                       left_actual_displacement_m, right_desired_displacement_m,
                       left_desired_displacement_m, right_actuator_voltage_v,
-                      left_actuator_voltage_v, bias_actuator_voltage_v);
+                      left_actuator_voltage_v, bias_actuator_voltage_v,
+                      CalcStrokeAngleFromRest(*stroke_joints_.right,
+                                              plant_context),
+                      CalcStrokeAngleFromRest(*stroke_joints_.left,
+                                              plant_context));
     if (time_s_ >= next_slider_flush_time_) {
       slider_log_.flush();
       next_slider_flush_time_ = time_s_ + kSliderLogFlushPeriod;
@@ -1441,10 +1682,11 @@ class RobobeeSimulationServer final {
   drake::multibody::MultibodyPlant<double>* plant_{};
   drake::geometry::SceneGraph<double>* scene_graph_{};
   drake::lcm::DrakeLcm lcm_;
-  VoltageStrokeSource* slider_source_{};
+  VoltageForceSource* slider_source_{};
   WingAeromechanics* wing_aero_{};
   const drake::multibody::PrismaticJoint<double>* right_slider_{};
   const drake::multibody::PrismaticJoint<double>* left_slider_{};
+  StrokeJoints stroke_joints_;
   Eigen::Vector2d slider_rest_positions_{Eigen::Vector2d::Zero()};
   std::vector<drake::multibody::ModelInstanceIndex> model_instances_;
   drake::systems::FixedInputPortValue* voltage_input_value_{};
@@ -1473,35 +1715,35 @@ int main(int argc, char** argv) {
   // Simulation timing is expressed in samples per wingbeat cycle so the plant,
   // visualizer, moment logger, and finite-difference acceleration estimator stay
   // synchronized as drive frequency changes.
-  constexpr double kDriveFrequencyHz = 180;
+  const double kDriveFrequencyHz = config.drive_frequency_hz;
   constexpr double kPlantStepsPerDriveCycle = 100.0;
   constexpr double kVisualizerSamplesPerDriveCycle = kPlantStepsPerDriveCycle*2;
   constexpr double kMomentLogSamplesPerDriveCycle = kPlantStepsPerDriveCycle;
   constexpr double kAngularAccelerationSamplesPerDriveCycle =
       kPlantStepsPerDriveCycle;
   constexpr double kAngularAccelerationFilterCycles = 0.05;
-  constexpr double kPlantTimeStep =
+  const double kPlantTimeStep =
       1.0 / (kDriveFrequencyHz * kPlantStepsPerDriveCycle);
-  constexpr double kVisualizerPublishPeriod =
+  const double kVisualizerPublishPeriod =
       1.0 / (kDriveFrequencyHz * kVisualizerSamplesPerDriveCycle);
-  constexpr double kMomentLogPeriod =
+  const double kMomentLogPeriod =
       1.0 / (kDriveFrequencyHz * kMomentLogSamplesPerDriveCycle);
-  constexpr double kAngularAccelerationSamplePeriod =
+  const double kAngularAccelerationSamplePeriod =
       1.0 / (kDriveFrequencyHz * kAngularAccelerationSamplesPerDriveCycle);
-  constexpr double kAngularAccelerationFilterTimeConstant =
+  const double kAngularAccelerationFilterTimeConstant =
       kAngularAccelerationFilterCycles / kDriveFrequencyHz;
-  constexpr double kCommandPeriod = kPlantTimeStep;
+  const double kCommandPeriod = kPlantTimeStep;
   constexpr double kMomentLogFlushPeriod = 5.0e-2;
-  constexpr double kSliderLogPeriod = kMomentLogPeriod;
+  const double kSliderLogPeriod = kMomentLogPeriod;
   constexpr double kSliderLogFlushPeriod = kMomentLogFlushPeriod;
-  constexpr double kPoseLogPeriod = kMomentLogPeriod;
+  const double kPoseLogPeriod = kMomentLogPeriod;
   constexpr double kPoseLogFlushPeriod = kMomentLogFlushPeriod;
-  constexpr double kTargetRealtimeRate = 0.02;
+  const double kTargetRealtimeRate = config.realtime_rate;
   constexpr char kMomentLogPath[] = "/tmp/aeromechanical_moments.csv";
-  constexpr char kSliderLogPath[] = "/tmp/slider_positions.csv";
+  const std::string& kSliderLogPath = config.slider_log_path;
   constexpr char kPoseLogPath[] = "/tmp/robobee_pose.csv";
   constexpr char kComWrenchLogPath[] = "/tmp/robobee_com_wrench.csv";
-  constexpr double kComWrenchLogPeriod = kMomentLogPeriod;
+  const double kComWrenchLogPeriod = kMomentLogPeriod;
   constexpr double kComWrenchLogFlushPeriod = kMomentLogFlushPeriod;
 
   // A discrete MultibodyPlant is used because the assembly has constraints and
@@ -1548,27 +1790,26 @@ int main(int argc, char** argv) {
                                 "transmission_right_link_1",
                                 "transmission_right_link_2");
 
-  // constexpr double kSliderEffortLimitN = 1.0e-1;
-  // The high effort limit makes the slider source behave like a prescribed
-  // stroke while still using Drake's finite-gain actuator path.
-  constexpr double kSliderEffortLimitN = 1000000000.0;
-  constexpr double kSliderKp = 10000.0;
-  constexpr double kSliderKd = 50.0;
-
-  // Add PD-controlled actuators to the two slider joints. The desired state
-  // input is provided after Finalize by VoltageStrokeSource.
+  // Lumped piezo actuator on each slider joint: a pure force actuator (no PD
+  // gains, so the actuation input is applied directly as joint force) carrying
+  // the actuator mass as reflected inertia, in parallel with the k_a spring
+  // added by AddActuatorSprings. The stroke is therefore no longer prescribed;
+  // it is the response of the actuator/transmission/wing system to the voltage
+  // force k_a * delta_free(V) supplied after Finalize by VoltageForceSource.
   const auto& right_slider_actuator = plant.AddJointActuator(
       "right_slider_drive", plant.GetJointByName("slider_1"),
       kSliderEffortLimitN);
-  plant.get_mutable_joint_actuator(right_slider_actuator.index())
-      .set_controller_gains({kSliderKp, kSliderKd});
+  SetSliderActuatorMass(&plant, right_slider_actuator.index(),
+                        kActuatorMassKg);
 
   const auto& left_slider_actuator = plant.AddJointActuator(
       "left_slider_drive", plant.GetJointByName("slider_2"),
       kSliderEffortLimitN);
-  plant.get_mutable_joint_actuator(left_slider_actuator.index())
-      .set_controller_gains({kSliderKp, kSliderKd});
+  SetSliderActuatorMass(&plant, left_slider_actuator.index(),
+                        kActuatorMassKg);
 
+  AddActuatorSprings(&plant);
+  AddTransmissionFlexureSprings(&plant);
   AddWingHingeSprings(&plant);
   AddRoboBeeBodyFrameTriadVisuals(&plant);
 
@@ -1579,13 +1820,12 @@ int main(int argc, char** argv) {
       CalcSliderRestPositions(plant);
 
   // Diagram wiring:
-  //   slider source -> plant desired joint state
-  //   plant state   -> wing aeromechanics
-  //   wing forces   -> plant applied spatial force input
-  auto* slider_source =
-      builder.AddSystem<VoltageStrokeSource>(slider_rest_positions);
+  //   voltage force source -> plant slider actuation input
+  //   plant state          -> wing aeromechanics
+  //   wing forces          -> plant applied spatial force input
+  auto* slider_source = builder.AddSystem<VoltageForceSource>();
   builder.Connect(slider_source->get_output_port(),
-                  plant.get_desired_state_input_port(model_instance));
+                  plant.get_actuation_input_port(model_instance));
 
   auto* wing_aero = builder.AddSystem<WingAeromechanics>(
       plant, kAngularAccelerationSamplePeriod,
@@ -1646,6 +1886,7 @@ int main(int argc, char** argv) {
       plant.GetJointByName<drake::multibody::PrismaticJoint>("slider_1");
   const auto& left_slider =
       plant.GetJointByName<drake::multibody::PrismaticJoint>("slider_2");
+  const StrokeJoints stroke_joints = GetStrokeJoints(plant);
   simulator.Initialize();
 
   std::cout << "RoboBee constrained linkage model is being simulated and "
@@ -1693,11 +1934,14 @@ int main(int argc, char** argv) {
             << kAngularAccelerationFilterTimeConstant << " s ("
             << kAngularAccelerationFilterCycles << " cycles)\n"
             << "  target realtime rate: " << kTargetRealtimeRate << "\n"
+            << "  duration: " << config.duration_s << " s\n"
             << "  free flight: " << (kFreeFlight ? "yes" : "no") << "\n\n"
-            << "The slider joints are driven by finite-gain joint actuators "
-               "tracking desired position and velocity from the voltage map; "
-               "the transmission loops are closed with MultibodyPlant weld "
-               "constraints, not per-frame IK. "
+            << "The slider joints are pure force actuators carrying the lumped "
+               "piezo force k_a * delta_free(V) in parallel with a k_a spring, "
+               "reflected actuator mass, and transmission flexure springs; "
+               "the transmission loops are closed with MultibodyPlant "
+               "constraints, not per-frame IK. Stroke angles are logged to the "
+               "slider CSV as *_stroke_angle_rad. "
             << (kFreeFlight
                     ? "The root body is floating and a z=0 floor is enabled.\n"
                     : "The root body is welded to world.\n")
@@ -1742,7 +1986,8 @@ int main(int argc, char** argv) {
   double next_com_wrench_log_flush_time = kComWrenchLogFlushPeriod;
   // Manual stepping gives this app explicit control over log cadence and flush
   // cadence. The simulator is otherwise advanced one plant step at a time.
-  while (true) {
+  // With the default infinite duration this loops until Ctrl-C.
+  while (next_time + 0.5 * kCommandPeriod < config.duration_s) {
     next_time += kCommandPeriod;
     set_voltage_command(next_time);
     simulator.AdvanceTo(next_time);
@@ -1773,7 +2018,11 @@ int main(int argc, char** argv) {
                         left_actual_slider_displacement,
                         right_desired_slider_position,
                         left_desired_slider_position, right_voltage_v,
-                        left_voltage_v, config.voltage_bias_v);
+                        left_voltage_v, config.voltage_bias_v,
+                        CalcStrokeAngleFromRest(*stroke_joints.right,
+                                                plant_context),
+                        CalcStrokeAngleFromRest(*stroke_joints.left,
+                                                plant_context));
       next_slider_log_time += kSliderLogPeriod;
     }
     if (next_time + 0.5 * kCommandPeriod >= next_pose_log_time) {
@@ -1831,10 +2080,11 @@ int main(int argc, char** argv) {
                "response = [time_s, x_m, y_m, z_m, roll_rad, pitch_rad, "
                "yaw_rad], all binary double values.\n"
             << "Voltage request fields are pre-amplifier commands; the server "
-               "applies a 100x voltage amplifier gain before mapping "
-               "(wing voltage - 100 V) to slider stroke. A 0..200 V "
-               "actuator-side waveform with a 200 V bias rail maps to a "
-               "centered 0.6 mm peak-to-peak stroke.\n"
+               "applies a 100x voltage amplifier gain, then drives each slider "
+               "with the lumped piezo force k_a * c_V * (wing voltage - 100 V) "
+               "in parallel with a k_a spring, reflected actuator mass, and "
+               "transmission flexure springs. The stroke is the resonant "
+               "response of that system, not a prescribed displacement.\n"
             << "Waiting for Simulink client...\n";
 
   while (true) {
