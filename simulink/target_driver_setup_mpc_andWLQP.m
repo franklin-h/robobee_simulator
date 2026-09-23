@@ -3,10 +3,12 @@
 
 clear;
 close all;
+addpath('controllers/')
+addpath('system id/')
 christian_params = load('RoboBee_optimal_fitting_parameter_155Hz_2022_BBee_v2.mat'); 
 
 %% Timing and sampling rate
-dt_s = 2.0e-4;
+dt_s = 2.0e-4;1
 % sampling_f = 10000;			% controller sampling rate
 sampling_f = 1/dt_s;
 sampling_time = 1/sampling_f;

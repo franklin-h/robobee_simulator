@@ -157,7 +157,8 @@ yaw_max_Nm   = 0.8e-6;   % [N*m] the h2 channel spans about +-1.0e-6 N*m
 % what this PD asks for at 1 rad of error), so if the measured delivered-
 % torque fraction on h2 comes back well below 1 (roll came in at 0.25, pitch
 % ~0.44), scale BOTH gains up by 1/fraction to keep wn and zeta as designed.
-k_psi_yaw = 0.1;    % [1e-6 N*m / rad]
+% k_psi_yaw = 0.1;    % [1e-6 N*m / rad]
+k_psi_yaw = 0.5; 
 k_r_yaw   = 0.009;   % [1e-6 N*m / (rad/s)]
 
 % Integral gain and authority. The integrator exists because the popts Mz
@@ -172,7 +173,8 @@ k_r_yaw   = 0.009;   % [1e-6 N*m / (rad/s)]
 % aero disturbance (~0.04 uN*m in sideways_4) with zero steady-state droop
 % -- a P-only loop droops dist/k_psi (0.38 rad = 22 deg there, as logged).
 % Zero at k_i/k_psi = 3 rad/s, a fifth of the ~15 rad/s crossover.
-k_i_yaw     = 0.3;   % [1e-6 N*m / (rad*s)]
+% k_i_yaw     = 0.3;   % [1e-6 N*m / (rad*s)]
+k_i_yaw = 0.0; 
 tau_int_max = 0.4;   % [1e-6 N*m] integral-contribution clamp (< tau_yaw_max)
 
 % Heading reference. HEADING_FOLLOW = false reproduces the old behaviour:
