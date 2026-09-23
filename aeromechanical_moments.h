@@ -28,7 +28,7 @@ struct AeromechanicalModelParameters {
   double rotational_damping_coefficient{4.0}; // From whitney: This value [5.0], in general, led to the best agreement between measured and predicted passive-rotation trajectories.
 
   double kapton_youngs_modulus_pa{2.5e9};
-  double hinge_thickness_m{12.0e-6};
+  double hinge_thickness_m{8.5e-6}; // Robobee Mfg Guide uses 7.5 micron thick kapton... prev 12.0
   double hinge_width_m{2.7e-3};
   double hinge_length_m{0.10e-3};
 

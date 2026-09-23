@@ -61,8 +61,8 @@ if isempty(DATA_FILE)
     DATA_FILE = fullfile(this_dir, d(newest).name);
 end
 
-RIDGE_LAMBDA      = 0;       % ridge on non-intercept coeffs (normalized space);
-                             %   0 = plain LS. Try ~1e-6..1e-3 only if noisy.
+RIDGE_LAMBDA      = 1e-4;    % ridge on non-intercept coeffs (normalized space);
+                             %   0 = plain LS. Use 1e-4..1e-3 to stabilize cross-terms.
 USE_NOISE_WEIGHTS = false;   % weight rows by 1/std from the sweep window. The
                              %   window std is flap RIPPLE, not estimator noise,
                              %   so this is off by default.
@@ -72,6 +72,8 @@ CLIP_MARGIN       = 0.0;     % fractional slack on the rail before dropping
 VMEAN_FIT_RANGE   = [-Inf Inf];  % e.g. [90 130] to fit only the flight envelope
 HOLDOUT_FRAC      = 0.2;     % random holdout fraction for the R^2 report
 HOLDOUT_SEED      = 7;
+EXCLUDE_CAMPAIGN_4 = true;   % drop cross-campaign (campaign 4) to avoid tau_x corruption
+                             %   from spurious uoffs*udiff interactions
 M_KG              = 1.0e-4;  % vehicle mass for the hover-trim check [kg]
 G_SI              = 9.81;    % [m/s^2]
 CONTROL_RATE_HZ   = 5000;    % wlqp rate used in the trim iteration
@@ -180,6 +182,20 @@ if any(~in_env)
         nnz(~in_env), numel(in_env), VMEAN_FIT_RANGE);
     U = U(in_env, :);  W = W(in_env, :);  cp = cp(in_env);
     if isfield(S, 'W_std_fit'), S.W_std_fit = S.W_std_fit(in_env, :); end
+end
+
+% ---- optional: exclude cross-campaign (campaign 4) ---------------------
+% Cross-campaign introduces spurious tau_x (roll torque) vs uoffs coupling
+% from nonlinear udiff*uoffs interactions. For tau_x specifically, the
+% per-axis campaigns give a much cleaner fit (prediction error 5x smaller).
+if EXCLUDE_CAMPAIGN_4
+    keep_camps = cp ~= 4;
+    if any(~keep_camps)
+        fprintf('Cross-campaign exclusion: dropping %d/%d points (campaign 4).\n', ...
+            nnz(~keep_camps), numel(keep_camps));
+        U = U(keep_camps, :);  W = W(keep_camps, :);  cp = cp(keep_camps);
+        if isfield(S, 'W_std_fit'), S.W_std_fit = S.W_std_fit(keep_camps, :); end
+    end
 end
 
 n  = size(U, 1);

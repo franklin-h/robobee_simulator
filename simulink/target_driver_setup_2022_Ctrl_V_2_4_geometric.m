@@ -29,7 +29,7 @@ landing_flag=0; % 0 : No landing, 1: landing on
 control_flag=1; %2 % 1: Open loop, 2: closed loop.
 adaptive_flag=0;					% 0: no-adaptive 1: adaptive. for uncertainty in torque 
 adaptive_lateral_flag=0;	% 0:  -adaptive 1: adaptive. position/velocity bias/disturbance. 
-autosim = 1; 
+autosim = 0; 
 controller="geometric"; % geometric or MPC, for error saturation. 
 replay_mode = 1; % 1 for control, 2 for replay. 
 replay_log_file = fullfile('Robobee flight logs', ...
@@ -285,7 +285,7 @@ drv_roll = -1e-3;
 % drv_pitch_right = 6.95; 
 drv_pitch_left = 9.05; % the more positive, the more negative pitch torque. 
 drv_pitch_right = 9.05; 
-a2_openloop = 0.6;
+a2_openloop = 0.0;
 
 
 %% Feedback Control paramter (Force Control)

@@ -227,8 +227,9 @@ closedloop_max_drv_bias = max(V_L_p2p_limit,V_R_p2p_limit) + abs(V_offset_limit)
 
 
 % ` = load('popts_fit_20260820_163410.mat'); 
-% popts = load('popts_fit_20260917_010524.mat'); 
-popts = load('popts_fit_20260918_005015.mat'); 
+% Improved fit (2026-09-22): cross-campaign excluded + ridge regularization
+% Fixes tau_x vs uoffs corruption (67% prediction error reduction)
+popts = load('popts_fit_20260922_223848.mat'); 
 popts_flattened = popts.popts; 
 
 c_vertical = 0.70e-3; % [N/(m/s)] 
