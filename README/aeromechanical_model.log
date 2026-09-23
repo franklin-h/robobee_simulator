@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.3.8)  17 SEP 2026 18:36
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.3.8)  22 SEP 2026 20:21
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -329,7 +329,7 @@ Package wrapfig Warning: Stationary wrapfigure forced to float on input line 634
 [8]
 
 [9]
-Overfull \hbox (46.76042pt too wide) in paragraph at lines 848--861
+Overfull \hbox (46.76042pt too wide) in paragraph at lines 850--863
  [][] 
  []
 
@@ -343,21 +343,24 @@ Overfull \hbox (46.76042pt too wide) in paragraph at lines 848--861
 <Figs/stroke_bode_20260916.png, id=58, 650.43pt x 505.89pt>
 File: Figs/stroke_bode_20260916.png Graphic file (type png)
 <use Figs/stroke_bode_20260916.png>
-Package pdftex.def Info: Figs/stroke_bode_20260916.png  used on input line 943.
+Package pdftex.def Info: Figs/stroke_bode_20260916.png  used on input line 945.
 (pdftex.def)             Requested size: 430.00958pt x 334.45964pt.
+
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
 <Figs/which_peak.png, id=59, 578.16pt x 614.295pt>
 File: Figs/which_peak.png Graphic file (type png)
 <use Figs/which_peak.png>
-Package pdftex.def Info: Figs/which_peak.png  used on input line 950.
+Package pdftex.def Info: Figs/which_peak.png  used on input line 952.
 (pdftex.def)             Requested size: 430.00958pt x 456.8864pt.
-
 
 LaTeX Warning: `!h' float specifier changed to `!ht'.
 
 <Figs/steinmeyer_freq_response.png, id=60, 637.38126pt x 490.83376pt>
 File: Figs/steinmeyer_freq_response.png Graphic file (type png)
 <use Figs/steinmeyer_freq_response.png>
-Package pdftex.def Info: Figs/steinmeyer_freq_response.png  used on input line 957.
+Package pdftex.def Info: Figs/steinmeyer_freq_response.png  used on input line 959.
 (pdftex.def)             Requested size: 430.00958pt x 331.1412pt.
 
 LaTeX Warning: `h' float specifier changed to `ht'.
@@ -365,27 +368,27 @@ LaTeX Warning: `h' float specifier changed to `ht'.
 <Figs/voltage_vs_stroke.png, id=61, 993.7125pt x 367.3725pt>
 File: Figs/voltage_vs_stroke.png Graphic file (type png)
 <use Figs/voltage_vs_stroke.png>
-Package pdftex.def Info: Figs/voltage_vs_stroke.png  used on input line 963.
+Package pdftex.def Info: Figs/voltage_vs_stroke.png  used on input line 965.
 (pdftex.def)             Requested size: 430.00958pt x 158.9761pt.
 
 LaTeX Warning: `h' float specifier changed to `ht'.
 
 
 
-[13 <./Figs/stroke_bode_20260916.png>]
+[13]
 
-[14 <./Figs/which_peak.png>]
+[14 <./Figs/stroke_bode_20260916.png>]
 
-[15 <./Figs/steinmeyer_freq_response.png>]
-
-[16 <./Figs/voltage_vs_stroke.png>]
-Overfull \hbox (65.18318pt too wide) in paragraph at lines 1021--1022
+[15 <./Figs/which_peak.png>]
+Overfull \hbox (65.18318pt too wide) in paragraph at lines 1023--1024
 []\OT1/cmr/m/n/10 Frequency flag, $\OML/cmm/m/it/10 ^^^$ \OT1/cmr/m/n/10 log-ging, sweep driver, Bode plot against the ref-er-ence (done 2026-09-16, \OT1/cmtt/m/n/10 tools/stroke[]frequency[]sweep.py\OT1/cmr/m/n/10 ,
  []
 
 
 
-[17]
+[16 <./Figs/steinmeyer_freq_response.png>]
+
+[17 <./Figs/voltage_vs_stroke.png>]
 
 [18]
 
@@ -402,13 +405,13 @@ LaTeX Warning: There were multiply-defined labels.
 Here is how much of TeX's memory you used:
  3488 strings out of 473190
  54063 string characters out of 5715801
- 471157 words of memory out of 5000000
+ 470157 words of memory out of 5000000
  26695 multiletter control sequences out of 15000+600000
  569988 words of font info for 79 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
  57i,17n,65p,1863b,272s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi5.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmib10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr17.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy5.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfrm1000.pfb>
-Output written on aeromechanical_model.pdf (19 pages, 1533753 bytes).
+Output written on aeromechanical_model.pdf (19 pages, 1533545 bytes).
 PDF statistics:
  154 PDF objects out of 1000 (max. 8388607)
  91 compressed objects within 1 object stream

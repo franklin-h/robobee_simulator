@@ -1,6 +1,6 @@
 # Fdb version 4
-["pdflatex"] 1789684560.7461 "/Users/franklinho/robobee_simulator/README/aeromechanical_model.tex" "aeromechanical_model.pdf" "aeromechanical_model" 1789684561.8167 0
-  "/Users/franklinho/robobee_simulator/README/aeromechanical_model.tex" 1789684554.4985 65469 6430ad2054495c2db9b23b4934de38fc ""
+["pdflatex"] 1790122894.32262 "/Users/franklinho/robobee_simulator/README/aeromechanical_model.tex" "aeromechanical_model.pdf" "aeromechanical_model" 1790122895.45847 0
+  "/Users/franklinho/robobee_simulator/README/aeromechanical_model.tex" 1790122892.43419 65555 a910d675be5d8add809246e61ebd3673 ""
   "/usr/local/texlive/2025/texmf-dist/fonts/enc/dvips/cm-super/cm-super-ts1.enc" 1136849721 2900 1537cc8184ad1792082cd229ecc269f4 ""
   "/usr/local/texlive/2025/texmf-dist/fonts/map/fontname/texfonts.map" 1577235249 3524 cb3e574dea2d1052e39280babc910dc8 ""
   "/usr/local/texlive/2025/texmf-dist/fonts/tfm/jknappen/ec/tcrm1000.tfm" 1136768653 1536 e07581a4bb3136ece9eeb4c3ffab8233 ""
@@ -90,8 +90,8 @@
   "Figs/voltage_vs_stroke.png" 1789618028.89439 747781 06d550d7f2ce358f7e914107bab33b48 ""
   "Figs/which_peak.png" 1789680863.77305 113823 9fbc03dfa6636205920edb3d0eedef6d ""
   "Figs/wing_coordinates.jpeg" 1781561807.49142 253353 b9e9d2a50bf9b43630cdc42dd8b6ea8c ""
-  "aeromechanical_model.aux" 1789684561.76418 7455 5f3de875e2bf229240c2e5ae96864124 "pdflatex"
-  "aeromechanical_model.tex" 1789684554.4985 65469 6430ad2054495c2db9b23b4934de38fc ""
+  "aeromechanical_model.aux" 1790122895.36685 7561 63221d3dcf42d2a70f256cf5fbac5dea "pdflatex"
+  "aeromechanical_model.tex" 1790122892.43419 65555 a910d675be5d8add809246e61ebd3673 ""
   (generated)
   "aeromechanical_model.aux"
   "aeromechanical_model.log"
