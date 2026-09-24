@@ -26,7 +26,7 @@ reset_plant('updated_target_driver_2026_withVariants')
 %% Control mode flags
 landing_flag=0; % 0 : No landing, 1: landing on
 
-control_flag=1; %2 % 1: Open loop, 2: closed loop.
+control_flag=2; %2 % 1: Open loop, 2: closed loop.
 adaptive_flag=0;					% 0: no-adaptive 1: adaptive. for uncertainty in torque 
 adaptive_lateral_flag=0;	% 0:  -adaptive 1: adaptive. position/velocity bias/disturbance. 
 autosim = 0; 
@@ -275,7 +275,7 @@ drv_pch = drv_pitch_left;
 % a2_openloop = -0; %0.2;2
 
 % Franklin Open Loop
-drv_amp = 110;
+drv_amp = 133;
 % drv_roll = -1e-3;
 % drv_roll = -1e-3; 
 drv_roll = -1e-3; 
@@ -283,8 +283,8 @@ drv_roll = -1e-3;
 % drv_pitch_right = 6.95;
 % drv_pitch_left = 6.95; 
 % drv_pitch_right = 6.95; 
-drv_pitch_left = 9.05; % the more positive, the more negative pitch torque. 
-drv_pitch_right = 9.05; 
+drv_pitch_left = 0; % the more positive, the more negative pitch torque. 
+drv_pitch_right = 0; 
 a2_openloop = 0.0;
 
 

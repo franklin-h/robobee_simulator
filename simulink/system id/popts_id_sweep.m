@@ -18,7 +18,7 @@
 %       udiff*h2 quadratic cross-terms structurally unobservable (their
 %       regressor columns are identically zero), which would silently pin 3
 %       of the 15 coefficients per wrench row to the ridge prior.
-%
+% 
 % OUTPUT (popts_id_sweep_results_<stamp>.mat), ready for fit_popts.m:
 %   U            n x 4   u-space commands [Vmean, uoffs, udiff, h2]
 %   W_SI         n x 6   steady-state wrench [Fx Fy Fz taux tauy tauz], N / N*m,

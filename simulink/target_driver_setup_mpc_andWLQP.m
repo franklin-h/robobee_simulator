@@ -8,7 +8,7 @@ addpath('system id/')
 christian_params = load('RoboBee_optimal_fitting_parameter_155Hz_2022_BBee_v2.mat'); 
 
 %% Timing and sampling rate
-dt_s = 2.0e-4;1
+dt_s = 2.0e-4;
 % sampling_f = 10000;			% controller sampling rate
 sampling_f = 1/dt_s;
 sampling_time = 1/sampling_f;
@@ -229,8 +229,22 @@ closedloop_max_drv_bias = max(V_L_p2p_limit,V_R_p2p_limit) + abs(V_offset_limit)
 % ` = load('popts_fit_20260820_163410.mat'); 
 % Improved fit (2026-09-22): cross-campaign excluded + ridge regularization
 % Fixes tau_x vs uoffs corruption (67% prediction error reduction)
-popts = load('popts_fit_20260922_223848.mat'); 
+% popts = load('popts_fit_20260922_223848.mat'); % hinge WAY Too thick.
+% popts = load('popts_fit_20260922_224901.mat');
+% 2026-09-23 sweep, sequential per-campaign fit (fit_popts.m FIT_MODE):
+% tau_x-vs-uoffs slice error 0.0045 -> 0.0001 uN*m, no spurious uoffs*udiff term
+% popts = load('popts_fit_20260923_145955.mat') might be the wrong plany 
+
+popts = load('popts_fit_20260923_150329.mat')
 popts_flattened = popts.popts; 
+
+% Free-flight Mz(h2): welded sweep gives dMz/dh2 = 2.75 - 0.048*V (-2.65 @112 V),
+% but hover1/yaw_spin7 show the free body responds +0.7..+1.1 uN*m per unit h2
+% (same sign/magnitude as pre-soft-hinge spin4). Use the flight value, no
+% V/cross/quadratic h2 terms (unidentified in flight).
+% dMz_dh2_flight = 0.8;                         % [uN*m per unit h2]
+% popts_flattened(80) = dMz_dh2_flight;         % a1_h2
+% popts_flattened([84 87 89 90]) = 0;           % V*h2, uoffs*h2, udiff*h2, h2^2
 
 c_vertical = 0.70e-3; % [N/(m/s)] 
 % popts_flattened(46:60) = 0.15 * popts_flattened(46:60); 
@@ -487,8 +501,8 @@ adaptive_gain = [gamma_adaptive, adaptive_roll_limit, adaptive_pitch_limit, adap
 % lp_cutoff_hz must be divided by (sampling_f/2), NOT by sampling_f (which
 % would give half the intended cutoff).
 lp_cutoff_hz = 100;   % desired low-pass cutoff [Hz]
-[lp_num, lp_den]  =butter(5, lp_cutoff_hz/(sampling_f/2));
-[vlp_num, vlp_den]=butter(5, lp_cutoff_hz/(sampling_f/2));
+[lp_num, lp_den]  =butter(3, lp_cutoff_hz/(sampling_f/2));
+[vlp_num, vlp_den]=butter(3, lp_cutoff_hz/(sampling_f/2));
 
 
 %% attitude controller setup (Filtering to get angular velocity wrt body frame)

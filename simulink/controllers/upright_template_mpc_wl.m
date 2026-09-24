@@ -158,7 +158,7 @@ yaw_max_Nm   = 0.8e-6;   % [N*m] the h2 channel spans about +-1.0e-6 N*m
 % torque fraction on h2 comes back well below 1 (roll came in at 0.25, pitch
 % ~0.44), scale BOTH gains up by 1/fraction to keep wn and zeta as designed.
 % k_psi_yaw = 0.1;    % [1e-6 N*m / rad]
-k_psi_yaw = 0.5; 
+k_psi_yaw = 0.9; 
 k_r_yaw   = 0.009;   % [1e-6 N*m / (rad/s)]
 
 % Integral gain and authority. The integrator exists because the popts Mz

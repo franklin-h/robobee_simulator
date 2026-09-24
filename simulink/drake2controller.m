@@ -10,9 +10,13 @@ function [roll_c,pitch_c,yaw_c] = drake2controller(alpha,beta,gamma)
     % Same physical attitude, expressed in controller axes
     R_c = S * R_p * S';
 
-    eul_c = rotm2eul(R_c, 'ZYX');
+    % eul_c = rotm2eul(R_c, 'ZYX');
+    % 
+    % yaw_c   = eul_c(1);
+    % pitch_c = eul_c(2);
+    % roll_c  = eul_c(3);
 
-    yaw_c   = eul_c(1);
-    pitch_c = eul_c(2);
-    roll_c  = eul_c(3);
+    eul_c = rotm2eul(R_c,'XYZ'); 
+    roll_c = eul_c(1); pitch_c = eul_c(2); yaw_c = eul_c(3);
+
 end 

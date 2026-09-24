@@ -10,13 +10,26 @@
 % the layout wlqp.m / funapprox.c unpack.
 %
 % METHOD
-%   Linear least squares in the coefficients. Inputs are centered/scaled
-%   before fitting (raw regressors mix Vmean^2 ~ 3e4 with uoffs*h2 ~ 3e-2 and
-%   condition terribly); the normalized-space coefficients are transformed
-%   back to raw-u coefficients EXACTLY (quadratics are closed under affine
-%   input maps). Optional ridge (RIDGE_LAMBDA) and per-point noise weighting
-%   (USE_NOISE_WEIGHTS, from the sweep's steady-state std) are available but
-%   off by default -- the sweep design is full-rank and well conditioned.
+%   Linear least squares in the coefficients. Inputs are scaled (and Vmean
+%   centered) before fitting (raw regressors mix Vmean^2 ~ 3e4 with uoffs*h2
+%   ~ 3e-2 and condition terribly); the normalized-space coefficients are
+%   transformed back to raw-u coefficients EXACTLY (quadratics are closed
+%   under affine input maps). Optional ridge (RIDGE_LAMBDA) and per-point
+%   noise weighting (USE_NOISE_WEIGHTS, from the sweep's steady-state std)
+%   are available.
+%
+%   FIT_MODE = 'sequential' (default) exploits the sweep's per-axis design:
+%   each wrench row is fitted campaign by campaign, each campaign determining
+%   only the terms it excites --
+%     campaign 1 (uoffs sweep) -> a0, Vmean, Vmean^2, uoffs, Vmean*uoffs, uoffs^2
+%     campaign 2 (udiff sweep) -> udiff, Vmean*udiff, udiff^2   (on the residual)
+%     campaign 3 (h2 sweep)    -> h2, Vmean*h2, h2^2             (on the residual)
+%     campaign 4 (cross)       -> uoffs*udiff, uoffs*h2, udiff*h2 (on the residual)
+%   A single 'global' LS on e.g. tau_x is dominated by the +-4.5 uN*m udiff
+%   channel (whose quadratic-in-Vmean misfit is ~0.1 uN*m), so the ~0.03 uN*m
+%   tau_x-vs-uoffs slice was fitted only to ~15% (2026-09-23 sweep). The
+%   sequential fit gets that slice to <1% while leaving all other channels
+%   within noise of the global fit. 'global' keeps the old joint LS.
 %
 % VALIDATION (all printed / plotted below)
 %   * random holdout R^2 per wrench channel (fit on 80%, test on 20%),
@@ -38,7 +51,11 @@
 % The below is for fits with the updated transmission spring equivalence
 % and transmission mass incorporated. 
 % popts_fit_20260917_010524 taken at 155 Hz, but resonance at 145 Hz.
-% popts_fit_20260918_005015 taken at 155 Hz, resonance at 145 Hz. 
+% popts_fit_20260918_005015 taken at 155 Hz, resonance at 145 Hz.
+% popts_fit_20260923_144859 (global fit, campaign 4 excluded, data-mean
+%   centering) had a phantom A2(uoffs,udiff) = +47 -> roll authority halved at
+%   uoffs = -0.3, and a 15% tau_x-vs-uoffs slice error. Superseded by
+% popts_fit_20260923_145955: sequential fit, nominal centering, campaign 4 in.
 clc; close all;
 
 %% ------------------------------------------------------------------------
@@ -61,6 +78,16 @@ if isempty(DATA_FILE)
     DATA_FILE = fullfile(this_dir, d(newest).name);
 end
 
+FIT_MODE          = 'sequential';  % 'sequential' (per-campaign, see header) | 'global'
+CENTER_AT_NOMINAL = true;    % normalize about u = [mean(Vmean) 0 0 0] rather than the
+                             %   data mean. With the data mean, a per-axis slice
+                             %   (e.g. uoffs = 0 exactly) has z_uoffs = const ~= 0,
+                             %   so cross columns like z_uoffs*z_udiff become
+                             %   COLLINEAR with the linear z_udiff column instead of
+                             %   zero; ridge then splits the roll slope between them
+                             %   (A2(uoffs,udiff) = +47 on the 2026-09-23 fit with
+                             %   campaign 4 excluded -> dtau_x/dudiff halved at
+                             %   uoffs = -0.3). Nominal centering makes them exactly 0.
 RIDGE_LAMBDA      = 1e-4;    % ridge on non-intercept coeffs (normalized space);
                              %   0 = plain LS. Use 1e-4..1e-3 to stabilize cross-terms.
 USE_NOISE_WEIGHTS = false;   % weight rows by 1/std from the sweep window. The
@@ -72,8 +99,11 @@ CLIP_MARGIN       = 0.0;     % fractional slack on the rail before dropping
 VMEAN_FIT_RANGE   = [-Inf Inf];  % e.g. [90 130] to fit only the flight envelope
 HOLDOUT_FRAC      = 0.2;     % random holdout fraction for the R^2 report
 HOLDOUT_SEED      = 7;
-EXCLUDE_CAMPAIGN_4 = true;   % drop cross-campaign (campaign 4) to avoid tau_x corruption
-                             %   from spurious uoffs*udiff interactions
+EXCLUDE_CAMPAIGN_4 = false;  % drop cross-campaign (campaign 4). Was needed with the
+                             %   'global' fit (2026-09-22: campaign 4 pulled
+                             %   dtau_x/duoffs from ~0 to -0.072). In 'sequential'
+                             %   mode campaign 4 only sets the 3 cross-terms and
+                             %   cannot corrupt the per-axis slices, so keep it.
 M_KG              = 1.0e-4;  % vehicle mass for the hover-trim check [kg]
 G_SI              = 9.81;    % [m/s^2]
 CONTROL_RATE_HZ   = 5000;    % wlqp rate used in the trim iteration
@@ -214,6 +244,7 @@ end
 % 2) Build the regressor in NORMALIZED input space.
 % -------------------------------------------------------------------------
 mu = mean(U, 1);
+if CENTER_AT_NOMINAL, mu(2:4) = 0; end
 sg = std(U, 0, 1);
 sg(sg < eps) = 1;                      % guard: constant column (degenerate sweep)
 Z  = (U - mu) ./ sg;
@@ -234,26 +265,31 @@ rng(HOLDOUT_SEED);
 test  = rand(n, 1) < HOLDOUT_FRAC;
 train = ~test;
 
+th_tr = fit_rows(Phi(train, :), W(train, :), cp(train), wts(train, :), RIDGE_LAMBDA, FIT_MODE);
 R2_holdout = nan(1, 6);
 for i = 1:6
-    th = solve_ls(Phi(train, :), W(train, i), wts(train, i), RIDGE_LAMBDA);
-    yhat = Phi(test, :) * th;
+    yhat = Phi(test, :) * th_tr(:, i);
     R2_holdout(i) = 1 - sum((W(test, i) - yhat).^2) / ...
                         max(sum((W(test, i) - mean(W(test, i))).^2), eps);
 end
 
-theta = zeros(15, 6);                  % final fit: all points
+theta = fit_rows(Phi, W, cp, wts, RIDGE_LAMBDA, FIT_MODE);   % final fit: all points
 R2_all = nan(1, 6);
+rms_cp = nan(6, 4);                    % per-campaign residual rms (template units)
 for i = 1:6
-    theta(:, i) = solve_ls(Phi, W(:, i), wts(:, i), RIDGE_LAMBDA);
-    yhat = Phi * theta(:, i);
-    R2_all(i) = 1 - sum((W(:, i) - yhat).^2) / ...
-                    max(sum((W(:, i) - mean(W(:, i))).^2), eps);
+    res = W(:, i) - Phi * theta(:, i);
+    R2_all(i) = 1 - sum(res.^2) / max(sum((W(:, i) - mean(W(:, i))).^2), eps);
+    for c = 1:4
+        if any(cp == c), rms_cp(i, c) = rms(res(cp == c)); end
+    end
 end
 
-fprintf('\n%-8s %12s %12s\n', 'channel', 'R2(holdout)', 'R2(all)');
+fprintf('\nFit mode: %s\n', FIT_MODE);
+fprintf('%-8s %12s %12s | %s\n', 'channel', 'R2(holdout)', 'R2(all)', ...
+    'residual rms per campaign  c1(uoffs)  c2(udiff)  c3(h2)  c4(cross)');
 for i = 1:6
-    fprintf('%-8s %12.4f %12.4f\n', WCHAN{i}, R2_holdout(i), R2_all(i));
+    fprintf('%-8s %12.4f %12.4f | %10.4f %10.4f %10.4f %10.4f\n', ...
+        WCHAN{i}, R2_holdout(i), R2_all(i), rms_cp(i, :));
 end
 
 %% ------------------------------------------------------------------------
@@ -320,6 +356,8 @@ fprintf(['\nHover trim (pdotdes = 0, weight %.3f): u = [%.1f, %+.4f, %+.4f, %+.4
 % -------------------------------------------------------------------------
 stamp = char(datetime('now', 'Format', 'yyyyMMdd_HHmmss'));
 fit_meta = struct('data_file', DATA_FILE, 'timestamp', stamp, ...
+    'fit_mode', FIT_MODE, 'center_at_nominal', CENTER_AT_NOMINAL, ...
+    'exclude_campaign_4', EXCLUDE_CAMPAIGN_4, 'rms_per_campaign', rms_cp, ...
     'ridge_lambda', RIDGE_LAMBDA, 'use_noise_weights', USE_NOISE_WEIGHTS, ...
     'holdout_frac', HOLDOUT_FRAC, 'R2_holdout', R2_holdout, 'R2_all', R2_all, ...
     'mu', mu, 'sg', sg, 'u_order', '[Vmean uoffs udiff h2]', ...
@@ -394,6 +432,46 @@ function Phi = quad_regressor(U)
             end
             k = k + 1;
         end
+    end
+end
+
+function theta = fit_rows(Phi, W, cp, wts, lambda, mode)
+%FIT_ROWS 15 x 6 coefficient matrix (normalized space) for all wrench rows.
+% 'global'     : one LS per row over all points.
+% 'sequential' : per row, fit campaign by campaign; each campaign determines
+%                only the regressor columns it excites, on the residual left
+%                by the earlier campaigns. Columns are in funapprox order
+%                  1 const | 2 V 3 uo 4 ud 5 h2 | 6 VV 7 Vuo 8 Vud 9 Vh2
+%                  10 uouo 11 uoud 12 uoh2 13 udud 14 udh2 15 h2h2
+%                Requires CENTER_AT_NOMINAL so unexcited columns are exactly 0.
+    theta = zeros(15, 6);
+    switch lower(mode)
+        case 'global'
+            for i = 1:6
+                theta(:, i) = solve_ls(Phi, W(:, i), wts(:, i), lambda);
+            end
+        case 'sequential'
+            steps = {1, [1 2 3 6 7 10];      % uoffs campaign: V-only + uoffs terms
+                     2, [4 8 13];            % udiff campaign
+                     3, [5 9 15];            % h2 campaign
+                     4, [11 12 14]};         % cross campaign: interaction terms
+            for i = 1:6
+                th = zeros(15, 1);
+                for s = 1:size(steps, 1)
+                    rows = cp == steps{s, 1};
+                    cols = steps{s, 2};
+                    if ~any(rows)
+                        % campaign absent (e.g. EXCLUDE_CAMPAIGN_4): leave its
+                        % coefficients at 0 rather than inventing them
+                        continue;
+                    end
+                    r = W(rows, i) - Phi(rows, :) * th;
+                    th(cols) = solve_ls(Phi(rows, cols), r, wts(rows, i), lambda);
+                end
+                theta(:, i) = th;
+            end
+        otherwise
+            error('fit_popts:badMode', 'FIT_MODE must be ''global'' or ''sequential''.');
     end
 end
 
