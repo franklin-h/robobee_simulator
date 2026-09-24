@@ -66,7 +66,10 @@ function [pdotdes, h0_wl, accdes, thrust_desired, roll_torque_desired, ...
 %   v_cur   (3x1) world linear velocity [m/s]
 %   pdes    (3x1) desired position [m]
 %   dpdes   (3x1) desired velocity [m/s] (analytic derivative of pdes)
-%   sdes_in (3x1) desired body-z (upright) unit vector
+%   sdes_in (3x1 or 3x(N+1)) desired body-z unit vector; with N+1 columns
+%           it is a time-dependent preview, column k+1 = sdes(t + k*dt),
+%           tracked stage by stage (e_s_k = s_k - sdes_k, e_ds_k = ds_k -
+%           ds_des_k). A single column reproduces the old held reference.
 %   I_moment_vec, m, g, cntrl_enable, weights_vec(14), k_tau(2), ctrl_Ts:
 %                 same as upright_template_mpc (ctrl_Ts kept for signature
 %                 compatibility; the internal rates below are hardcoded)
@@ -82,7 +85,7 @@ p_cur = reshape(p_cur, 3, 1);
 v_cur = reshape(v_cur, 3, 1);
 pdes = reshape(pdes, 3, 1);
 dpdes = reshape(dpdes, 3, 1);
-sdes_in = reshape(sdes_in, 3, 1);
+sdes_in = reshape(sdes_in, 3, []);   % 3x1 held or 3x(N+1) preview
 I_moment_vec = reshape(I_moment_vec, 3, 1);
 weights_vec = reshape(weights_vec, 14, 1);
 k_tau = reshape(k_tau, 2, 1);
@@ -105,10 +108,10 @@ e_v = v_cur - dpdes;
 % -------------------------------------------------------------------------
 % MPC constants (template units: mm, ms, mg)
 % -------------------------------------------------------------------------
-N = 10;         % horizon steps
+N = 10;         % horizon steps N = 10 for hover! 
 dt = 12.9;      % [ms] prediction step = TWO wingbeats at 155 Hz
                 % N*dt = 129 ms ~ 20 wingbeats of preview
-ny = 6;         %#ok<NASGU>
+ny = 6;         %#ok<NASGU>. dt = 12.9 for hover! 
 nu = 3;
 nx = 2*6 + 2;   % [y_err; dy_err; tauX_applied; tauY_applied]
 nU = nu*N;
@@ -158,7 +161,8 @@ yaw_max_Nm   = 0.8e-6;   % [N*m] the h2 channel spans about +-1.0e-6 N*m
 % torque fraction on h2 comes back well below 1 (roll came in at 0.25, pitch
 % ~0.44), scale BOTH gains up by 1/fraction to keep wn and zeta as designed.
 % k_psi_yaw = 0.1;    % [1e-6 N*m / rad]
-k_psi_yaw = 0.9; 
+% k_psi_yaw = 0.9; 
+k_psi_yaw = 0.0; 
 k_r_yaw   = 0.009;   % [1e-6 N*m / (rad/s)]
 
 % Integral gain and authority. The integrator exists because the popts Mz
@@ -300,7 +304,30 @@ Rot = [R_cur(1), R_cur(2), R_cur(3); ...
        R_cur(7), R_cur(8), R_cur(9)];
 
 s0 = [R_cur(3); R_cur(6); R_cur(9)];          % R*e3, third column
-sdes = sdes_in / max(norm(sdes_in), 1.0e-9);  % desired body-z, normalized
+
+% Desired body-z: either a single 3x1 (held over the horizon, old
+% behaviour) or a 3x(N+1) time-dependent preview from desTraj,
+% column k+1 = sdes at t + k*dt. Missing columns repeat the last one.
+% ds_des is the finite-difference rate of the preview; the e_ds error
+% state is measured against it, so the wds cost no longer fights a
+% commanded rotation and the e_s error rows need no extra drift term.
+sdes_seq = reshape(sdes_in, 3, []);
+Np = size(sdes_seq, 2);
+sdes_prev = zeros(3, N+1);
+for k = 1:N+1
+    if k <= Np
+        c = sdes_seq(:, k);
+    else
+        c = sdes_seq(:, Np);
+    end
+    sdes_prev(:, k) = c / max(norm(c), 1.0e-9);
+end
+sdes = sdes_prev(:, 1);                       % current reference (h0_wl, x0)
+ds_des = zeros(3, N+1);                       % [1/ms]
+for k = 1:N
+    ds_des(:, k) = (sdes_prev(:, k+1) - sdes_prev(:, k)) / dt;
+end
+ds_des(:, N+1) = ds_des(:, N);
 
 e3h = [0, -1, 0; 1, 0, 0; 0, 0, 0];           % hat([0;0;1])
 Ibi = [1/max(Ib_t(1),1e-9), 0, 0; 0, 1/max(Ib_t(2),1e-9), 0; 0, 0, 1/max(Ib_t(3),1e-9)];
@@ -326,11 +353,12 @@ if do_solve
 
 % Error state x0 = [e_p; e_s; e_v; e_ds; tau_applied], refs: sdes, ds_des=0
 es0 = s0 - sdes;
-x0 = [ex_t; es0; ev_t; ds0; tau_applied];
+x0 = [ex_t; es0; ev_t; ds0 - ds_des(:, 1); tau_applied];
 
 % Affine drift in error coordinates (no trajectory accel feed-forward):
-% e_v_dot = T0*e_s + s0*utilde + (T0*sdes - g*e3)
-aref_t = a_ref * 1.0e-3; 
+% e_v_dot = T0*e_s + s0*utilde + (T0*sdes_k - g*e3); the sdes_k term is
+% stage-dependent when a preview is supplied (see cd_k in the condensing).
+aref_t = a_ref * 1.0e-3;
 
 b1 = Rot(:,1); 
 b3 = s0; 
@@ -350,7 +378,8 @@ A_Ds = Kdrag_t * ((b3'*v_air_t)*b1 + vxB0*b3) * b1';
 
 % Since model states are e_s=s-sdes and e_v=v-dpdes
 aD_aff = aD0 - A_Ds*es0 - A_Dv*ev_t;
-d_v = T0*sdes - [0;0;g_t] - aref_t + aD_aff;
+d_v_base = -[0;0;g_t] - aref_t + aD_aff;      % stage-independent part
+d_v = T0*sdes + d_v_base;                     % stage-1 value (x1 prediction)
 
 % -------------------------------------------------------------------------
 % Discrete error dynamics  x_{k+1} = Ad*x_k + Bd*u_k + cd
@@ -404,10 +433,15 @@ Bd(9, 1) = dt*s0(3);
 Bd(13, 2) = beta;                              % tau commands -> lag states
 Bd(14, 3) = beta;
 
+% Stage-1 affine term (used for the x1 prediction below). Stages k = 1..N
+% get their own cd_k inside the condensing loop: the e_v rows carry
+% T0*sdes_k, the e_ds rows carry the change of the rate reference
+% (e_ds_k = ds_k - ds_des_k  =>  + ds_des_{k-1} - ds_des_k).
 cd = zeros(nx,1);
 cd(7) = dt*d_v(1);
 cd(8) = dt*d_v(2);
 cd(9) = dt*d_v(3);
+cd(10:12) = ds_des(:, 1) - ds_des(:, 2);
 
 % -------------------------------------------------------------------------
 % Stage weights: x = [e_p(3); e_s(3); e_v(3); e_ds(3); tau_app(2)]
@@ -433,11 +467,15 @@ Gamma = zeros(nx*N, nU);
 xfree = zeros(nx*N, 1);
 
 for k = 1:N
-    % free response (with affine drift)
+    % free response (with stage-dependent affine drift)
+    cd_k = zeros(nx,1);
+    dv_k = T0*sdes_prev(:, k) + d_v_base;
+    cd_k(7:9)   = dt*dv_k;
+    cd_k(10:12) = ds_des(:, k) - ds_des(:, k+1);
     if k == 1
-        xfree((k-1)*nx+1:k*nx) = Ad*x0 + cd;
+        xfree((k-1)*nx+1:k*nx) = Ad*x0 + cd_k;
     else
-        xfree((k-1)*nx+1:k*nx) = Ad*xfree((k-2)*nx+1:(k-1)*nx) + cd;
+        xfree((k-1)*nx+1:k*nx) = Ad*xfree((k-2)*nx+1:(k-1)*nx) + cd_k;
     end
     % input response blocks: G(k,j) = Ad^(k-j-1)*Bd for j = 0..k-1
     for j = 1:k
@@ -570,7 +608,7 @@ tau_cmd_prev(2) = tau_y_t;
 % -------------------------------------------------------------------------
 % Absolute desired velocity at step 1: error state + reference
 v1des_t = x1(7:9) + dpdes_t + dt*aref_t;       % [mm/ms]  world frame
-ds1des_t = x1(10:12);              % [1/ms]   ds reference is 0, error = absolute
+ds1des_t = x1(10:12) + ds_des(:, 2);   % [1/ms]  error state + rate reference
 
 % Lift template s-rate to body angular velocity: omega_des = e3h*R'*ds_des
 om1des_t = e3h * (Rot' * ds1des_t);   %#ok<NASGU> % kept for reference
