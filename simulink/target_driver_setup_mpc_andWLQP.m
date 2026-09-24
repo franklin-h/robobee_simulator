@@ -148,14 +148,25 @@ wdmom_roll   = 1e-1; % 1e-3
 wdmom_pitch = 1e-1; %1e-3 
 wdthrust = 1e4;
 
-% k_tau_roll = 1/3.0; 
-% k_tau_pitch = 10; 
-k_tau_roll = 0.1; 
-k_tau_pitch = 1.1; 
-weights_vec = [ws; wds; wpr_xy;wpr_z; wpf; wvr_xy; wvr_z; 
-    wvf_xy; wvf_z; wthrust; wmom;wdmom_roll;wdmom_pitch;wdthrust]; 
+% Full-attitude MPC (full_attitude_mpc_wl.m) yaw weights. The QP sees yaw as
+% a heavily damped RATE plant (omega_z ~ 2.9 rad/s per uN*m), so these are
+% not on the roll/pitch scale; see the sizing note in the controller header.
+% w_dyaw acts on omega_z - omega*_z in rad/ms, hence the large number.
+w_yaw     = 5.0e1;   % heading error e_R(3)            (~4.5 uN*m/rad with wmom_yaw 100)
+w_dyaw    = 3.0e6;   % yaw-rate error                  (spin feed-forward strength)
+wmom_yaw  = 1.0e2;   % yaw torque effort (>= 30: keeps yaw from being a cheap lever)
+wdmom_yaw = 1.0e2;   % yaw torque-change penalty
 
-k_tau_vec = [k_tau_roll;k_tau_pitch]; 
+% k_tau_roll = 1/3.0;
+% k_tau_pitch = 10;
+k_tau_roll = 0.1;
+k_tau_pitch = 1.1;
+k_tau_yaw = 1.0;     % delivered fraction is lumped into b_yaw (rate plant), keep 1
+weights_vec = [ws; wds; wpr_xy;wpr_z; wpf; wvr_xy; wvr_z;
+    wvf_xy; wvf_z; wthrust; wmom;wdmom_roll;wdmom_pitch;wdthrust;
+    w_yaw; w_dyaw; wmom_yaw; wdmom_yaw];   % 18: the template MPC reads the first 14
+
+k_tau_vec = [k_tau_roll;k_tau_pitch;k_tau_yaw];   % 3: the template MPC reads the first 2
 
 ctrl_decim = 1;                 % controller ticks per ... 32*dt_s = 6.4 ms ~ 1 wingbeat
 ctrl_Ts    = ctrl_decim * dt_s;  % 6.4e-3 s
